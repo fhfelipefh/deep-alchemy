@@ -1,6 +1,6 @@
 {
-  "load_time_ms": 909.7441000049002,
-  "dungeon_init_ms": 1046.2708999984898,
+  "load_time_ms": 3977.1785999982967,
+  "dungeon_init_ms": 1076.3231000019005,
   "metrics": {
     "fps": 59.7,
     "avgDeltaMs": 16.76,
@@ -10,8 +10,8 @@
     "maxDeltaMs": 33.3,
     "longFrames": 0,
     "drawCalls": 7,
-    "triangles": 97354,
-    "geometriesCount": 76,
+    "triangles": 94378,
+    "geometriesCount": 79,
     "texturesCount": 1,
     "memory": {
       "usedJSHeapSizeMB": 35.57,
