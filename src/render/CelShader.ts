@@ -9,10 +9,10 @@ export function createCelMaterial(options: {
 }): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
     color: options.color,
-    roughness: options.roughness ?? 0.6,
+    roughness: options.roughness ?? 0.5,
     metalness: 0.1,
-    emissive: options.emissive ?? 0x000000,
-    emissiveIntensity: options.emissiveIntensity ?? 0,
+    emissive: options.emissive ?? 0x12151c,
+    emissiveIntensity: options.emissiveIntensity ?? 0.35,
     wireframe: options.wireframe ?? false,
   });
 }

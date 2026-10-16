@@ -39,8 +39,8 @@ export class MobileControls {
 
     this.joystickBase = document.createElement('div');
     this.joystickBase.style.position = 'absolute';
-    this.joystickBase.style.bottom = '25px';
-    this.joystickBase.style.left = '25px';
+    this.joystickBase.style.bottom = 'calc(24px + env(safe-area-inset-bottom, 0px))';
+    this.joystickBase.style.left = 'calc(24px + env(safe-area-inset-left, 0px))';
     this.joystickBase.style.width = '100px';
     this.joystickBase.style.height = '100px';
     this.joystickBase.style.borderRadius = '50%';
@@ -63,10 +63,10 @@ export class MobileControls {
 
     this.container.appendChild(this.joystickBase);
 
-    this.jumpBtn = this.createActionButton('↑', '25px', '25px');
+    this.jumpBtn = this.createActionButton('↑', 'calc(24px + env(safe-area-inset-right, 0px))', 'calc(24px + env(safe-area-inset-bottom, 0px))');
     this.container.appendChild(this.jumpBtn);
 
-    this.runBtn = this.createActionButton('⚡', '90px', '25px');
+    this.runBtn = this.createActionButton('⚡', 'calc(92px + env(safe-area-inset-right, 0px))', 'calc(24px + env(safe-area-inset-bottom, 0px))');
     this.container.appendChild(this.runBtn);
 
     this.setupTouchListeners();

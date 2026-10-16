@@ -87,4 +87,14 @@ export class IntroCinematic {
       }
     }
   }
+
+  public skip(): void {
+    if (!this.isPlaying) return;
+    this.timer = this.duration;
+    this.isPlaying = false;
+    this.cinematicGroup.visible = false;
+    if (this.onCompleteCallback) {
+      this.onCompleteCallback();
+    }
+  }
 }

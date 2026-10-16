@@ -6,6 +6,7 @@ import { createCelMaterial } from './CelShader';
 export class PlayerRenderer {
   public group: THREE.Group;
   public headlamp: THREE.SpotLight;
+  public radialLantern: THREE.PointLight;
   public headlampTarget: THREE.Object3D;
   public camera: THREE.PerspectiveCamera;
   public mixer: THREE.AnimationMixer | null = null;
@@ -19,12 +20,16 @@ export class PlayerRenderer {
     this.camera = camera;
     this.group = new THREE.Group();
 
-    this.headlamp = new THREE.SpotLight(0xfff5e6, 6.0, 40.0, Math.PI / 4, 0.4, 1.5);
+    this.headlamp = new THREE.SpotLight(0xfff8ee, 7.5, 50.0, Math.PI / 2.6, 0.85, 1.1);
     this.headlamp.position.set(0, 1.65, 0.2);
     this.headlamp.castShadow = true;
     this.headlamp.shadow.mapSize.width = 1024;
     this.headlamp.shadow.mapSize.height = 1024;
     this.headlamp.shadow.bias = -0.001;
+
+    this.radialLantern = new THREE.PointLight(0xfff0dc, 5.0, 24.0, 1.1);
+    this.radialLantern.position.set(0, 1.45, 0.1);
+    this.group.add(this.radialLantern);
 
     this.headlampTarget = new THREE.Object3D();
     scene.add(this.headlampTarget);

@@ -52,8 +52,8 @@ class GameApp {
     this.renderer.toneMappingExposure = 1.1;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0e1117);
-    this.scene.fog = new THREE.FogExp2(0x0e1117, 0.012);
+    this.scene.background = new THREE.Color(0x121722);
+    this.scene.fog = new THREE.FogExp2(0x121722, 0.005);
 
     this.camera = new THREE.PerspectiveCamera(
       60,
@@ -62,10 +62,13 @@ class GameApp {
       120
     );
 
-    const hemiLight = new THREE.HemisphereLight(0x7799bb, 0x332211, 1.4);
+    const ambientLight = new THREE.AmbientLight(0x75889e, 1.8);
+    this.scene.add(ambientLight);
+
+    const hemiLight = new THREE.HemisphereLight(0x90a8c0, 0x4d3d2e, 1.6);
     this.scene.add(hemiLight);
 
-    const dirLight = new THREE.DirectionalLight(0xffeedd, 1.6);
+    const dirLight = new THREE.DirectionalLight(0xffeedd, 1.8);
     dirLight.position.set(20, 45, 10);
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.width = 1024;
@@ -87,6 +90,8 @@ class GameApp {
 
     this.setupInputs();
     this.setupResize();
+
+    (window as any).__APP__ = this;
 
     new StartMenu(() => this.startNewRun());
     this.startMainLoop();

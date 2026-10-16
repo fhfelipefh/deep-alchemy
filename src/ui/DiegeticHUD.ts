@@ -22,15 +22,15 @@ export class DiegeticHUD {
 
     this.heartsContainer = document.createElement('div');
     this.heartsContainer.style.position = 'absolute';
-    this.heartsContainer.style.top = '12px';
-    this.heartsContainer.style.left = '12px';
+    this.heartsContainer.style.top = 'calc(12px + env(safe-area-inset-top, 0px))';
+    this.heartsContainer.style.left = 'calc(12px + env(safe-area-inset-left, 0px))';
     this.heartsContainer.style.display = 'flex';
     this.heartsContainer.style.gap = '3px';
     this.container.appendChild(this.heartsContainer);
 
     this.hotbarContainer = document.createElement('div');
     this.hotbarContainer.style.position = 'absolute';
-    this.hotbarContainer.style.bottom = '12px';
+    this.hotbarContainer.style.bottom = 'calc(12px + env(safe-area-inset-bottom, 0px))';
     this.hotbarContainer.style.left = '50%';
     this.hotbarContainer.style.transform = 'translateX(-50%)';
     this.hotbarContainer.style.display = 'flex';

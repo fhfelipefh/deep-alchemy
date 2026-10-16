@@ -41,11 +41,8 @@ export class StartMenu {
     this.rotateNotice.style.boxSizing = 'border-box';
 
     this.rotateNotice.innerHTML = `
-      <div style="font-size: 48px; margin-bottom: 16px; animation: rotatePhone 1.6s infinite ease-in-out;">📱 ➔ 🔄</div>
-      <div style="font-size: 18px; font-weight: bold; color: #ffd700; margin-bottom: 8px;">GIRE O DISPOSITIVO</div>
-      <div style="font-size: 14px; color: #c4b5a2; max-width: 320px; line-height: 1.4;">
-        Este jogo foi desenvolvido exclusivamente para ser jogado na orientação horizontal (Landscape).
-      </div>
+      <div style="font-size: 52px; margin-bottom: 16px; animation: rotatePhone 1.6s infinite ease-in-out;">📱 ➔ 🔄</div>
+      <div style="font-size: 20px; font-weight: bold; color: #ffd700; letter-spacing: 2px;">GIRE O DISPOSITIVO</div>
       <style>
         @keyframes rotatePhone {
           0% { transform: rotate(0deg); }
@@ -67,87 +64,73 @@ export class StartMenu {
     this.overlay.style.left = '0';
     this.overlay.style.width = '100vw';
     this.overlay.style.height = '100vh';
-    this.overlay.style.background = 'radial-gradient(ellipse at center, #1e1710 0%, #080604 100%)';
+    this.overlay.style.background = 'radial-gradient(ellipse at center, rgba(30, 22, 14, 0.85) 0%, rgba(8, 9, 14, 0.98) 85%)';
     this.overlay.style.display = 'flex';
     this.overlay.style.alignItems = 'center';
     this.overlay.style.justifyContent = 'center';
     this.overlay.style.zIndex = '100';
     this.overlay.style.color = '#fff';
     this.overlay.style.fontFamily = 'system-ui, -apple-system, sans-serif';
-    this.overlay.style.padding = 'clamp(8px, 2vh, 20px)';
+    this.overlay.style.padding = '16px';
     this.overlay.style.boxSizing = 'border-box';
-    this.overlay.style.overflowY = 'auto';
+    this.overlay.style.overflow = 'hidden';
   }
 
   private renderContent(): void {
     this.overlay.innerHTML = `
       <div style="
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: clamp(12px, 3vw, 28px);
-        width: 100%;
-        max-width: 900px;
-        max-height: 94vh;
+        display: flex;
+        flex-direction: column;
         align-items: center;
-        background: rgba(18, 14, 10, 0.7);
-        border: 1px solid rgba(255, 215, 0, 0.25);
-        border-radius: 16px;
-        padding: clamp(14px, 3vh, 24px);
-        box-shadow: 0 10px 40px rgba(0,0,0,0.8), inset 0 0 20px rgba(255, 215, 0, 0.05);
-        backdrop-filter: blur(8px);
+        justify-content: center;
+        text-align: center;
+        width: 100%;
+        max-width: 680px;
+        box-sizing: border-box;
       ">
-        <div style="display: flex; flex-direction: column; justify-content: center;">
-          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 2.5px; color: #ffd700; font-weight: bold; margin-bottom: 6px;">
-            IFPF Game Jam 2026 • Alquimia & Bichinhos
-          </div>
-          <h1 style="font-size: clamp(24px, 4.5vw, 38px); line-height: 1.1; margin: 0 0 10px 0; color: #ffffff; text-shadow: 0 2px 14px rgba(255, 215, 0, 0.5);">
-            ALQUIMIA DAS PROFUNDEZAS
-          </h1>
-          <p style="font-size: clamp(12px, 1.8vh, 14px); line-height: 1.4; color: #c4b5a2; margin: 0 0 16px 0;">
-            Sobreviva ao colapso da pirâmide e escape do vasto sistema de cavernas subterrâneas usando suas poções alquímicas contra as criaturas do abismo.
-          </p>
-          <button id="btn-start-game" style="
-            background: linear-gradient(135deg, #ffd700 0%, #e6a100 100%);
-            border: none;
-            color: #120e0a;
-            padding: clamp(12px, 2.5vh, 16px) 28px;
-            font-size: clamp(16px, 2.5vh, 19px);
-            font-weight: 800;
-            border-radius: 28px;
-            cursor: pointer;
-            box-shadow: 0 6px 20px rgba(255, 215, 0, 0.45);
-            transition: transform 0.15s, box-shadow 0.15s;
-            width: fit-content;
-          ">
-            INICIAR EXPEDIÇÃO
-          </button>
-        </div>
+        <svg width="58" height="58" viewBox="0 0 64 64" fill="none" style="margin-bottom: clamp(10px, 2.5vh, 20px); filter: drop-shadow(0 0 14px rgba(255, 215, 0, 0.65));">
+          <circle cx="32" cy="32" r="28" stroke="#ffd700" stroke-width="2" stroke-dasharray="4 3" opacity="0.8" />
+          <polygon points="32,10 52,48 12,48" stroke="#ffd700" stroke-width="2.5" fill="none" />
+          <polygon points="32,54 12,16 52,16" stroke="#e6a100" stroke-width="1.5" fill="none" opacity="0.6" />
+          <circle cx="32" cy="32" r="5" fill="#ffd700" />
+        </svg>
 
-        <div style="
-          background: rgba(0, 0, 0, 0.4);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 12px;
-          padding: clamp(10px, 2vh, 16px);
-          font-size: clamp(11px, 1.6vh, 12.5px);
-          color: #a89a88;
-          line-height: 1.5;
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
+        <h1 style="
+          font-size: clamp(24px, 5.2vw, 44px);
+          font-weight: 900;
+          letter-spacing: clamp(3px, 1vw, 7px);
+          line-height: 1.15;
+          margin: 0 0 clamp(18px, 4vh, 32px) 0;
+          color: #ffffff;
+          text-shadow: 0 0 25px rgba(255, 215, 0, 0.5), 0 4px 12px rgba(0,0,0,0.8);
+          font-family: 'Cinzel', 'Trajan Pro', 'Georgia', serif, system-ui;
+          text-transform: uppercase;
         ">
-          <div style="font-weight: bold; color: #ffd700; font-size: 12px; margin-bottom: 2px;">
-            🎮 CONTROLES (HORIZONTAL):
-          </div>
-          <div>
-            <span style="color: #fff; font-weight: bold;">PC:</span> [WASD] Mover | [Ctrl] Correr | [Espaço] Pular | [1..5] Poções | [Clique] Arremessar
-          </div>
-          <div>
-            <span style="color: #fff; font-weight: bold;">Mobile:</span> Joystick virtual esquerdo | Botões táteis [↑] [⚡] | Toque nos frascos inferiores e na tela
-          </div>
-          <div style="margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 11px; color: #7d7265;">
-            * Sem áudio por diretriz. Experiência 100% visual e diegética.
-          </div>
-        </div>
+          ALQUIMIA DAS PROFUNDEZAS
+        </h1>
+
+        <button id="btn-start-game" style="
+          background: linear-gradient(135deg, #ffd700 0%, #e6a100 100%);
+          border: none;
+          color: #110d08;
+          min-width: clamp(170px, 26vw, 230px);
+          height: clamp(50px, 8.5vh, 60px);
+          font-size: clamp(16px, 2.6vh, 20px);
+          font-weight: 900;
+          letter-spacing: 4px;
+          border-radius: 36px;
+          cursor: pointer;
+          box-shadow: 0 8px 28px rgba(255, 215, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+          transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          text-transform: uppercase;
+          outline: none;
+          touch-action: manipulation;
+        ">
+          JOGAR
+        </button>
       </div>
     `;
 
@@ -161,10 +144,10 @@ export class StartMenu {
       btn.style.boxShadow = '0 6px 20px rgba(255, 215, 0, 0.45)';
     });
 
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => {
       try {
         if ('orientation' in screen && 'lock' in screen.orientation) {
-          await (screen.orientation as any).lock('landscape').catch(() => {});
+          (screen.orientation as any).lock('landscape').catch(() => {});
         }
       } catch {}
 

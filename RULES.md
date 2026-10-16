@@ -106,3 +106,39 @@ Este documento registra todas as regras obrigatórias e especificações de desi
 
 - O repositório deve permanecer estritamente **local e privado** até ordem explícita do usuário.
 - Nenhum push ou sincronização remota deve ser efetuada sem consentimento direto.
+
+---
+
+## 🎨 8. Regra do Menu Minimalista (Limite Estrito de 4 Palavras)
+
+- **Contagem Máxima de Palavras**: A tela de menu não pode conter mais do que **4 palavras no total** em toda a interface.
+  - Exemplo canônico: Título `"ALQUIMIA DAS PROFUNDEZAS"` (3 palavras) + Botão `"JOGAR"` (1 palavra).
+- **Sem Parágrafos ou Textos Explicativos**: Nenhum subtítulo, texto de tutorial ou parágrafo de controles pode estar presente no menu.
+- **Aparência e Design (Impeccable Craft)**: Design minimalista refinado, tipografia elegante com brilho âmbar/alquímico sutil, vidro translúcido com `backdrop-filter: blur`, 100% responsivo para landscape mobile sem scrollbars ou transbordamento.
+
+---
+
+## 📱 9. Arquitetura Mobile First e Controles Táteis
+
+- **Orientação Exclusivamente Horizontal (Landscape)**:
+  - O jogo bloqueia e adverte o usuário com tela cheia caso o dispositivo esteja em orientação vertical (retrato).
+- **Métricas de Toque**:
+  - Todos os alvos de toque interativos (joystick, botões de ação de pulo e corrida, slots da hotbar) devem respeitar a dimensão mínima de 44x44px (idealmente 48x48px).
+- **Isolamento Multi-touch e Gestos**:
+  - `touch-action: none` e `user-scalable=no` para prevenir zoom e scroll acidentais do navegador mobile.
+  - Suporte a multi-touch desvinculado: o jogador pode mover o joystick analógico com o polegar esquerdo enquanto pula, corre ou arremessa poções com o polegar direito sem interferência.
+- **Safe Area Insets**:
+  - Interface respeita `env(safe-area-inset-*)` em entalhes (notches) e barras dinâmicas.
+
+---
+
+## 💡 10. Iluminação Subterrânea e Espalhamento Amplo de Luz
+
+- **Lanterna de Cabeça Híbrida**:
+  - Feixe Direcional Frontal (Spotlight): cone amplo (abertura > 65°), alcance de 45m com penumbra suave para visualização distante.
+  - Luz Radial de Proximidade (Point Light 360°): raio de 18-20m ao redor do explorador para banhar o piso sob os pés, paredes laterais e teto, eliminando qualquer sensação de "cone cego" ou escuridão total adjacente.
+- **Luz Ambiente Subterrânea**:
+  - Preenchimento difuso suave que impede que áreas não iluminadas diretamente virem buracos negros (#000000), preservando o contraste e relevo das cavernas.
+- **Bioluminescência Ativa**:
+  - Cogumelos e musgos emitem luz vívida em tons de ciano e azul, servindo como faróis visuais para navegação natural no labirinto.
+

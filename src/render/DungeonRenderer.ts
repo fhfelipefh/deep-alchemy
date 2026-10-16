@@ -68,19 +68,19 @@ export class DungeonRenderer {
     ];
 
     const wallColors: Record<BiomeType, number> = {
-      [BiomeType.BEACH]: 0x7a634e,
-      [BiomeType.NORMAL_CAVE]: 0x45454d,
-      [BiomeType.FLOODED]: 0x324754,
-      [BiomeType.GEOTHERMAL]: 0x5a3225,
-      [BiomeType.FUNGAL_GLOW]: 0x2f364d,
+      [BiomeType.BEACH]: 0x9a826d,
+      [BiomeType.NORMAL_CAVE]: 0x6e707a,
+      [BiomeType.FLOODED]: 0x4f6b7c,
+      [BiomeType.GEOTHERMAL]: 0x7d493a,
+      [BiomeType.FUNGAL_GLOW]: 0x515b7c,
     };
 
     const floorColors: Record<BiomeType, number> = {
-      [BiomeType.BEACH]: 0xb89d78,
-      [BiomeType.NORMAL_CAVE]: 0x5c5c66,
-      [BiomeType.FLOODED]: 0x3d5464,
-      [BiomeType.GEOTHERMAL]: 0x733c2d,
-      [BiomeType.FUNGAL_GLOW]: 0x3e4763,
+      [BiomeType.BEACH]: 0xd2bba0,
+      [BiomeType.NORMAL_CAVE]: 0x7c7e8b,
+      [BiomeType.FLOODED]: 0x577182,
+      [BiomeType.GEOTHERMAL]: 0x945241,
+      [BiomeType.FUNGAL_GLOW]: 0x586282,
     };
 
     biomes.forEach((b) => {
@@ -193,13 +193,13 @@ export class DungeonRenderer {
         group.add(cap);
       }
 
-      const light = new THREE.PointLight(item.lightColor ?? 0x00ffff, 2.2, 7.0, 2);
+      const light = new THREE.PointLight(item.lightColor ?? 0x00ffff, 3.8, 14.0, 1.2);
       light.position.set(0, 0.45, 0);
       group.add(light);
 
       this.animatedLights.push({
         light,
-        baseIntensity: 2.2,
+        baseIntensity: 3.8,
         speed: 2.0 + Math.random(),
         offset: Math.random() * Math.PI,
       });
@@ -213,7 +213,7 @@ export class DungeonRenderer {
       ring.position.set(item.x, 0.1, item.z);
       this.clutterGroup.add(ring);
 
-      const warmLight = new THREE.PointLight(0xff6622, 2.0, 8.0, 2);
+      const warmLight = new THREE.PointLight(0xff7733, 3.5, 12.0, 1.2);
       warmLight.position.set(item.x, 0.5, item.z);
       this.clutterGroup.add(warmLight);
     } else if (item.type === 'ROCK_PILE') {
