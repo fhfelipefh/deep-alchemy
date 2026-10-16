@@ -60,7 +60,7 @@ describe('Dual Grid & As 6 Peças Canônicas (Stålberg)', () => {
     ];
 
     const quads = DualGridResolver.resolve(grid, biomes);
-    expect(quads.length).toBe(4); // 2x2
+    expect(quads.length).toBe(4);
   });
 });
 
@@ -76,7 +76,6 @@ describe('Pathfinding & Distância da Saída (>= 500m)', () => {
   });
 
   it('garante que a saída gerada pelo WFCGenerator está a no mínimo 500 metros de caminhada', () => {
-    // Semente determinística
     const generator = new WFCGenerator({
       width: 90,
       height: 90,
@@ -104,7 +103,6 @@ describe('Cinemática Procedural & FABRIK', () => {
     const dist = Math.hypot(result.x - anchor.x, result.y - anchor.y, result.z - anchor.z);
     expect(dist).toBeCloseTo(targetDist, 5);
 
-    // Singularidade (dist = 0)
     const singularity = KinematicsSolver.applyDistanceConstraint(anchor, { ...anchor }, targetDist);
     const singDist = Math.hypot(singularity.x - anchor.x, singularity.y - anchor.y, singularity.z - anchor.z);
     expect(singDist).toBeCloseTo(targetDist, 5);
@@ -112,15 +110,15 @@ describe('Cinemática Procedural & FABRIK', () => {
 
   it('limita diferença angular para evitar dobras e colapso de vértebras', () => {
     const baseAngle = 0;
-    const extremeTargetAngle = Math.PI; // 180 graus
-    const maxTurn = Math.PI / 6; // 30 graus
+    const extremeTargetAngle = Math.PI;
+    const maxTurn = Math.PI / 6;
 
     const clamped = KinematicsSolver.clampAngleDiff(baseAngle, extremeTargetAngle, maxTurn);
     expect(Math.abs(clamped - baseAngle)).toBeLessThanOrEqual(maxTurn + 1e-6);
   });
 
   it('preserva volume em deformação squash and stretch (Sx * Sy * Sz = 1)', () => {
-    const deformationY = 0.5; // alongado
+    const deformationY = 0.5;
     const scales = KinematicsSolver.computeSquashAndStretch(deformationY);
     const volume = scales.sx * scales.sy * scales.sz;
     expect(volume).toBeCloseTo(1.0, 5);
@@ -162,7 +160,6 @@ describe('Sistema Alquímico de Poções & HUD sem texto', () => {
     const canThrowImmediate = inventory.triggerThrow(PotionType.FIRE);
     expect(canThrowImmediate).toBe(false);
 
-    // Avança tempo
     inventory.updateCooldowns(POTION_CONFIGS[PotionType.FIRE].cooldownSeconds + 0.1);
     expect(inventory.canThrow(PotionType.FIRE)).toBe(true);
   });
@@ -173,13 +170,11 @@ describe('Estado do Jogador & Corações Estilo Minecraft', () => {
     const player = new PlayerState();
     expect(player.height).toBe(1.80);
 
-    // 20 de HP = 10 corações cheios
     let hearts = player.getDisplayHearts();
     expect(hearts.full).toBe(10);
     expect(hearts.half).toBe(0);
     expect(hearts.empty).toBe(0);
 
-    // Toma 3 de dano (1.5 corações perdidos) -> 17 HP = 8 cheios, 1 meio, 1 vazio
     player.takeDamage(3);
     hearts = player.getDisplayHearts();
     expect(hearts.full).toBe(8);
@@ -191,7 +186,7 @@ describe('Estado do Jogador & Corações Estilo Minecraft', () => {
     const player = new PlayerState();
     player.takeDamage(4);
     const damagedAgain = player.takeDamage(4);
-    expect(damagedAgain).toBe(false); // Bloqueado por i-frames
+    expect(damagedAgain).toBe(false);
   });
 });
 
@@ -200,7 +195,6 @@ describe('I.A. dos Bichinhos & Reações Alquímicas', () => {
     const slime = new CritterInstance('slime_1', CritterType.SLIME, { x: 10, y: 0, z: 10 });
     expect(slime.state).toBe(AIState.PATROL);
 
-    // Jogador a 4 metros (dentro do raio de 8m)
     slime.update(0.1, { x: 12, y: 0, z: 10 });
     expect(slime.state).toBe(AIState.CHASE);
   });
@@ -211,8 +205,8 @@ describe('I.A. dos Bichinhos & Reações Alquímicas', () => {
     expect(wolf.state).toBe(AIState.FROZEN);
 
     const wolfWater = new CritterInstance('wolf_water', CritterType.CAVE_WOLF, { x: 0, y: 0, z: 0 });
-    const initialHp = wolfWater.currentHealth; // 25
-    wolfWater.applyPotionEffect(PotionType.SHOCK, true); // Na água (dano 16)
-    expect(wolfWater.currentHealth).toBe(initialHp - 16); // 9
+    const initialHp = wolfWater.currentHealth;
+    wolfWater.applyPotionEffect(PotionType.SHOCK, true);
+    expect(wolfWater.currentHealth).toBe(initialHp - 16);
   });
 });

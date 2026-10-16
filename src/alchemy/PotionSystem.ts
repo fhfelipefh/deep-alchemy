@@ -1,11 +1,11 @@
 import { Vec3 } from '../animation/KinematicsSolver';
 
 export enum PotionType {
-  GLUE = 'GLUE',   // Cola: imobiliza / desacelera
-  FIRE = 'FIRE',   // Fogo: dano em área contínuo
-  SHOCK = 'SHOCK', // Choque: dano elétrico condutivo em água
-  ICE = 'ICE',     // Gelo: congela monstros e poças
-  LIGHT = 'LIGHT', // Luz: orbe bioluminescente de longo alcance
+  GLUE = 'GLUE',
+  FIRE = 'FIRE',
+  SHOCK = 'SHOCK',
+  ICE = 'ICE',
+  LIGHT = 'LIGHT',
 }
 
 export interface PotionDefinition {
@@ -19,35 +19,35 @@ export interface PotionDefinition {
 export const POTION_CONFIGS: Record<PotionType, PotionDefinition> = {
   [PotionType.GLUE]: {
     type: PotionType.GLUE,
-    colorHex: 0x88cc22, // Verde viscoso
+    colorHex: 0x88cc22,
     effectRadius: 3.5,
     durationSeconds: 6.0,
     cooldownSeconds: 1.0,
   },
   [PotionType.FIRE]: {
     type: PotionType.FIRE,
-    colorHex: 0xff4411, // Laranja incandescente
+    colorHex: 0xff4411,
     effectRadius: 3.0,
     durationSeconds: 4.0,
     cooldownSeconds: 1.2,
   },
   [PotionType.SHOCK]: {
     type: PotionType.SHOCK,
-    colorHex: 0xffee22, // Amarelo relâmpago
+    colorHex: 0xffee22,
     effectRadius: 3.0,
     durationSeconds: 2.0,
     cooldownSeconds: 1.5,
   },
   [PotionType.ICE]: {
     type: PotionType.ICE,
-    colorHex: 0x33ddff, // Ciano gelo cristalino
+    colorHex: 0x33ddff,
     effectRadius: 3.2,
     durationSeconds: 5.0,
     cooldownSeconds: 1.2,
   },
   [PotionType.LIGHT]: {
     type: PotionType.LIGHT,
-    colorHex: 0xffffff, // Branco brilhante solar
+    colorHex: 0xffffff,
     effectRadius: 10.0,
     durationSeconds: 15.0,
     cooldownSeconds: 0.8,

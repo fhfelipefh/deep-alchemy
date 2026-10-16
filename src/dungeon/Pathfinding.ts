@@ -6,10 +6,6 @@ export interface Point2D {
 }
 
 export class Pathfinding {
-  /**
-   * Encontra o menor caminho caminhável entre dois pontos usando BFS.
-   * Retorna a lista de pontos ordenados do início ao destino, ou null se não houver caminho.
-   */
   public static findShortestPath(
     grid: CellType[][],
     start: Point2D,
@@ -37,10 +33,10 @@ export class Pathfinding {
     visited.add(key(start));
 
     const directions = [
-      { x: 0, z: -1 }, // Norte
-      { x: 1, z: 0 },  // Leste
-      { x: 0, z: 1 },  // Sul
-      { x: -1, z: 0 }, // Oeste
+      { x: 0, z: -1 },
+      { x: 1, z: 0 },
+      { x: 0, z: 1 },
+      { x: -1, z: 0 },
     ];
 
     let found = false;
@@ -69,7 +65,6 @@ export class Pathfinding {
 
     if (!found) return null;
 
-    // Reconstrói o caminho
     const path: Point2D[] = [];
     let curr: Point2D | undefined = goal;
     while (curr) {
@@ -80,9 +75,6 @@ export class Pathfinding {
     return path;
   }
 
-  /**
-   * Calcula a distância em metros do trajeto considerando o tamanho da célula.
-   */
   public static calculatePathLengthMeters(path: Point2D[], cellSize: number = 2.0): number {
     if (path.length <= 1) return 0;
     let distance = 0;

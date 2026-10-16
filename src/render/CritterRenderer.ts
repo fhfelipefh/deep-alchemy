@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { AIState, CritterInstance, CritterType } from '../entities/CritterAI';
-import { KinematicsSolver } from '../animation/KinematicsSolver';
 import { createCelMaterial } from './CelShader';
 
 interface CritterVisual {
@@ -9,7 +8,7 @@ interface CritterVisual {
   group: THREE.Group;
   bodyMesh: THREE.Object3D;
   iceCubeMesh?: THREE.Mesh;
-  animTimer: number;
+  mixer?: THREE.AnimationMixer;
 }
 
 export class CritterRenderer {
@@ -17,7 +16,9 @@ export class CritterRenderer {
   public critterGroup: THREE.Group;
   private visuals: Map<string, CritterVisual> = new Map();
   private slimeTemplate: THREE.Object3D | null = null;
+  private slimeClip: THREE.AnimationClip | null = null;
   private wolfTemplate: THREE.Object3D | null = null;
+  private wolfClip: THREE.AnimationClip | null = null;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -31,9 +32,15 @@ export class CritterRenderer {
     const loader = new GLTFLoader();
     loader.load('models/slime.glb', (gltf) => {
       this.slimeTemplate = gltf.scene;
+      if (gltf.animations.length > 0) {
+        this.slimeClip = gltf.animations[0];
+      }
     });
     loader.load('models/cave_wolf.glb', (gltf) => {
       this.wolfTemplate = gltf.scene;
+      if (gltf.animations.length > 0) {
+        this.wolfClip = gltf.animations[0];
+      }
     });
   }
 
@@ -42,12 +49,16 @@ export class CritterRenderer {
     group.position.set(instance.position.x, instance.position.y, instance.position.z);
 
     let bodyMesh: THREE.Object3D;
+    let mixer: THREE.AnimationMixer | undefined;
 
     if (instance.config.type === CritterType.SLIME) {
       if (this.slimeTemplate) {
         bodyMesh = this.slimeTemplate.clone(true);
+        if (this.slimeClip) {
+          mixer = new THREE.AnimationMixer(bodyMesh);
+          mixer.clipAction(this.slimeClip).play();
+        }
       } else {
-        // Fallback procedural
         const geo = new THREE.SphereGeometry(0.45, 12, 10);
         const mat = createCelMaterial({ color: 0x33cc66, roughness: 0.3 });
         bodyMesh = new THREE.Mesh(geo, mat);
@@ -56,6 +67,10 @@ export class CritterRenderer {
     } else if (instance.config.type === CritterType.CAVE_WOLF) {
       if (this.wolfTemplate) {
         bodyMesh = this.wolfTemplate.clone(true);
+        if (this.wolfClip) {
+          mixer = new THREE.AnimationMixer(bodyMesh);
+          mixer.clipAction(this.wolfClip).play();
+        }
       } else {
         const geo = new THREE.BoxGeometry(0.4, 0.4, 0.7);
         const mat = createCelMaterial({ color: 0x5a6070, roughness: 0.7 });
@@ -63,7 +78,6 @@ export class CritterRenderer {
         bodyMesh.position.y = 0.35;
       }
     } else {
-      // Glow Beetle
       const geo = new THREE.SphereGeometry(0.25, 8, 6);
       const mat = createCelMaterial({ color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 1.5 });
       bodyMesh = new THREE.Mesh(geo, mat);
@@ -74,7 +88,6 @@ export class CritterRenderer {
     bodyMesh.receiveShadow = true;
     group.add(bodyMesh);
 
-    // Bloco de Gelo para quando congelado
     const iceGeo = new THREE.BoxGeometry(1.0, 1.0, 1.0);
     const iceMat = new THREE.MeshStandardMaterial({
       color: 0x88e0ff,
@@ -93,7 +106,7 @@ export class CritterRenderer {
       group,
       bodyMesh,
       iceCubeMesh: iceCube,
-      animTimer: Math.random() * 10,
+      mixer,
     });
   }
 
@@ -106,30 +119,15 @@ export class CritterRenderer {
         continue;
       }
 
-      visual.animTimer += deltaTime;
-
-      // Sincroniza posição e rotação
       visual.group.position.set(critter.position.x, critter.position.y, critter.position.z);
       visual.group.rotation.y = critter.rotation;
 
-      // Status visual de gelo
       if (visual.iceCubeMesh) {
         visual.iceCubeMesh.visible = critter.state === AIState.FROZEN;
       }
 
-      // Animação procedural por criatura
-      if (critter.config.type === CritterType.SLIME) {
-        // Squash and Stretch procedural em tempo real
-        const hopFrequency = critter.state === AIState.CHASE ? 8.0 : 4.0;
-        const hopPhase = Math.sin(visual.animTimer * hopFrequency);
-        const squash = KinematicsSolver.computeSquashAndStretch(hopPhase * 0.35);
-
-        visual.bodyMesh.scale.set(squash.sx, squash.sy, squash.sz);
-        visual.group.position.y = Math.max(0, hopPhase * 0.3);
-      } else if (critter.config.type === CritterType.CAVE_WOLF) {
-        // Balanço sutil de respiração e trote
-        const trotSpeed = critter.state === AIState.CHASE ? 12.0 : 6.0;
-        visual.bodyMesh.rotation.z = Math.sin(visual.animTimer * trotSpeed) * 0.08;
+      if (visual.mixer && critter.state !== AIState.FROZEN) {
+        visual.mixer.update(deltaTime);
       }
     }
   }

@@ -3,9 +3,9 @@ import { BiomeType } from '../dungeon/DungeonTypes';
 import { PotionType } from '../alchemy/PotionSystem';
 
 export enum CritterType {
-  SLIME = 'SLIME',               // Slime fofo saltitante (preferência: FLOODED)
-  CAVE_WOLF = 'CAVE_WOLF',       // Pequeno lobo da caverna (preferência: GEOTHERMAL)
-  GLOW_BEETLE = 'GLOW_BEETLE',   // Besouro luminescente (preferência: FUNGAL_GLOW)
+  SLIME = 'SLIME',
+  CAVE_WOLF = 'CAVE_WOLF',
+  GLOW_BEETLE = 'GLOW_BEETLE',
 }
 
 export enum AIState {
@@ -32,7 +32,7 @@ export const CRITTER_CONFIGS: Record<CritterType, CritterConfig> = {
     preferredBiome: BiomeType.FLOODED,
     baseSpeed: 2.2,
     detectionRadius: 8.0,
-    attackDamage: 2, // 1 coração
+    attackDamage: 2,
     maxHealth: 15,
   },
   [CritterType.CAVE_WOLF]: {
@@ -40,7 +40,7 @@ export const CRITTER_CONFIGS: Record<CritterType, CritterConfig> = {
     preferredBiome: BiomeType.GEOTHERMAL,
     baseSpeed: 4.8,
     detectionRadius: 12.0,
-    attackDamage: 3, // 1.5 corações
+    attackDamage: 3,
     maxHealth: 25,
   },
   [CritterType.GLOW_BEETLE]: {
@@ -48,7 +48,7 @@ export const CRITTER_CONFIGS: Record<CritterType, CritterConfig> = {
     preferredBiome: BiomeType.FUNGAL_GLOW,
     baseSpeed: 1.8,
     detectionRadius: 6.0,
-    attackDamage: 1, // 0.5 coração
+    attackDamage: 1,
     maxHealth: 10,
   },
 };
@@ -63,15 +63,12 @@ export class CritterInstance {
   public currentHealth: number;
   public isAlive: boolean = true;
 
-  // Timers de status alquímicos
   public glueTimer: number = 0;
   public frozenTimer: number = 0;
   public burningTimer: number = 0;
 
-  // Patrulha
   public patrolWaypoints: Vec3[] = [];
   public currentWaypointIndex: number = 0;
-  public patrolWaitTimer: number = 0;
 
   constructor(id: string, type: CritterType, initialPos: Vec3) {
     this.id = id;
@@ -79,7 +76,6 @@ export class CritterInstance {
     this.position = { ...initialPos };
     this.currentHealth = this.config.maxHealth;
 
-    // Gera 3 pontos de patrulha ao redor
     this.patrolWaypoints = [
       { x: initialPos.x, y: initialPos.y, z: initialPos.z },
       { x: initialPos.x + 3.0, y: initialPos.y, z: initialPos.z + 2.0 },
@@ -103,20 +99,18 @@ export class CritterInstance {
         this.burningTimer = 3.5;
         this.takeDamage(6);
         if (this.config.type === CritterType.CAVE_WOLF) {
-          // Lobos fogem de fogo
           this.state = AIState.FLEE;
         }
         break;
 
-      case PotionType.SHOCK:
-        // Se estiver na água, dano dobra por condução
+      case PotionType.SHOCK: {
         const shockDamage = inWater ? 16 : 8;
         this.takeDamage(shockDamage);
         break;
+      }
 
       case PotionType.LIGHT:
         if (this.config.type === CritterType.GLOW_BEETLE) {
-          // Besouro fica fascinado e para temporariamente
           this.state = AIState.ALERT;
         }
         break;
@@ -134,13 +128,12 @@ export class CritterInstance {
   public update(deltaTime: number, playerPos: Vec3): void {
     if (!this.isAlive) return;
 
-    // Atualiza timers de poções
     if (this.frozenTimer > 0) {
       this.frozenTimer -= deltaTime;
       if (this.frozenTimer <= 0 && this.state === AIState.FROZEN) {
         this.state = AIState.PATROL;
       }
-      return; // Imobilizado completamente pelo gelo
+      return;
     }
 
     if (this.glueTimer > 0) {
@@ -155,12 +148,10 @@ export class CritterInstance {
       this.takeDamage(2 * deltaTime);
     }
 
-    // Distância até o jogador
     const dx = playerPos.x - this.position.x;
     const dz = playerPos.z - this.position.z;
     const distToPlayer = Math.hypot(dx, dz);
 
-    // Máquina de estados
     if (this.state !== AIState.GLUED && this.state !== AIState.FROZEN && this.state !== AIState.FLEE) {
       if (distToPlayer <= this.config.detectionRadius) {
         this.state = AIState.CHASE;
@@ -169,10 +160,9 @@ export class CritterInstance {
       }
     }
 
-    // Velocidade efetiva considerando cola
     let effectiveSpeed = this.config.baseSpeed;
     if (this.state === AIState.GLUED) {
-      effectiveSpeed *= 0.2; // 80% de lentidão
+      effectiveSpeed *= 0.2;
     }
 
     if (this.state === AIState.CHASE) {

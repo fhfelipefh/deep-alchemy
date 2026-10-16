@@ -1,17 +1,24 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { ActivePotionArea, PotionProjectile, PotionType, POTION_CONFIGS } from '../alchemy/PotionSystem';
 import { Vec3 } from '../animation/KinematicsSolver';
 
 export class PotionRenderer {
   public scene: THREE.Scene;
   public group: THREE.Group;
-  private projectiles: { data: PotionProjectile; mesh: THREE.Mesh }[] = [];
+  private projectiles: { data: PotionProjectile; mesh: THREE.Object3D }[] = [];
   private activeAreas: { data: ActivePotionArea; mesh: THREE.Mesh; light?: THREE.PointLight }[] = [];
+  private flaskTemplate: THREE.Object3D | null = null;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.group = new THREE.Group();
     this.scene.add(this.group);
+
+    const loader = new GLTFLoader();
+    loader.load('models/potion_flask.glb', (gltf) => {
+      this.flaskTemplate = gltf.scene;
+    });
   }
 
   public spawnProjectile(
@@ -21,9 +28,16 @@ export class PotionRenderer {
     speed: number = 14.0
   ): void {
     const config = POTION_CONFIGS[type];
-    const geo = new THREE.DodecahedronGeometry(0.14);
-    const mat = new THREE.MeshBasicMaterial({ color: config.colorHex });
-    const mesh = new THREE.Mesh(geo, mat);
+    let mesh: THREE.Object3D;
+
+    if (this.flaskTemplate) {
+      mesh = this.flaskTemplate.clone(true);
+      mesh.scale.set(0.8, 0.8, 0.8);
+    } else {
+      const geo = new THREE.DodecahedronGeometry(0.14);
+      const mat = new THREE.MeshBasicMaterial({ color: config.colorHex });
+      mesh = new THREE.Mesh(geo, mat);
+    }
 
     mesh.position.set(startPos.x, startPos.y + 1.2, startPos.z);
     this.group.add(mesh);
@@ -34,7 +48,7 @@ export class PotionRenderer {
       position: { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z },
       velocity: {
         x: direction.x * speed,
-        y: direction.y * speed + 3.0, // Impulso vertical para arco parabólico
+        y: direction.y * speed + 3.0,
         z: direction.z * speed,
       },
       alive: true,
@@ -49,7 +63,6 @@ export class PotionRenderer {
   ): void {
     const gravity = -18.0;
 
-    // Atualiza projéteis
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
       p.data.velocity.y += gravity * deltaTime;
@@ -62,7 +75,6 @@ export class PotionRenderer {
       p.mesh.rotation.x += 10 * deltaTime;
       p.mesh.rotation.y += 8 * deltaTime;
 
-      // Colisão com o chão (y <= 0.1)
       if (p.data.position.y <= 0.1) {
         p.data.position.y = 0.1;
         this.group.remove(p.mesh);
@@ -73,12 +85,10 @@ export class PotionRenderer {
       }
     }
 
-    // Atualiza poças / áreas ativas
     for (let i = this.activeAreas.length - 1; i >= 0; i--) {
       const area = this.activeAreas[i];
       area.data.remainingTime -= deltaTime;
 
-      // Pulso visual
       const scale = 1.0 + Math.sin(area.data.remainingTime * 6) * 0.05;
       area.mesh.scale.set(scale, scale, 1);
 
@@ -109,7 +119,6 @@ export class PotionRenderer {
 
     let light: THREE.PointLight | undefined;
     if (type === PotionType.LIGHT) {
-      // Luz intensa de longa duração
       light = new THREE.PointLight(0xffffff, 4.0, 20.0, 2);
       light.position.set(pos.x, 1.8, pos.z);
       this.group.add(light);

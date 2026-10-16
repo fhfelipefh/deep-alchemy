@@ -3,18 +3,18 @@ import { Vec3 } from '../animation/KinematicsSolver';
 export class PlayerState {
   public position: Vec3;
   public velocity: Vec3;
-  public height: number = 1.80; // 1,80m conforme especificação estrita
-  public maxHearts: number = 10; // 10 corações (estilo Minecraft)
-  public currentHealth: number = 20; // 2 pontos por coração = 20 HP
+  public height: number = 1.80;
+  public maxHearts: number = 10;
+  public currentHealth: number = 20;
   public isRunning: boolean = false;
   public isGrounded: boolean = true;
   public invulnerabilityTimer: number = 0;
   public isDead: boolean = false;
   public hasReachedExit: boolean = false;
 
-  public readonly walkSpeed: number = 4.2;  // m/s
-  public readonly runSpeed: number = 6.8;   // m/s (Ctrl ativado)
-  public readonly jumpForce: number = 5.2;  // m/s pulo
+  public readonly walkSpeed: number = 4.2;
+  public readonly runSpeed: number = 6.8;
+  public readonly jumpForce: number = 5.2;
 
   constructor(initialPos: Vec3 = { x: 0, y: 0.9, z: 0 }) {
     this.position = { ...initialPos };
@@ -27,7 +27,7 @@ export class PlayerState {
     }
 
     this.currentHealth = Math.max(0, this.currentHealth - amount);
-    this.invulnerabilityTimer = 1.0; // 1 segundo de i-frames
+    this.invulnerabilityTimer = 1.0;
 
     if (this.currentHealth <= 0) {
       this.isDead = true;

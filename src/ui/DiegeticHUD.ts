@@ -16,28 +16,26 @@ export class DiegeticHUD {
     this.container.style.left = '0';
     this.container.style.width = '100%';
     this.container.style.height = '100%';
-    this.container.style.pointerEvents = 'none'; // Não bloqueia clique no jogo 3D
+    this.container.style.pointerEvents = 'none';
     this.container.style.userSelect = 'none';
     this.container.style.zIndex = '50';
 
-    // 1. Container de Corações (Topo Esquerdo - Minecraft Style)
     this.heartsContainer = document.createElement('div');
     this.heartsContainer.style.position = 'absolute';
-    this.heartsContainer.style.top = '16px';
-    this.heartsContainer.style.left = '16px';
+    this.heartsContainer.style.top = '12px';
+    this.heartsContainer.style.left = '12px';
     this.heartsContainer.style.display = 'flex';
-    this.heartsContainer.style.gap = '4px';
+    this.heartsContainer.style.gap = '3px';
     this.container.appendChild(this.heartsContainer);
 
-    // 2. Hotbar de Poções (Centro Inferior)
     this.hotbarContainer = document.createElement('div');
     this.hotbarContainer.style.position = 'absolute';
-    this.hotbarContainer.style.bottom = '20px';
+    this.hotbarContainer.style.bottom = '12px';
     this.hotbarContainer.style.left = '50%';
     this.hotbarContainer.style.transform = 'translateX(-50%)';
     this.hotbarContainer.style.display = 'flex';
-    this.hotbarContainer.style.gap = '8px';
-    this.hotbarContainer.style.pointerEvents = 'auto'; // Permite toque nos slots em mobile
+    this.hotbarContainer.style.gap = '6px';
+    this.hotbarContainer.style.pointerEvents = 'auto';
     this.container.appendChild(this.hotbarContainer);
 
     this.createHotbarSlots();
@@ -60,8 +58,8 @@ export class DiegeticHUD {
     potions.forEach((potion, index) => {
       const slot = document.createElement('div');
       slot.className = 'hotbar-slot';
-      slot.style.width = '56px';
-      slot.style.height = '56px';
+      slot.style.width = '48px';
+      slot.style.height = '48px';
       slot.style.background = 'rgba(20, 20, 26, 0.85)';
       slot.style.border = '2px solid rgba(80, 80, 95, 0.8)';
       slot.style.borderRadius = '8px';
@@ -73,25 +71,22 @@ export class DiegeticHUD {
       slot.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
       slot.style.transition = 'transform 0.15s, border-color 0.15s, box-shadow 0.15s';
 
-      // Número identificador no canto superior esquerdo (1..5)
       const numberBadge = document.createElement('span');
       numberBadge.innerText = (index + 1).toString();
       numberBadge.style.position = 'absolute';
-      numberBadge.style.top = '3px';
-      numberBadge.style.left = '5px';
-      numberBadge.style.fontSize = '12px';
+      numberBadge.style.top = '2px';
+      numberBadge.style.left = '4px';
+      numberBadge.style.fontSize = '11px';
       numberBadge.style.fontWeight = 'bold';
       numberBadge.style.color = '#ffffff';
       numberBadge.style.textShadow = '0 1px 2px #000';
       slot.appendChild(numberBadge);
 
-      // Frasco de poção desenhado em SVG único
       const flaskSvg = this.generatePotionSvg(potion);
-      flaskSvg.style.width = '38px';
-      flaskSvg.style.height = '38px';
+      flaskSvg.style.width = '32px';
+      flaskSvg.style.height = '32px';
       slot.appendChild(flaskSvg);
 
-      // Overlay de Cooldown
       const cdOverlay = document.createElement('div');
       cdOverlay.className = 'cd-overlay';
       cdOverlay.style.position = 'absolute';
@@ -104,7 +99,6 @@ export class DiegeticHUD {
       cdOverlay.style.pointerEvents = 'none';
       slot.appendChild(cdOverlay);
 
-      // Clique ou toque seleciona o slot
       slot.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
         if (this.onSlotSelectedCallback) {
@@ -118,27 +112,24 @@ export class DiegeticHUD {
   }
 
   public update(player: PlayerState, inventory: PotionInventory): void {
-    // 1. Atualiza Corações (10 no total)
     const hearts = player.getDisplayHearts();
     this.renderHearts(hearts.full, hearts.half, hearts.empty);
 
-    // 2. Atualiza Slots da Hotbar
     const activeIndex = inventory.getActiveSlotIndex();
     const slots = inventory.getSlots();
 
     this.slotElements.forEach((slot, idx) => {
       const isActive = idx === activeIndex;
       if (isActive) {
-        slot.style.borderColor = '#ffd700'; // Dourado radiante
-        slot.style.boxShadow = '0 0 16px rgba(255, 215, 0, 0.8), inset 0 0 8px rgba(255, 215, 0, 0.3)';
-        slot.style.transform = 'scale(1.12)';
+        slot.style.borderColor = '#ffd700';
+        slot.style.boxShadow = '0 0 14px rgba(255, 215, 0, 0.8), inset 0 0 6px rgba(255, 215, 0, 0.3)';
+        slot.style.transform = 'scale(1.1)';
       } else {
         slot.style.borderColor = 'rgba(80, 80, 95, 0.8)';
         slot.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
         slot.style.transform = 'scale(1.0)';
       }
 
-      // Atualiza barra de cooldown
       const potionType = slots[idx];
       const cdPercent = inventory.getCooldownPercent(potionType);
       const cdOverlay = slot.querySelector('.cd-overlay') as HTMLDivElement;
@@ -165,8 +156,8 @@ export class DiegeticHUD {
   private createHeartSvg(type: 'full' | 'half' | 'empty'): SVGSVGElement {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('width', '24');
-    svg.setAttribute('height', '24');
+    svg.setAttribute('width', '20');
+    svg.setAttribute('height', '20');
     svg.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.8))';
 
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -181,7 +172,6 @@ export class DiegeticHUD {
       path.setAttribute('stroke-width', '1.5');
       svg.appendChild(path);
     } else if (type === 'half') {
-      // Metade do coração
       const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
       const clip = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
       clip.id = 'half-clip';
@@ -194,14 +184,12 @@ export class DiegeticHUD {
       defs.appendChild(clip);
       svg.appendChild(defs);
 
-      // Fundo vazio
       const emptyBg = path.cloneNode(true) as SVGPathElement;
       emptyBg.setAttribute('fill', '#261b1c');
       emptyBg.setAttribute('stroke', '#4a050c');
       emptyBg.setAttribute('stroke-width', '1.5');
       svg.appendChild(emptyBg);
 
-      // Metade preenchida
       path.setAttribute('fill', '#e62234');
       path.setAttribute('clip-path', 'url(#half-clip)');
       svg.appendChild(path);
@@ -222,7 +210,6 @@ export class DiegeticHUD {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 32 32');
 
-    // Rolha de cortiça
     const cork = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     cork.setAttribute('x', '13');
     cork.setAttribute('y', '3');
@@ -232,7 +219,6 @@ export class DiegeticHUD {
     cork.setAttribute('rx', '1');
     svg.appendChild(cork);
 
-    // Gargalo do frasco
     const neck = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     neck.setAttribute('x', '14');
     neck.setAttribute('y', '7');
@@ -241,7 +227,6 @@ export class DiegeticHUD {
     neck.setAttribute('fill', 'rgba(255,255,255,0.7)');
     svg.appendChild(neck);
 
-    // Bulbo de vidro da poção
     const bulb = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     bulb.setAttribute('cx', '16');
     bulb.setAttribute('cy', '20');
@@ -251,7 +236,6 @@ export class DiegeticHUD {
     bulb.setAttribute('stroke-width', '1.5');
     svg.appendChild(bulb);
 
-    // Líquido alquímico colorido brilhante
     const liquid = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     liquid.setAttribute('cx', '16');
     liquid.setAttribute('cy', '21');
@@ -260,7 +244,6 @@ export class DiegeticHUD {
     liquid.style.filter = `drop-shadow(0 0 5px ${hex})`;
     svg.appendChild(liquid);
 
-    // Brilho de reflexo no vidro
     const highlight = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
     highlight.setAttribute('cx', '13.5');
     highlight.setAttribute('cy', '17');

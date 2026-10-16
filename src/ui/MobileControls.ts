@@ -1,14 +1,8 @@
-/**
- * Controles de Toque para Android e Dispositivos Móveis Web.
- * Joystick virtual responsivo para movimentação + botões de pulo e corrida.
- */
-
 export interface MobileInputState {
-  moveX: number; // -1.0 a 1.0
-  moveZ: number; // -1.0 a 1.0
+  moveX: number;
+  moveZ: number;
   isJumping: boolean;
   isRunning: boolean;
-  throwTriggered: boolean;
 }
 
 export class MobileControls {
@@ -28,7 +22,6 @@ export class MobileControls {
     moveZ: 0,
     isJumping: false,
     isRunning: false,
-    throwTriggered: false,
   };
 
   constructor() {
@@ -44,27 +37,25 @@ export class MobileControls {
     this.container.style.touchAction = 'none';
     this.container.style.zIndex = '40';
 
-    // 1. Base do Joystick Virtual (Canto inferior esquerdo)
     this.joystickBase = document.createElement('div');
     this.joystickBase.style.position = 'absolute';
-    this.joystickBase.style.bottom = '40px';
-    this.joystickBase.style.left = '40px';
-    this.joystickBase.style.width = '110px';
-    this.joystickBase.style.height = '110px';
+    this.joystickBase.style.bottom = '25px';
+    this.joystickBase.style.left = '25px';
+    this.joystickBase.style.width = '100px';
+    this.joystickBase.style.height = '100px';
     this.joystickBase.style.borderRadius = '50%';
-    this.joystickBase.style.background = 'rgba(255, 255, 255, 0.12)';
-    this.joystickBase.style.border = '2px solid rgba(255, 255, 255, 0.35)';
+    this.joystickBase.style.background = 'rgba(255, 255, 255, 0.15)';
+    this.joystickBase.style.border = '2px solid rgba(255, 255, 255, 0.4)';
     this.joystickBase.style.pointerEvents = 'auto';
     this.joystickBase.style.display = 'flex';
     this.joystickBase.style.alignItems = 'center';
     this.joystickBase.style.justifyContent = 'center';
 
-    // Manopla móvel
     this.joystickThumb = document.createElement('div');
-    this.joystickThumb.style.width = '46px';
-    this.joystickThumb.style.height = '46px';
+    this.joystickThumb.style.width = '42px';
+    this.joystickThumb.style.height = '42px';
     this.joystickThumb.style.borderRadius = '50%';
-    this.joystickThumb.style.background = 'rgba(255, 255, 255, 0.6)';
+    this.joystickThumb.style.background = 'rgba(255, 255, 255, 0.7)';
     this.joystickThumb.style.boxShadow = '0 0 10px rgba(0,0,0,0.5)';
     this.joystickThumb.style.transform = 'translate(0px, 0px)';
     this.joystickThumb.style.pointerEvents = 'none';
@@ -72,21 +63,18 @@ export class MobileControls {
 
     this.container.appendChild(this.joystickBase);
 
-    // 2. Botão de Pulo (Canto inferior direito)
-    this.jumpBtn = this.createActionButton('↑', '35px', '30px');
+    this.jumpBtn = this.createActionButton('↑', '25px', '25px');
     this.container.appendChild(this.jumpBtn);
 
-    // 3. Botão de Corrida (Ctrl equivalente)
-    this.runBtn = this.createActionButton('⚡', '110px', '30px');
+    this.runBtn = this.createActionButton('⚡', '90px', '25px');
     this.container.appendChild(this.runBtn);
 
     this.setupTouchListeners();
     document.body.appendChild(this.container);
 
-    // Esconde por padrão se for desktop puro sem toque
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     if (!isTouchDevice) {
-      this.container.style.opacity = '0.4'; // Deixa sutil para testes com mouse se desejado
+      this.container.style.opacity = '0.4';
     }
   }
 
@@ -95,15 +83,15 @@ export class MobileControls {
     btn.style.position = 'absolute';
     btn.style.right = right;
     btn.style.bottom = bottom;
-    btn.style.width = '58px';
-    btn.style.height = '58px';
+    btn.style.width = '52px';
+    btn.style.height = '52px';
     btn.style.borderRadius = '50%';
-    btn.style.background = 'rgba(20, 20, 26, 0.75)';
+    btn.style.background = 'rgba(20, 20, 26, 0.8)';
     btn.style.border = '2px solid rgba(255, 255, 255, 0.4)';
     btn.style.display = 'flex';
     btn.style.alignItems = 'center';
     btn.style.justifyContent = 'center';
-    btn.style.fontSize = '22px';
+    btn.style.fontSize = '20px';
     btn.style.color = '#ffffff';
     btn.style.pointerEvents = 'auto';
     btn.style.boxShadow = '0 4px 10px rgba(0,0,0,0.4)';
@@ -112,7 +100,6 @@ export class MobileControls {
   }
 
   private setupTouchListeners(): void {
-    // Joystick Touch
     this.joystickBase.addEventListener('pointerdown', (e) => {
       this.isDraggingJoystick = true;
       this.joystickTouchId = e.pointerId;
@@ -144,22 +131,20 @@ export class MobileControls {
     window.addEventListener('pointerup', releaseJoystick);
     window.addEventListener('pointercancel', releaseJoystick);
 
-    // Botão de Pulo
     this.jumpBtn.addEventListener('pointerdown', () => {
       this.state.isJumping = true;
       this.jumpBtn.style.background = 'rgba(255, 215, 0, 0.6)';
     });
     this.jumpBtn.addEventListener('pointerup', () => {
       this.state.isJumping = false;
-      this.jumpBtn.style.background = 'rgba(20, 20, 26, 0.75)';
+      this.jumpBtn.style.background = 'rgba(20, 20, 26, 0.8)';
     });
 
-    // Botão de Corrida (Toggle ou Hold)
     this.runBtn.addEventListener('pointerdown', () => {
       this.state.isRunning = !this.state.isRunning;
       this.runBtn.style.background = this.state.isRunning
         ? 'rgba(255, 120, 0, 0.7)'
-        : 'rgba(20, 20, 26, 0.75)';
+        : 'rgba(20, 20, 26, 0.8)';
     });
   }
 
@@ -180,8 +165,6 @@ export class MobileControls {
     const ny = dy / dist;
 
     this.joystickThumb.style.transform = `translate(${nx * clampedDist}px, ${ny * clampedDist}px)`;
-
-    // Normalizado (-1 a 1)
     this.state.moveX = nx * (clampedDist / this.maxRadius);
     this.state.moveZ = ny * (clampedDist / this.maxRadius);
   }
