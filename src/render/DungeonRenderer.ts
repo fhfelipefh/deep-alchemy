@@ -116,29 +116,35 @@ export class DungeonRenderer {
       wallBuckets.set(b, []);
     });
 
+    const baseWallBox = new THREE.BoxGeometry(cellSize, 4.0, cellSize);
+    const baseFloorPlane = new THREE.PlaneGeometry(cellSize, cellSize);
+    baseFloorPlane.rotateX(-Math.PI / 2);
+    const baseCeilingPlane = new THREE.PlaneGeometry(cellSize, cellSize);
+    baseCeilingPlane.rotateX(Math.PI / 2);
+    const baseEdgeBox = new THREE.BoxGeometry(cellSize, 4.0, 0.4);
+    const baseCornerCyl = new THREE.CylinderGeometry(cellSize * 0.4, cellSize * 0.4, 4.0, 8);
+
     dungeon.dualQuads.forEach((quad) => {
       const wx = (quad.x + 0.5) * cellSize;
       const wz = (quad.z + 0.5) * cellSize;
 
       if (quad.piece === CanonicalPiece.EMPTY) {
-        const wallGeo = new THREE.BoxGeometry(cellSize, 4.0, cellSize);
+        const wallGeo = baseWallBox.clone();
         wallGeo.translate(wx, 2.0, wz);
         wallBuckets.get(quad.biome)?.push(wallGeo);
         return;
       }
 
-      const floorGeo = new THREE.PlaneGeometry(cellSize, cellSize);
-      floorGeo.rotateX(-Math.PI / 2);
+      const floorGeo = baseFloorPlane.clone();
       floorGeo.translate(wx, 0.0, wz);
       floorBuckets.get(quad.biome)?.push(floorGeo);
 
-      const ceilingGeo = new THREE.PlaneGeometry(cellSize, cellSize);
-      ceilingGeo.rotateX(Math.PI / 2);
+      const ceilingGeo = baseCeilingPlane.clone();
       ceilingGeo.translate(wx, 4.0, wz);
       ceilingGeos.push(ceilingGeo);
 
       if (quad.piece === CanonicalPiece.STRAIGHT_EDGE) {
-        const edgeGeo = new THREE.BoxGeometry(cellSize, 4.0, 0.4);
+        const edgeGeo = baseEdgeBox.clone();
         edgeGeo.translate(0, 0, -cellSize * 0.4);
         edgeGeo.rotateY(quad.rotation);
         edgeGeo.translate(wx, 2.0, wz);
@@ -147,19 +153,24 @@ export class DungeonRenderer {
         quad.piece === CanonicalPiece.CONVEX_CORNER ||
         quad.piece === CanonicalPiece.CONCAVE_CORNER
       ) {
-        const cornerGeo = new THREE.CylinderGeometry(cellSize * 0.4, cellSize * 0.4, 4.0, 8);
+        const cornerGeo = baseCornerCyl.clone();
         cornerGeo.rotateY(quad.rotation);
         cornerGeo.translate(wx, 2.0, wz);
         wallBuckets.get(quad.biome)?.push(cornerGeo);
       }
 
       if (quad.waterHeight > 0) {
-        const waterGeo = new THREE.PlaneGeometry(cellSize, cellSize);
-        waterGeo.rotateX(-Math.PI / 2);
+        const waterGeo = baseFloorPlane.clone();
         waterGeo.translate(wx, quad.waterHeight, wz);
         waterGeos.push(waterGeo);
       }
     });
+
+    baseWallBox.dispose();
+    baseFloorPlane.dispose();
+    baseCeilingPlane.dispose();
+    baseEdgeBox.dispose();
+    baseCornerCyl.dispose();
 
     biomes.forEach((b) => {
       const floors = floorBuckets.get(b);

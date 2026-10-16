@@ -25,10 +25,6 @@ export class PlayerRenderer {
 
     this.headlamp = new THREE.SpotLight(0xfff8ee, 7.5, 50.0, Math.PI / 2.6, 0.85, 1.1);
     this.headlamp.position.set(0, this.eyeHeight, 0);
-    this.headlamp.castShadow = true;
-    this.headlamp.shadow.mapSize.width = 1024;
-    this.headlamp.shadow.mapSize.height = 1024;
-    this.headlamp.shadow.bias = -0.001;
 
     this.radialLantern = new THREE.PointLight(0xfff0dc, 5.0, 24.0, 1.1);
     this.radialLantern.position.set(0, 1.45, 0);

@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:perf": "vitest run src/test/Performance.test.ts",
+    "test:perf:e2e": "python scripts/playwright_perf_test.py",
     "test:playwright": "python scripts/playwright_walk_test.py"
   },
   "dependencies": {
