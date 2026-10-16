@@ -1,6 +1,7 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { BiomeType, CanonicalPiece, ClutterItem, DungeonMap, DualQuad } from '../dungeon/DungeonTypes';
+import { BiomeType, CanonicalPiece, ClutterItem, DungeonMap } from '../dungeon/DungeonTypes';
 import { createCelMaterial } from './CelShader';
 
 export class DungeonRenderer {
@@ -43,19 +44,23 @@ export class DungeonRenderer {
 
   private loadTemplates(): void {
     const loader = new GLTFLoader();
-    loader.load('models/glowing_mushroom.glb', (gltf) => {
-      this.mushroomTemplate = gltf.scene;
-      if (gltf.animations.length > 0) {
-        this.mushroomClip = gltf.animations[0];
-      }
-    });
+    try {
+      loader.load('models/glowing_mushroom.glb', (gltf) => {
+        this.mushroomTemplate = gltf.scene;
+        if (gltf.animations.length > 0) {
+          this.mushroomClip = gltf.animations[0];
+        }
+      });
+    } catch {}
 
-    loader.load('models/golden_idol.glb', (gltf) => {
-      this.idolTemplate = gltf.scene;
-      if (gltf.animations.length > 0) {
-        this.idolClip = gltf.animations[0];
-      }
-    });
+    try {
+      loader.load('models/golden_idol.glb', (gltf) => {
+        this.idolTemplate = gltf.scene;
+        if (gltf.animations.length > 0) {
+          this.idolClip = gltf.animations[0];
+        }
+      });
+    } catch {}
   }
 
   private initMaterials(): void {
@@ -93,71 +98,105 @@ export class DungeonRenderer {
     this.clear();
     const cellSize = dungeon.cellSize;
 
-    dungeon.dualQuads.forEach((quad) => {
-      this.buildDualQuadMesh(quad, cellSize);
+    const floorBuckets = new Map<BiomeType, THREE.BufferGeometry[]>();
+    const wallBuckets = new Map<BiomeType, THREE.BufferGeometry[]>();
+    const ceilingGeos: THREE.BufferGeometry[] = [];
+    const waterGeos: THREE.BufferGeometry[] = [];
+
+    const biomes = [
+      BiomeType.BEACH,
+      BiomeType.NORMAL_CAVE,
+      BiomeType.FLOODED,
+      BiomeType.GEOTHERMAL,
+      BiomeType.FUNGAL_GLOW,
+    ];
+
+    biomes.forEach((b) => {
+      floorBuckets.set(b, []);
+      wallBuckets.set(b, []);
     });
+
+    dungeon.dualQuads.forEach((quad) => {
+      const wx = (quad.x + 0.5) * cellSize;
+      const wz = (quad.z + 0.5) * cellSize;
+
+      if (quad.piece === CanonicalPiece.EMPTY) {
+        const wallGeo = new THREE.BoxGeometry(cellSize, 4.0, cellSize);
+        wallGeo.translate(wx, 2.0, wz);
+        wallBuckets.get(quad.biome)?.push(wallGeo);
+        return;
+      }
+
+      const floorGeo = new THREE.PlaneGeometry(cellSize, cellSize);
+      floorGeo.rotateX(-Math.PI / 2);
+      floorGeo.translate(wx, 0.0, wz);
+      floorBuckets.get(quad.biome)?.push(floorGeo);
+
+      const ceilingGeo = new THREE.PlaneGeometry(cellSize, cellSize);
+      ceilingGeo.rotateX(Math.PI / 2);
+      ceilingGeo.translate(wx, 4.0, wz);
+      ceilingGeos.push(ceilingGeo);
+
+      if (quad.piece === CanonicalPiece.STRAIGHT_EDGE) {
+        const edgeGeo = new THREE.BoxGeometry(cellSize, 4.0, 0.4);
+        edgeGeo.translate(0, 0, -cellSize * 0.4);
+        edgeGeo.rotateY(quad.rotation);
+        edgeGeo.translate(wx, 2.0, wz);
+        wallBuckets.get(quad.biome)?.push(edgeGeo);
+      } else if (
+        quad.piece === CanonicalPiece.CONVEX_CORNER ||
+        quad.piece === CanonicalPiece.CONCAVE_CORNER
+      ) {
+        const cornerGeo = new THREE.CylinderGeometry(cellSize * 0.4, cellSize * 0.4, 4.0, 8);
+        cornerGeo.rotateY(quad.rotation);
+        cornerGeo.translate(wx, 2.0, wz);
+        wallBuckets.get(quad.biome)?.push(cornerGeo);
+      }
+
+      if (quad.waterHeight > 0) {
+        const waterGeo = new THREE.PlaneGeometry(cellSize, cellSize);
+        waterGeo.rotateX(-Math.PI / 2);
+        waterGeo.translate(wx, quad.waterHeight, wz);
+        waterGeos.push(waterGeo);
+      }
+    });
+
+    biomes.forEach((b) => {
+      const floors = floorBuckets.get(b);
+      if (floors && floors.length > 0) {
+        const mergedFloor = mergeGeometries(floors, false);
+        const mesh = new THREE.Mesh(mergedFloor, this.floorMaterials.get(b)!);
+        mesh.receiveShadow = true;
+        this.dungeonGroup.add(mesh);
+      }
+
+      const walls = wallBuckets.get(b);
+      if (walls && walls.length > 0) {
+        const mergedWall = mergeGeometries(walls, false);
+        const mesh = new THREE.Mesh(mergedWall, this.wallMaterials.get(b)!);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        this.dungeonGroup.add(mesh);
+      }
+    });
+
+    if (ceilingGeos.length > 0) {
+      const mergedCeiling = mergeGeometries(ceilingGeos, false);
+      const mesh = new THREE.Mesh(mergedCeiling, this.wallMaterials.get(BiomeType.NORMAL_CAVE)!);
+      this.dungeonGroup.add(mesh);
+    }
+
+    if (waterGeos.length > 0) {
+      const mergedWater = mergeGeometries(waterGeos, false);
+      const mesh = new THREE.Mesh(mergedWater, this.waterMaterial);
+      this.waterGroup.add(mesh);
+    }
 
     dungeon.clutter.forEach((item) => {
       this.buildClutterMesh(item);
     });
 
     this.buildExitBeacon(dungeon.exitPos, cellSize);
-  }
-
-  private buildDualQuadMesh(quad: DualQuad, size: number): void {
-    const wx = (quad.x + 0.5) * size;
-    const wz = (quad.z + 0.5) * size;
-    const floorMat = this.floorMaterials.get(quad.biome)!;
-    const wallMat = this.wallMaterials.get(quad.biome)!;
-
-    if (quad.piece === CanonicalPiece.EMPTY) {
-      const wallGeo = new THREE.BoxGeometry(size, 4.0, size);
-      const wallMesh = new THREE.Mesh(wallGeo, wallMat);
-      wallMesh.position.set(wx, 2.0, wz);
-      wallMesh.castShadow = true;
-      wallMesh.receiveShadow = true;
-      this.dungeonGroup.add(wallMesh);
-      return;
-    }
-
-    const floorGeo = new THREE.PlaneGeometry(size, size);
-    floorGeo.rotateX(-Math.PI / 2);
-    const floorMesh = new THREE.Mesh(floorGeo, floorMat);
-    floorMesh.position.set(wx, 0, wz);
-    floorMesh.receiveShadow = true;
-    this.dungeonGroup.add(floorMesh);
-
-    const ceilingGeo = new THREE.PlaneGeometry(size, size);
-    ceilingGeo.rotateX(Math.PI / 2);
-    const ceilingMesh = new THREE.Mesh(ceilingGeo, wallMat);
-    ceilingMesh.position.set(wx, 4.0, wz);
-    this.dungeonGroup.add(ceilingMesh);
-
-    if (quad.piece === CanonicalPiece.STRAIGHT_EDGE) {
-      const edgeGeo = new THREE.BoxGeometry(size, 4.0, 0.4);
-      const edgeMesh = new THREE.Mesh(edgeGeo, wallMat);
-      edgeMesh.position.set(wx, 2.0, wz - size * 0.4);
-      edgeMesh.rotation.y = quad.rotation;
-      edgeMesh.castShadow = true;
-      edgeMesh.receiveShadow = true;
-      this.dungeonGroup.add(edgeMesh);
-    } else if (quad.piece === CanonicalPiece.CONVEX_CORNER || quad.piece === CanonicalPiece.CONCAVE_CORNER) {
-      const cornerGeo = new THREE.CylinderGeometry(size * 0.4, size * 0.4, 4.0, 8);
-      const cornerMesh = new THREE.Mesh(cornerGeo, wallMat);
-      cornerMesh.position.set(wx, 2.0, wz);
-      cornerMesh.rotation.y = quad.rotation;
-      cornerMesh.castShadow = true;
-      cornerMesh.receiveShadow = true;
-      this.dungeonGroup.add(cornerMesh);
-    }
-
-    if (quad.waterHeight > 0) {
-      const waterGeo = new THREE.PlaneGeometry(size, size);
-      waterGeo.rotateX(-Math.PI / 2);
-      const waterMesh = new THREE.Mesh(waterGeo, this.waterMaterial);
-      waterMesh.position.set(wx, quad.waterHeight, wz);
-      this.waterGroup.add(waterMesh);
-    }
   }
 
   private buildClutterMesh(item: ClutterItem): void {
@@ -186,36 +225,25 @@ export class DungeonRenderer {
         const capMat = createCelMaterial({
           color: capColor,
           emissive: capColor,
-          emissiveIntensity: 2.5,
+          emissiveIntensity: 2.6,
         });
         const cap = new THREE.Mesh(capGeo, capMat);
         cap.position.y = 0.38;
         group.add(cap);
       }
 
-      const light = new THREE.PointLight(item.lightColor ?? 0x00ffff, 3.8, 14.0, 1.2);
-      light.position.set(0, 0.45, 0);
-      group.add(light);
-
-      this.animatedLights.push({
-        light,
-        baseIntensity: 3.8,
-        speed: 2.0 + Math.random(),
-        offset: Math.random() * Math.PI,
-      });
-
       this.clutterGroup.add(group);
     } else if (item.type === 'GEYSER') {
       const ringGeo = new THREE.TorusGeometry(0.5, 0.15, 6, 12);
       ringGeo.rotateX(Math.PI / 2);
-      const ringMat = createCelMaterial({ color: 0x553322 });
+      const ringMat = createCelMaterial({
+        color: 0x773318,
+        emissive: 0xff4400,
+        emissiveIntensity: 1.5,
+      });
       const ring = new THREE.Mesh(ringGeo, ringMat);
       ring.position.set(item.x, 0.1, item.z);
       this.clutterGroup.add(ring);
-
-      const warmLight = new THREE.PointLight(0xff7733, 3.5, 12.0, 1.2);
-      warmLight.position.set(item.x, 0.5, item.z);
-      this.clutterGroup.add(warmLight);
     } else if (item.type === 'ROCK_PILE') {
       const rockGeo = new THREE.DodecahedronGeometry(0.3 * item.scale);
       const rockMat = createCelMaterial({ color: 0x44444a });
@@ -253,7 +281,7 @@ export class DungeonRenderer {
     beacon.position.set(wx, 3.0, wz);
     this.clutterGroup.add(beacon);
 
-    const exitLight = new THREE.PointLight(0xfff0aa, 5.0, 20.0, 2);
+    const exitLight = new THREE.PointLight(0xfff0aa, 5.0, 20.0, 1.5);
     exitLight.position.set(wx, 2.5, wz);
     this.clutterGroup.add(exitLight);
   }
@@ -272,10 +300,14 @@ export class DungeonRenderer {
 
   public clear(): void {
     while (this.dungeonGroup.children.length > 0) {
-      this.dungeonGroup.remove(this.dungeonGroup.children[0]);
+      const child = this.dungeonGroup.children[0] as THREE.Mesh;
+      if (child.geometry) child.geometry.dispose();
+      this.dungeonGroup.remove(child);
     }
     while (this.waterGroup.children.length > 0) {
-      this.waterGroup.remove(this.waterGroup.children[0]);
+      const child = this.waterGroup.children[0] as THREE.Mesh;
+      if (child.geometry) child.geometry.dispose();
+      this.waterGroup.remove(child);
     }
     while (this.clutterGroup.children.length > 0) {
       this.clutterGroup.remove(this.clutterGroup.children[0]);

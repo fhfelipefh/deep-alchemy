@@ -34,14 +34,14 @@ class GameApp {
   private critters: CritterInstance[] = [];
   private isGameActive: boolean = false;
   private keysDown: Set<string> = new Set();
+  private isPointerLocked: boolean = false;
 
-  private pointerStartX: number = 0;
-  private pointerStartY: number = 0;
-  private pointerStartTime: number = 0;
-  private lastPointerX: number = 0;
-  private lastPointerY: number = 0;
-  private isPointerDown: boolean = false;
-  private hasDragged: boolean = false;
+  private touchStartX: number = 0;
+  private touchStartY: number = 0;
+  private touchStartTime: number = 0;
+  private lastTouchX: number = 0;
+  private lastTouchY: number = 0;
+  private hasTouchMoved: boolean = false;
 
   constructor() {
     this.canvas3D = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -53,7 +53,7 @@ class GameApp {
       preserveDrawingBuffer: true,
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -64,7 +64,7 @@ class GameApp {
     this.scene.fog = new THREE.FogExp2(0x121722, 0.005);
 
     this.camera = new THREE.PerspectiveCamera(
-      65,
+      70,
       window.innerWidth / window.innerHeight,
       0.1,
       120
@@ -75,13 +75,6 @@ class GameApp {
 
     const hemiLight = new THREE.HemisphereLight(0x90a8c0, 0x4d3d2e, 1.6);
     this.scene.add(hemiLight);
-
-    const dirLight = new THREE.DirectionalLight(0xffeedd, 1.8);
-    dirLight.position.set(20, 45, 10);
-    dirLight.castShadow = true;
-    dirLight.shadow.mapSize.width = 1024;
-    dirLight.shadow.mapSize.height = 1024;
-    this.scene.add(dirLight);
 
     this.dungeonRenderer = new DungeonRenderer(this.scene);
     this.playerRenderer = new PlayerRenderer(this.camera, this.scene);
@@ -119,44 +112,84 @@ class GameApp {
       this.keysDown.delete(e.code);
     });
 
-    this.canvas3D.addEventListener('pointerdown', (e) => {
-      if (!this.isGameActive || e.button !== 0) return;
-      this.isPointerDown = true;
-      this.hasDragged = false;
-      this.pointerStartX = e.clientX;
-      this.pointerStartY = e.clientY;
-      this.lastPointerX = e.clientX;
-      this.lastPointerY = e.clientY;
-      this.pointerStartTime = performance.now();
+    document.addEventListener('pointerlockchange', () => {
+      this.isPointerLocked = document.pointerLockElement === this.canvas3D;
     });
 
-    window.addEventListener('pointermove', (e) => {
-      if (!this.isGameActive || !this.isPointerDown) return;
-      const dx = e.clientX - this.lastPointerX;
-      const dy = e.clientY - this.lastPointerY;
-      this.lastPointerX = e.clientX;
-      this.lastPointerY = e.clientY;
+    window.addEventListener('mousemove', (e) => {
+      if (!this.isGameActive || !this.isPointerLocked) return;
+      const sensitivity = 0.0022;
+      this.playerRenderer.rotateView(-e.movementX * sensitivity, -e.movementY * sensitivity);
+    });
 
-      const totalDist = Math.hypot(e.clientX - this.pointerStartX, e.clientY - this.pointerStartY);
-      if (totalDist > 6) {
-        this.hasDragged = true;
-        const sensitivity = 0.0035;
-        this.playerRenderer.rotateView(-dx * sensitivity, -dy * sensitivity);
+    this.canvas3D.addEventListener('mousedown', (e) => {
+      if (!this.isGameActive) return;
+      if (!this.isPointerLocked) {
+        this.requestPointerLock();
+        return;
       }
-    });
-
-    window.addEventListener('pointerup', () => {
-      if (!this.isGameActive || !this.isPointerDown) return;
-      this.isPointerDown = false;
-      const duration = performance.now() - this.pointerStartTime;
-      if (!this.hasDragged && duration < 350) {
+      if (e.button === 0) {
         this.throwCurrentPotion();
       }
     });
 
+    window.addEventListener('wheel', (e) => {
+      if (!this.isGameActive) return;
+      const dir = e.deltaY > 0 ? 1 : -1;
+      const current = this.inventory.getActiveSlotIndex();
+      const next = (current + dir + 5) % 5;
+      this.inventory.selectSlot(next);
+    }, { passive: true });
+
+    this.canvas3D.addEventListener('touchstart', (e) => {
+      if (!this.isGameActive || e.touches.length === 0) return;
+      const touch = e.touches[0];
+      this.touchStartX = touch.clientX;
+      this.touchStartY = touch.clientY;
+      this.lastTouchX = touch.clientX;
+      this.lastTouchY = touch.clientY;
+      this.touchStartTime = performance.now();
+      this.hasTouchMoved = false;
+    }, { passive: true });
+
+    window.addEventListener('touchmove', (e) => {
+      if (!this.isGameActive || e.touches.length === 0) return;
+      const touch = e.touches[0];
+      if (touch.clientX < window.innerWidth * 0.45 && touch.clientY > window.innerHeight * 0.5) {
+        return;
+      }
+      const dx = touch.clientX - this.lastTouchX;
+      const dy = touch.clientY - this.lastTouchY;
+      this.lastTouchX = touch.clientX;
+      this.lastTouchY = touch.clientY;
+
+      const dist = Math.hypot(touch.clientX - this.touchStartX, touch.clientY - this.touchStartY);
+      if (dist > 8) {
+        this.hasTouchMoved = true;
+        const sensitivity = 0.0035;
+        this.playerRenderer.rotateView(-dx * sensitivity, -dy * sensitivity);
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchend', () => {
+      if (!this.isGameActive) return;
+      const duration = performance.now() - this.touchStartTime;
+      if (!this.hasTouchMoved && duration < 320) {
+        this.throwCurrentPotion();
+      }
+    }, { passive: true });
+
     this.hud.setOnSlotSelected((index) => {
       this.inventory.selectSlot(index);
     });
+  }
+
+  private requestPointerLock(): void {
+    if (document.pointerLockElement !== this.canvas3D) {
+      try {
+        this.canvas3D.requestPointerLock();
+      } catch {}
+    }
   }
 
   private setupResize(): void {
@@ -200,6 +233,7 @@ class GameApp {
       this.isGameActive = true;
       this.hud.show();
       this.playerRenderer.snapCamera(this.player, initialAngle);
+      this.requestPointerLock();
     });
   }
 
@@ -302,6 +336,8 @@ class GameApp {
     }
 
     const isRunning =
+      this.keysDown.has('ShiftLeft') ||
+      this.keysDown.has('ShiftRight') ||
       this.keysDown.has('ControlLeft') ||
       this.keysDown.has('ControlRight') ||
       this.mobileControls.state.isRunning;
