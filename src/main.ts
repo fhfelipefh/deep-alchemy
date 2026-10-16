@@ -35,6 +35,14 @@ class GameApp {
   private isGameActive: boolean = false;
   private keysDown: Set<string> = new Set();
 
+  private pointerStartX: number = 0;
+  private pointerStartY: number = 0;
+  private pointerStartTime: number = 0;
+  private lastPointerX: number = 0;
+  private lastPointerY: number = 0;
+  private isPointerDown: boolean = false;
+  private hasDragged: boolean = false;
+
   constructor() {
     this.canvas3D = document.getElementById('game-canvas') as HTMLCanvasElement;
 
@@ -56,7 +64,7 @@ class GameApp {
     this.scene.fog = new THREE.FogExp2(0x121722, 0.005);
 
     this.camera = new THREE.PerspectiveCamera(
-      60,
+      65,
       window.innerWidth / window.innerHeight,
       0.1,
       120
@@ -113,7 +121,37 @@ class GameApp {
 
     this.canvas3D.addEventListener('pointerdown', (e) => {
       if (!this.isGameActive || e.button !== 0) return;
-      this.throwCurrentPotion();
+      this.isPointerDown = true;
+      this.hasDragged = false;
+      this.pointerStartX = e.clientX;
+      this.pointerStartY = e.clientY;
+      this.lastPointerX = e.clientX;
+      this.lastPointerY = e.clientY;
+      this.pointerStartTime = performance.now();
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      if (!this.isGameActive || !this.isPointerDown) return;
+      const dx = e.clientX - this.lastPointerX;
+      const dy = e.clientY - this.lastPointerY;
+      this.lastPointerX = e.clientX;
+      this.lastPointerY = e.clientY;
+
+      const totalDist = Math.hypot(e.clientX - this.pointerStartX, e.clientY - this.pointerStartY);
+      if (totalDist > 6) {
+        this.hasDragged = true;
+        const sensitivity = 0.0035;
+        this.playerRenderer.rotateView(-dx * sensitivity, -dy * sensitivity);
+      }
+    });
+
+    window.addEventListener('pointerup', () => {
+      if (!this.isGameActive || !this.isPointerDown) return;
+      this.isPointerDown = false;
+      const duration = performance.now() - this.pointerStartTime;
+      if (!this.hasDragged && duration < 350) {
+        this.throwCurrentPotion();
+      }
     });
 
     this.hud.setOnSlotSelected((index) => {
@@ -210,10 +248,14 @@ class GameApp {
       return;
     }
 
-    const forward = new THREE.Vector3(0, 0, 1);
-    forward.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.playerRenderer.group.rotation.y);
+    const forward = this.playerRenderer.getForwardVector();
+    const throwOrigin = {
+      x: this.player.position.x,
+      y: this.player.position.y + 1.4,
+      z: this.player.position.z,
+    };
 
-    this.potionRenderer.spawnProjectile(activeType, this.player.position, forward);
+    this.potionRenderer.spawnProjectile(activeType, throwOrigin, forward);
   }
 
   private handlePotionImpact(type: PotionType, pos: { x: number; y: number; z: number }): void {
@@ -240,18 +282,23 @@ class GameApp {
     }
   }
 
-  private updatePlayer(deltaTime: number): THREE.Vector3 {
-    let inputX = 0;
-    let inputZ = 0;
+  private updatePlayer(deltaTime: number): boolean {
+    if (this.keysDown.has('ArrowLeft')) this.playerRenderer.rotateView(1.8 * deltaTime, 0);
+    if (this.keysDown.has('ArrowRight')) this.playerRenderer.rotateView(-1.8 * deltaTime, 0);
+    if (this.keysDown.has('ArrowUp')) this.playerRenderer.rotateView(0, 1.4 * deltaTime);
+    if (this.keysDown.has('ArrowDown')) this.playerRenderer.rotateView(0, -1.4 * deltaTime);
 
-    if (this.keysDown.has('KeyA') || this.keysDown.has('ArrowLeft')) inputX -= 1;
-    if (this.keysDown.has('KeyD') || this.keysDown.has('ArrowRight')) inputX += 1;
-    if (this.keysDown.has('KeyW') || this.keysDown.has('ArrowUp')) inputZ -= 1;
-    if (this.keysDown.has('KeyS') || this.keysDown.has('ArrowDown')) inputZ += 1;
+    let rawInputX = 0;
+    let rawInputZ = 0;
+
+    if (this.keysDown.has('KeyA')) rawInputX -= 1;
+    if (this.keysDown.has('KeyD')) rawInputX += 1;
+    if (this.keysDown.has('KeyW')) rawInputZ -= 1;
+    if (this.keysDown.has('KeyS')) rawInputZ += 1;
 
     if (Math.hypot(this.mobileControls.state.moveX, this.mobileControls.state.moveZ) > 0.1) {
-      inputX = this.mobileControls.state.moveX;
-      inputZ = this.mobileControls.state.moveZ;
+      rawInputX = this.mobileControls.state.moveX;
+      rawInputZ = this.mobileControls.state.moveZ;
     }
 
     const isRunning =
@@ -262,9 +309,15 @@ class GameApp {
 
     const currentSpeed = isRunning ? this.player.runSpeed : this.player.walkSpeed;
 
-    const moveDirection = new THREE.Vector3(inputX, 0, inputZ);
-    if (moveDirection.lengthSq() > 0.01) {
-      moveDirection.normalize();
+    let isMoving = false;
+    if (Math.hypot(rawInputX, rawInputZ) > 0.05) {
+      const fwd = this.playerRenderer.getHorizontalForward();
+      const right = this.playerRenderer.getHorizontalRight();
+
+      const moveDirection = new THREE.Vector3()
+        .addScaledVector(fwd, -rawInputZ)
+        .addScaledVector(right, rawInputX)
+        .normalize();
 
       const nextX = this.player.position.x + moveDirection.x * currentSpeed * deltaTime;
       const nextZ = this.player.position.z + moveDirection.z * currentSpeed * deltaTime;
@@ -272,10 +325,13 @@ class GameApp {
       if (this.canWalkTo(nextX, nextZ)) {
         this.player.position.x = nextX;
         this.player.position.z = nextZ;
+        isMoving = true;
       } else if (this.canWalkTo(nextX, this.player.position.z)) {
         this.player.position.x = nextX;
+        isMoving = true;
       } else if (this.canWalkTo(this.player.position.x, nextZ)) {
         this.player.position.z = nextZ;
+        isMoving = true;
       }
     }
 
@@ -308,7 +364,7 @@ class GameApp {
       }
     }
 
-    return moveDirection;
+    return isMoving;
   }
 
   private canWalkTo(worldX: number, worldZ: number): boolean {
@@ -343,8 +399,8 @@ class GameApp {
         );
         this.introCinematic.update(deltaTime, playerPosVec);
       } else if (this.isGameActive) {
-        const moveDir = this.updatePlayer(deltaTime);
-        this.playerRenderer.update(this.player, deltaTime, moveDir);
+        const isMoving = this.updatePlayer(deltaTime);
+        this.playerRenderer.update(this.player, deltaTime, isMoving);
 
         this.inventory.updateCooldowns(deltaTime);
         this.hud.update(this.player, this.inventory);

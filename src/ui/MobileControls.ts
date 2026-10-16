@@ -131,16 +131,19 @@ export class MobileControls {
     window.addEventListener('pointerup', releaseJoystick);
     window.addEventListener('pointercancel', releaseJoystick);
 
-    this.jumpBtn.addEventListener('pointerdown', () => {
+    this.jumpBtn.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
       this.state.isJumping = true;
       this.jumpBtn.style.background = 'rgba(255, 215, 0, 0.6)';
     });
-    this.jumpBtn.addEventListener('pointerup', () => {
+    this.jumpBtn.addEventListener('pointerup', (e) => {
+      e.stopPropagation();
       this.state.isJumping = false;
       this.jumpBtn.style.background = 'rgba(20, 20, 26, 0.8)';
     });
 
-    this.runBtn.addEventListener('pointerdown', () => {
+    this.runBtn.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
       this.state.isRunning = !this.state.isRunning;
       this.runBtn.style.background = this.state.isRunning
         ? 'rgba(255, 120, 0, 0.7)'

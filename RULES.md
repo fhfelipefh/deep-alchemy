@@ -26,6 +26,12 @@ Este documento registra todas as regras obrigatórias e especificações de desi
    - Altura do jogador: **1,80m** (unidade de referência: 1.0 unidade = 1 metro).
    - **Distância Mínima da Saída**: O algoritmo de geração procedural calcula a distância do trajeto caminhável (passos do jogador) e garante que a saída **NUNCA fique a menos de 500 metros** do ponto inicial.
 
+5. **Câmera e Perspectiva em Primeira Pessoa (First-Person Perspective)**:
+   - A visão de jogabilidade é estritamente em **PRIMEIRA PESSOA** (câmera alinhada na altura dos olhos a 1,68m).
+   - O corpo do jogador não obstrui a visão: a malha do personagem é mantida oculta durante a exploração na primeira pessoa, evitando qualquer clipping ou bloqueio de tela.
+   - A lanterna direcional frontal e a lanterna radial 360° acompanham em tempo real a rotação do olhar (yaw e pitch) e os passos com sutil head-bobbing.
+   - O arremesso de poções segue o vetor 3D exato para onde o jogador está olhando.
+
 ---
 
 ## 🎬 2. Cutscene Inicial 2D e Loading Oculto

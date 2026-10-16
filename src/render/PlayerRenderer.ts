@@ -10,9 +10,12 @@ export class PlayerRenderer {
   public headlampTarget: THREE.Object3D;
   public camera: THREE.PerspectiveCamera;
   public mixer: THREE.AnimationMixer | null = null;
+  public characterMesh: THREE.Object3D | null = null;
 
-  private characterMesh: THREE.Object3D | null = null;
-  private legs: THREE.Mesh[] = [];
+  public yaw: number = 0;
+  public pitch: number = 0;
+  public eyeHeight: number = 1.68;
+
   private walkTime: number = 0;
   private walkAction: THREE.AnimationAction | null = null;
 
@@ -21,14 +24,14 @@ export class PlayerRenderer {
     this.group = new THREE.Group();
 
     this.headlamp = new THREE.SpotLight(0xfff8ee, 7.5, 50.0, Math.PI / 2.6, 0.85, 1.1);
-    this.headlamp.position.set(0, 1.65, 0.2);
+    this.headlamp.position.set(0, this.eyeHeight, 0);
     this.headlamp.castShadow = true;
     this.headlamp.shadow.mapSize.width = 1024;
     this.headlamp.shadow.mapSize.height = 1024;
     this.headlamp.shadow.bias = -0.001;
 
     this.radialLantern = new THREE.PointLight(0xfff0dc, 5.0, 24.0, 1.1);
-    this.radialLantern.position.set(0, 1.45, 0.1);
+    this.radialLantern.position.set(0, 1.45, 0);
     this.group.add(this.radialLantern);
 
     this.headlampTarget = new THREE.Object3D();
@@ -40,31 +43,36 @@ export class PlayerRenderer {
   }
 
   private loadAlchemistModel(): void {
-    const loader = new GLTFLoader();
-    loader.load(
-      'models/alchemist.glb',
-      (gltf) => {
-        this.characterMesh = gltf.scene;
-        this.characterMesh.traverse((child) => {
-          if ((child as THREE.Mesh).isMesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
+    try {
+      const loader = new GLTFLoader();
+      loader.load(
+        'models/alchemist.glb',
+        (gltf) => {
+          this.characterMesh = gltf.scene;
+          this.characterMesh.visible = false;
+          this.characterMesh.traverse((child) => {
+            if ((child as THREE.Mesh).isMesh) {
+              child.castShadow = false;
+              child.receiveShadow = false;
+            }
+          });
+
+          if (gltf.animations.length > 0) {
+            this.mixer = new THREE.AnimationMixer(this.characterMesh);
+            this.walkAction = this.mixer.clipAction(gltf.animations[0]);
+            this.walkAction.play();
           }
-        });
 
-        if (gltf.animations.length > 0) {
-          this.mixer = new THREE.AnimationMixer(this.characterMesh);
-          this.walkAction = this.mixer.clipAction(gltf.animations[0]);
-          this.walkAction.play();
+          this.group.add(this.characterMesh);
+        },
+        undefined,
+        () => {
+          this.buildProceduralAlchemist();
         }
-
-        this.group.add(this.characterMesh);
-      },
-      undefined,
-      () => {
-        this.buildProceduralAlchemist();
-      }
-    );
+      );
+    } catch {
+      this.buildProceduralAlchemist();
+    }
   }
 
   private buildProceduralAlchemist(): void {
@@ -79,13 +87,11 @@ export class PlayerRenderer {
     const torsoGeo = new THREE.CylinderGeometry(0.24, 0.22, 0.7, 8);
     const torso = new THREE.Mesh(torsoGeo, matClothes);
     torso.position.y = 1.05;
-    torso.castShadow = true;
     alchemist.add(torso);
 
     const headGeo = new THREE.SphereGeometry(0.18, 8, 8);
     const head = new THREE.Mesh(headGeo, matSkin);
     head.position.y = 1.55;
-    head.castShadow = true;
     alchemist.add(head);
 
     const brimGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.03, 12);
@@ -106,7 +112,6 @@ export class PlayerRenderer {
     const packGeo = new THREE.BoxGeometry(0.32, 0.44, 0.22);
     const pack = new THREE.Mesh(packGeo, matPack);
     pack.position.set(0, 1.15, -0.22);
-    pack.castShadow = true;
     alchemist.add(pack);
 
     const pouchGeo = new THREE.BoxGeometry(0.22, 0.12, 0.1);
@@ -117,70 +122,89 @@ export class PlayerRenderer {
     const legGeo = new THREE.CylinderGeometry(0.09, 0.08, 0.7, 6);
     const leftLeg = new THREE.Mesh(legGeo, matClothes);
     leftLeg.position.set(-0.14, 0.35, 0);
-    leftLeg.castShadow = true;
     alchemist.add(leftLeg);
 
     const rightLeg = new THREE.Mesh(legGeo, matClothes);
     rightLeg.position.set(0.14, 0.35, 0);
-    rightLeg.castShadow = true;
     alchemist.add(rightLeg);
 
-    this.legs = [leftLeg, rightLeg];
     this.characterMesh = alchemist;
+    this.characterMesh.visible = false;
     this.group.add(alchemist);
   }
 
   public snapCamera(player: PlayerState, initialAngle: number = 0): void {
-    this.group.rotation.y = initialAngle;
+    this.yaw = initialAngle;
+    this.pitch = 0;
     this.group.position.set(player.position.x, player.position.y, player.position.z);
-
-    const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.group.rotation.y);
-    this.headlampTarget.position.copy(this.group.position).add(forward.clone().multiplyScalar(6));
-
-    const offset = new THREE.Vector3(0, 2.2, -3.2);
-    offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.group.rotation.y);
-
-    this.camera.position.copy(this.group.position).add(offset);
-    const lookTarget = this.group.position.clone().add(forward.clone().multiplyScalar(3.5)).add(new THREE.Vector3(0, 1.4, 0));
-    this.camera.lookAt(lookTarget);
+    this.updateCameraTransform(player, 0);
   }
 
-  public update(player: PlayerState, deltaTime: number, moveDirection: THREE.Vector3): void {
+  public rotateView(deltaYaw: number, deltaPitch: number): void {
+    this.yaw += deltaYaw;
+    this.pitch = Math.max(-Math.PI / 2.6, Math.min(Math.PI / 2.6, this.pitch + deltaPitch));
+  }
+
+  public getForwardVector(): THREE.Vector3 {
+    const cosPitch = Math.cos(this.pitch);
+    return new THREE.Vector3(
+      Math.sin(this.yaw) * cosPitch,
+      Math.sin(this.pitch),
+      Math.cos(this.yaw) * cosPitch
+    ).normalize();
+  }
+
+  public getHorizontalForward(): THREE.Vector3 {
+    return new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)).normalize();
+  }
+
+  public getHorizontalRight(): THREE.Vector3 {
+    const fwd = this.getHorizontalForward();
+    const up = new THREE.Vector3(0, 1, 0);
+    return new THREE.Vector3().crossVectors(fwd, up).normalize();
+  }
+
+  public update(player: PlayerState, deltaTime: number, isMoving: boolean): void {
     this.group.position.set(player.position.x, player.position.y, player.position.z);
 
-    const isMoving = moveDirection.lengthSq() > 0.01;
+    let headBobY = 0;
     if (isMoving) {
-      const targetRotation = Math.atan2(moveDirection.x, moveDirection.z);
-      this.group.rotation.y = targetRotation;
+      const stepSpeed = player.isRunning ? 13 : 9;
+      this.walkTime += deltaTime * stepSpeed;
+      headBobY = Math.sin(this.walkTime * 2) * 0.035;
 
       if (this.mixer) {
         this.mixer.timeScale = player.isRunning ? 1.6 : 1.0;
         this.mixer.update(deltaTime);
-      } else {
-        const stepSpeed = player.isRunning ? 14 : 9;
-        this.walkTime += deltaTime * stepSpeed;
-        if (this.legs.length === 2) {
-          this.legs[0].rotation.x = Math.sin(this.walkTime) * 0.45;
-          this.legs[1].rotation.x = -Math.sin(this.walkTime) * 0.45;
-        }
       }
     } else {
-      if (this.legs.length === 2) {
-        this.legs[0].rotation.x = 0;
-        this.legs[1].rotation.x = 0;
-      }
+      this.walkTime = 0;
     }
 
-    const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.group.rotation.y);
-    this.headlampTarget.position.copy(this.group.position).add(forward.clone().multiplyScalar(6));
+    this.updateCameraTransform(player, headBobY);
+  }
 
-    const cameraOffset = new THREE.Vector3(0, 2.2, -3.2);
-    cameraOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.group.rotation.y);
+  private updateCameraTransform(player: PlayerState, headBobY: number): void {
+    const eyeY = player.position.y + this.eyeHeight + headBobY;
+    this.camera.position.set(player.position.x, eyeY, player.position.z);
 
-    const targetCameraPos = this.group.position.clone().add(cameraOffset);
-    this.camera.position.lerp(targetCameraPos, 0.2);
+    const cosPitch = Math.cos(this.pitch);
+    const dirX = Math.sin(this.yaw) * cosPitch;
+    const dirY = Math.sin(this.pitch);
+    const dirZ = Math.cos(this.yaw) * cosPitch;
 
-    const lookTarget = this.group.position.clone().add(forward.clone().multiplyScalar(3.5)).add(new THREE.Vector3(0, 1.4, 0));
-    this.camera.lookAt(lookTarget);
+    const targetX = this.camera.position.x + dirX * 10;
+    const targetY = this.camera.position.y + dirY * 10;
+    const targetZ = this.camera.position.z + dirZ * 10;
+
+    this.camera.lookAt(targetX, targetY, targetZ);
+
+    this.radialLantern.position.set(player.position.x, player.position.y + 1.4, player.position.z);
+    this.headlamp.position.copy(this.camera.position);
+    this.headlampTarget.position.set(
+      this.camera.position.x + dirX * 15,
+      this.camera.position.y + dirY * 15,
+      this.camera.position.z + dirZ * 15
+    );
   }
 }

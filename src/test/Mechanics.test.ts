@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import * as THREE from 'three';
 import { PRNG } from '../core/PRNG';
 import { DualGridResolver, MASK_TO_PIECE } from '../dungeon/DualGrid';
 import { CanonicalPiece, CellType, BiomeType } from '../dungeon/DungeonTypes';
@@ -8,6 +9,7 @@ import { KinematicsSolver } from '../animation/KinematicsSolver';
 import { PotionInventory, PotionType, POTION_CONFIGS } from '../alchemy/PotionSystem';
 import { PlayerState } from '../entities/PlayerState';
 import { CritterInstance, CritterType, AIState } from '../entities/CritterAI';
+import { PlayerRenderer } from '../render/PlayerRenderer';
 
 describe('PRNG Determinístico', () => {
   it('gera sequência idêntica para sementes idênticas', () => {
@@ -208,5 +210,40 @@ describe('I.A. dos Bichinhos & Reações Alquímicas', () => {
     const initialHp = wolfWater.currentHealth;
     wolfWater.applyPotionEffect(PotionType.SHOCK, true);
     expect(wolfWater.currentHealth).toBe(initialHp - 16);
+  });
+});
+
+describe('Perspectiva em Primeira Pessoa (First-Person)', () => {
+  it('posiciona a câmera no nível dos olhos (1,68m) e alinha o feixe de luz', () => {
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(65, 16 / 9, 0.1, 100);
+    const renderer = new PlayerRenderer(camera, scene);
+    const player = new PlayerState();
+    player.position = { x: 50, y: 0, z: 80 };
+
+    renderer.snapCamera(player, Math.PI / 2);
+
+    expect(camera.position.x).toBeCloseTo(50, 4);
+    expect(camera.position.y).toBeCloseTo(1.68, 4);
+    expect(camera.position.z).toBeCloseTo(80, 4);
+    expect(renderer.yaw).toBeCloseTo(Math.PI / 2, 4);
+    expect(renderer.pitch).toBe(0);
+
+    const fwd = renderer.getForwardVector();
+    expect(fwd.x).toBeCloseTo(1.0, 4);
+    expect(fwd.y).toBeCloseTo(0.0, 4);
+    expect(fwd.z).toBeCloseTo(0.0, 4);
+  });
+
+  it('clamp de pitch impede rotação invertida além dos limites visuais verticais', () => {
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(65, 16 / 9, 0.1, 100);
+    const renderer = new PlayerRenderer(camera, scene);
+
+    renderer.rotateView(0, 10.0);
+    expect(renderer.pitch).toBeLessThanOrEqual(Math.PI / 2.6);
+
+    renderer.rotateView(0, -20.0);
+    expect(renderer.pitch).toBeGreaterThanOrEqual(-Math.PI / 2.6);
   });
 });
