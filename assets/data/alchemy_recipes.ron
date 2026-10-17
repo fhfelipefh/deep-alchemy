@@ -1,0 +1,54 @@
+// Alchemical Static Recipes & Ingredients Database
+// Deep Alchemy (Elder Scrolls inspired systemic alchemy)
+
+(
+    ingredients: [
+        (
+            id: "ing_cyan_spore",
+            name: "Glow Spore",
+            description: "Bioluminescent fungal spores harvested from subterranean rim pools.",
+            weight: 0.1,
+            value: 25,
+            primary_aspect: Luminescence,
+            secondary_aspect: Swiftness,
+        ),
+        (
+            id: "ing_thermal_brimstone",
+            name: "Thermal Brimstone",
+            description: "Crystallized volcanic sulfur deposited by boiling cave geysers.",
+            weight: 0.5,
+            value: 40,
+            primary_aspect: ThermalHeat,
+            secondary_aspect: Vaporize,
+        ),
+        (
+            id: "ing_cave_lichen",
+            name: "Watercress Lichen",
+            description: "Damp moss clinging to the rocks behind the waterfall gorge.",
+            weight: 0.2,
+            value: 15,
+            primary_aspect: Vitality,
+            secondary_aspect: Frost,
+        ),
+    ],
+
+    potions: [
+        (
+            id: "pot_swift_explorer",
+            name: "Elixir of the Swift Caver",
+            liquid_color: (0.1, 0.9, 1.0, 0.85),
+            effects: [
+                (kind: Swiftness, duration: 30.0, magnitude: 1.5),
+                (kind: Luminescence, duration: 45.0, magnitude: 1.0),
+            ],
+        ),
+        (
+            id: "pot_vitality_draught",
+            name: "Cavern Draught of Vitality",
+            liquid_color: (0.95, 0.2, 0.2, 0.85),
+            effects: [
+                (kind: Vitality, duration: 15.0, magnitude: 50.0),
+            ],
+        ),
+    ]
+)

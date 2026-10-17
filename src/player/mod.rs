@@ -1,0 +1,27 @@
+pub mod camera;
+pub mod controller;
+pub mod interaction;
+pub mod ragdoll;
+
+use bevy::prelude::*;
+
+pub struct PlayerPlugin;
+
+impl Plugin for PlayerPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<interaction::InteractionState>()
+            .add_systems(Startup, (camera::setup_player, camera::grab_mouse))
+            .add_systems(
+                Update,
+                (
+                    controller::player_movement,
+                    controller::player_look,
+                    interaction::player_raycast_interaction,
+                    interaction::player_physics_grab,
+                    ragdoll::check_player_death,
+                    ragdoll::update_death_camera,
+                    camera::configure_player_model_layers,
+                ),
+            );
+    }
+}
