@@ -72,10 +72,29 @@ export class MobileControls {
     this.setupTouchListeners();
     document.body.appendChild(this.container);
 
-    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    if (!isTouchDevice) {
-      this.container.style.opacity = '0.4';
+    const isCoarse = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(pointer: coarse)').matches
+      : false;
+    const isTouchDevice = typeof window !== 'undefined' &&
+      ('ontouchstart' in window || (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0));
+
+    if (!isTouchDevice || !isCoarse) {
+      this.container.style.display = 'none';
     }
+
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('touchstart', () => {
+        this.container.style.display = 'block';
+      }, { once: true, passive: true });
+    }
+  }
+
+  public hide(): void {
+    this.container.style.display = 'none';
+  }
+
+  public show(): void {
+    this.container.style.display = 'block';
   }
 
   private createActionButton(symbol: string, right: string, bottom: string): HTMLDivElement {

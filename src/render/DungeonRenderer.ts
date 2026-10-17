@@ -19,6 +19,8 @@ export class DungeonRenderer {
   private mushroomClip: THREE.AnimationClip | null = null;
   private idolTemplate: THREE.Object3D | null = null;
   private idolClip: THREE.AnimationClip | null = null;
+  private waterfallMesh: THREE.Mesh | null = null;
+  private waterfallFoam: THREE.Mesh | null = null;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -34,9 +36,9 @@ export class DungeonRenderer {
     this.waterMaterial = new THREE.MeshStandardMaterial({
       color: 0x2288bb,
       transparent: true,
-      opacity: 0.65,
+      opacity: 0.75,
       roughness: 0.1,
-      metalness: 0.2,
+      metalness: 0.25,
     });
 
     this.loadTemplates();
@@ -73,16 +75,16 @@ export class DungeonRenderer {
     ];
 
     const wallColors: Record<BiomeType, number> = {
-      [BiomeType.BEACH]: 0x9a826d,
-      [BiomeType.NORMAL_CAVE]: 0x6e707a,
+      [BiomeType.BEACH]: 0x8a6e54,
+      [BiomeType.NORMAL_CAVE]: 0x5a5e6b,
       [BiomeType.FLOODED]: 0x4f6b7c,
       [BiomeType.GEOTHERMAL]: 0x7d493a,
       [BiomeType.FUNGAL_GLOW]: 0x515b7c,
     };
 
     const floorColors: Record<BiomeType, number> = {
-      [BiomeType.BEACH]: 0xd2bba0,
-      [BiomeType.NORMAL_CAVE]: 0x7c7e8b,
+      [BiomeType.BEACH]: 0xdfbe88,
+      [BiomeType.NORMAL_CAVE]: 0x6e727e,
       [BiomeType.FLOODED]: 0x577182,
       [BiomeType.GEOTHERMAL]: 0x945241,
       [BiomeType.FUNGAL_GLOW]: 0x586282,
@@ -185,7 +187,6 @@ export class DungeonRenderer {
       if (walls && walls.length > 0) {
         const mergedWall = mergeGeometries(walls, false);
         const mesh = new THREE.Mesh(mergedWall, this.wallMaterials.get(b)!);
-        mesh.castShadow = true;
         mesh.receiveShadow = true;
         this.dungeonGroup.add(mesh);
       }
@@ -207,7 +208,47 @@ export class DungeonRenderer {
       this.buildClutterMesh(item);
     });
 
+    this.buildWaterfall(dungeon.startPos, cellSize);
     this.buildExitBeacon(dungeon.exitPos, cellSize);
+  }
+
+  private buildWaterfall(startPos: { x: number; z: number }, cellSize: number): void {
+    const wx = (startPos.x + 0.5) * cellSize;
+    const wz = (startPos.z + 5.5) * cellSize;
+
+    const waterfallGeo = new THREE.PlaneGeometry(cellSize * 5.0, 7.5, 12, 16);
+    const waterfallMat = new THREE.MeshStandardMaterial({
+      color: 0x55ccff,
+      emissive: 0x1177aa,
+      emissiveIntensity: 0.9,
+      transparent: true,
+      opacity: 0.85,
+      roughness: 0.08,
+      metalness: 0.25,
+      side: THREE.DoubleSide,
+    });
+    this.waterfallMesh = new THREE.Mesh(waterfallGeo, waterfallMat);
+    this.waterfallMesh.position.set(wx, 3.6, wz - 0.2);
+    this.waterGroup.add(this.waterfallMesh);
+
+    const foamGeo = new THREE.RingGeometry(0.8, cellSize * 2.8, 20);
+    foamGeo.rotateX(-Math.PI / 2);
+    const foamMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: 0x88eeff,
+      emissiveIntensity: 1.4,
+      transparent: true,
+      opacity: 0.75,
+      roughness: 0.2,
+      side: THREE.DoubleSide,
+    });
+    this.waterfallFoam = new THREE.Mesh(foamGeo, foamMat);
+    this.waterfallFoam.position.set(wx, 0.32, wz - 1.2);
+    this.waterGroup.add(this.waterfallFoam);
+
+    const sprayLight = new THREE.PointLight(0x77ddff, 2.5, 16.0, 1.2);
+    sprayLight.position.set(wx, 2.0, wz - 1.5);
+    this.clutterGroup.add(sprayLight);
   }
 
   private buildClutterMesh(item: ClutterItem): void {
@@ -303,8 +344,26 @@ export class DungeonRenderer {
     });
 
     this.waterGroup.children.forEach((w, i) => {
-      w.position.y = 0.25 + Math.sin(elapsedTime * 2.0 + i) * 0.03;
+      if (w !== this.waterfallMesh && w !== this.waterfallFoam) {
+        w.position.y = 0.28 + Math.sin(elapsedTime * 2.0 + i) * 0.03;
+      }
     });
+
+    if (this.waterfallMesh) {
+      const posAttr = this.waterfallMesh.geometry.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < posAttr.count; i++) {
+        const vy = posAttr.getY(i);
+        const vx = posAttr.getX(i);
+        const wave = Math.sin(vy * 3.0 - elapsedTime * 8.0) * 0.12 + Math.cos(vx * 2.5 + elapsedTime * 5.0) * 0.05;
+        posAttr.setZ(i, wave);
+      }
+      posAttr.needsUpdate = true;
+    }
+
+    if (this.waterfallFoam) {
+      const foamScale = 1.0 + Math.sin(elapsedTime * 6.0) * 0.08;
+      this.waterfallFoam.scale.set(foamScale, 1.0, foamScale);
+    }
 
     this.mixers.forEach((m) => m.update(deltaTime));
   }
@@ -323,6 +382,8 @@ export class DungeonRenderer {
     while (this.clutterGroup.children.length > 0) {
       this.clutterGroup.remove(this.clutterGroup.children[0]);
     }
+    this.waterfallMesh = null;
+    this.waterfallFoam = null;
     this.animatedLights = [];
     this.mixers = [];
   }

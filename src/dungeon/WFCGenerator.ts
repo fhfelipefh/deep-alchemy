@@ -50,14 +50,25 @@ export class WFCGenerator {
       Array.from({ length: this.width }, () => BiomeType.NORMAL_CAVE)
     );
 
-    const startPos: Point2D = { x: 6, z: this.height - 7 };
+    const startPos: Point2D = { x: 8, z: this.height - 8 };
 
-    for (let dz = -3; dz <= 3; dz++) {
-      for (let dx = -3; dx <= 3; dx++) {
+    for (let dz = -3; dz <= 1; dz++) {
+      for (let dx = -4; dx <= 4; dx++) {
         const px = startPos.x + dx;
         const pz = startPos.z + dz;
         if (px >= 1 && px < this.width - 1 && pz >= 1 && pz < this.height - 1) {
           grid[pz][px] = CellType.BEACH_START;
+          biomes[pz][px] = BiomeType.BEACH;
+        }
+      }
+    }
+
+    for (let dz = 2; dz <= 5; dz++) {
+      for (let dx = -4; dx <= 4; dx++) {
+        const px = startPos.x + dx;
+        const pz = startPos.z + dz;
+        if (px >= 1 && px < this.width - 1 && pz >= 1 && pz < this.height - 1) {
+          grid[pz][px] = CellType.WATER;
           biomes[pz][px] = BiomeType.BEACH;
         }
       }
@@ -113,13 +124,24 @@ export class WFCGenerator {
       Array.from({ length: this.width }, () => BiomeType.NORMAL_CAVE)
     );
 
-    const startPos: Point2D = { x: 6, z: this.height - 7 };
-    for (let dz = -3; dz <= 3; dz++) {
-      for (let dx = -3; dx <= 3; dx++) {
+    const startPos: Point2D = { x: 8, z: this.height - 8 };
+    for (let dz = -3; dz <= 1; dz++) {
+      for (let dx = -4; dx <= 4; dx++) {
         const px = startPos.x + dx;
         const pz = startPos.z + dz;
         if (px >= 1 && px < this.width - 1 && pz >= 1 && pz < this.height - 1) {
           grid[pz][px] = CellType.BEACH_START;
+          biomes[pz][px] = BiomeType.BEACH;
+        }
+      }
+    }
+
+    for (let dz = 2; dz <= 5; dz++) {
+      for (let dx = -4; dx <= 4; dx++) {
+        const px = startPos.x + dx;
+        const pz = startPos.z + dz;
+        if (px >= 1 && px < this.width - 1 && pz >= 1 && pz < this.height - 1) {
+          grid[pz][px] = CellType.WATER;
           biomes[pz][px] = BiomeType.BEACH;
         }
       }

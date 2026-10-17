@@ -1,20 +1,20 @@
 {
-  "load_time_ms": 3977.1785999982967,
-  "dungeon_init_ms": 1076.3231000019005,
+  "load_time_ms": 919.8841999968863,
+  "dungeon_init_ms": 1102.3320000022068,
   "metrics": {
-    "fps": 59.7,
-    "avgDeltaMs": 16.76,
+    "fps": 57.7,
+    "avgDeltaMs": 17.33,
     "p50Ms": 16.7,
     "p95Ms": 16.8,
-    "p99Ms": 16.8,
-    "maxDeltaMs": 33.3,
-    "longFrames": 0,
-    "drawCalls": 7,
-    "triangles": 94378,
-    "geometriesCount": 79,
+    "p99Ms": 33.2,
+    "maxDeltaMs": 116.7,
+    "longFrames": 1,
+    "drawCalls": 14,
+    "triangles": 100168,
+    "geometriesCount": 72,
     "texturesCount": 1,
     "memory": {
-      "usedJSHeapSizeMB": 35.57,
+      "usedJSHeapSizeMB": 37.77,
       "totalJSHeapSizeMB": 64.85
     }
   }
