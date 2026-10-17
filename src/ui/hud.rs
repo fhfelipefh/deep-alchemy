@@ -1,7 +1,10 @@
 use bevy::prelude::*;
-use crate::player::{
-    camera::{Health, Player, Stamina},
-    interaction::InteractionState,
+use crate::{
+    player::{
+        camera::{Health, Player, Stamina},
+        interaction::InteractionState,
+    },
+    ui::menu::GameState,
 };
 
 pub struct HudPlugin;
@@ -9,9 +12,19 @@ pub struct HudPlugin;
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_hud)
-            .add_systems(Update, (update_hud_bars, update_crosshair_target));
+            .add_systems(
+                Update,
+                (
+                    update_hud_bars,
+                    update_crosshair_target,
+                    update_hud_visibility,
+                ),
+            );
     }
 }
+
+#[derive(Component)]
+pub struct HudRoot;
 
 #[derive(Component)]
 pub struct CrosshairDot;
@@ -26,6 +39,7 @@ fn setup_hud(mut commands: Commands) {
     // Root UI container
     commands
         .spawn((
+            HudRoot,
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
@@ -33,6 +47,7 @@ fn setup_hud(mut commands: Commands) {
                 justify_content: JustifyContent::Center,
                 ..default()
             },
+            Visibility::Hidden,
         ))
         .with_children(|root| {
             // Central Crosshair Dot
@@ -137,6 +152,24 @@ fn update_hud_bars(
     }
 }
 
+pub fn update_hud_visibility(
+    state: Option<Res<State<GameState>>>,
+    mut hud_query: Query<&mut Visibility, With<HudRoot>>,
+) {
+    if let Some(s) = state {
+        if s.is_changed() {
+            let target = if *s.get() == GameState::InGame {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            };
+            for mut vis in hud_query.iter_mut() {
+                *vis = target;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,5 +241,27 @@ mod tests {
 
         assert_eq!(hp_node.width, Val::Percent(50.0));
         assert_eq!(st_node.width, Val::Percent(25.0));
+    }
+
+    #[test]
+    fn test_update_hud_visibility_switches_with_state() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin));
+        app.init_state::<GameState>();
+        app.add_systems(Update, update_hud_visibility);
+
+        let hud_root = app.world_mut().spawn((HudRoot, Visibility::Hidden)).id();
+
+        // Switch to InGame
+        app.world_mut().resource_mut::<NextState<GameState>>().set(GameState::InGame);
+        app.update();
+
+        assert_eq!(*app.world().get::<Visibility>(hud_root).unwrap(), Visibility::Inherited);
+
+        // Switch to MainMenu
+        app.world_mut().resource_mut::<NextState<GameState>>().set(GameState::MainMenu);
+        app.update();
+
+        assert_eq!(*app.world().get::<Visibility>(hud_root).unwrap(), Visibility::Hidden);
     }
 }

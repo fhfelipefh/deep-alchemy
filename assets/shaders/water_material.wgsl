@@ -1,4 +1,4 @@
-#import bevy_pbr::mesh_vertex_output::MeshVertexOutput
+#import bevy_pbr::forward_io::VertexOutput
 #import bevy_pbr::mesh_view_bindings::view
 
 @group(2) @binding(0) var<uniform> material_base: vec4<f32>;
@@ -8,7 +8,7 @@
 
 @fragment
 fn fragment(
-    in: MeshVertexOutput,
+    in: VertexOutput,
     @builtin(position) frag_coord: vec4<f32>,
 ) -> @location(0) vec4<f32> {
     let time = material_params.x;

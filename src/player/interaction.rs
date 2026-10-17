@@ -1,6 +1,9 @@
 use bevy::prelude::*;
 use avian3d::prelude::*;
-use crate::alchemy::AlchemicalIngredient;
+use crate::{
+    alchemy::AlchemicalIngredient,
+    ui::menu::GameState,
+};
 use super::camera::PlayerCamera;
 
 #[derive(Component)]
@@ -21,6 +24,7 @@ pub struct InteractionState {
 }
 
 pub fn player_raycast_interaction(
+    game_state: Option<Res<State<GameState>>>,
     keys: Res<ButtonInput<KeyCode>>,
     spatial_query: SpatialQuery,
     camera_query: Query<(&GlobalTransform, &Camera), With<PlayerCamera>>,
@@ -28,6 +32,13 @@ pub fn player_raycast_interaction(
     mut interaction_state: ResMut<InteractionState>,
     mut commands: Commands,
 ) {
+    if let Some(state) = game_state {
+        if *state.get() != GameState::InGame {
+            interaction_state.hovered_entity = None;
+            return;
+        }
+    }
+
     let Ok((cam_gtf, _)) = camera_query.get_single() else {
         return;
     };
@@ -87,12 +98,19 @@ pub fn player_raycast_interaction(
 }
 
 pub fn player_physics_grab(
+    game_state: Option<Res<State<GameState>>>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     camera_query: Query<&GlobalTransform, With<PlayerCamera>>,
     interaction_state: Res<InteractionState>,
     mut grabbed_query: Query<(Entity, &mut Transform, &GrabbedProp)>,
     mut commands: Commands,
 ) {
+    if let Some(state) = game_state {
+        if *state.get() != GameState::InGame {
+            return;
+        }
+    }
+
     let Ok(cam_gtf) = camera_query.get_single() else {
         return;
     };

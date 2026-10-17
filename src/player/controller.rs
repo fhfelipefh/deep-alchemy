@@ -3,12 +3,21 @@ use bevy::{
     prelude::*,
 };
 use super::camera::{Player, PlayerCamera, PlayerState, Stamina};
+use crate::ui::menu::{GameSettings, GameState};
 
 pub fn player_look(
+    game_state: Option<Res<State<GameState>>>,
+    settings: Option<Res<GameSettings>>,
     mut mouse_motion_events: EventReader<MouseMotion>,
     mut player_query: Query<(&PlayerState, &mut Transform), (With<Player>, Without<PlayerCamera>)>,
     mut camera_query: Query<&mut Transform, (With<PlayerCamera>, Without<Player>)>,
 ) {
+    if let Some(state) = game_state {
+        if *state.get() != GameState::InGame {
+            return;
+        }
+    }
+
     let mut mouse_delta = Vec2::ZERO;
     for event in mouse_motion_events.read() {
         mouse_delta += event.delta;
@@ -18,7 +27,7 @@ pub fn player_look(
         return;
     }
 
-    let sensitivity = 0.0022;
+    let sensitivity = settings.as_ref().map(|s| s.mouse_sensitivity).unwrap_or(0.0022);
 
     for (state, mut player_tf) in player_query.iter_mut() {
         if *state != PlayerState::Active {
@@ -39,10 +48,17 @@ pub fn player_look(
 }
 
 pub fn player_movement(
+    game_state: Option<Res<State<GameState>>>,
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     mut query: Query<(&PlayerState, &mut Transform, &mut Stamina), With<Player>>,
 ) {
+    if let Some(state) = game_state {
+        if *state.get() != GameState::InGame {
+            return;
+        }
+    }
+
     let dt = time.delta_secs();
 
     for (state, mut tf, mut stamina) in query.iter_mut() {

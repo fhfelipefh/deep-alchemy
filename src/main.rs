@@ -9,7 +9,7 @@ use deep_alchemy::{
     dungeon::DungeonPlugin,
     player::PlayerPlugin,
     render::RenderPipelinePlugin,
-    ui::HudPlugin,
+    ui::{HudPlugin, MenuPlugin},
 };
 
 fn main() {
@@ -21,8 +21,8 @@ fn main() {
                     resolution: WindowResolution::new(1280.0, 720.0),
                     present_mode: PresentMode::AutoVsync,
                     cursor_options: bevy::window::CursorOptions {
-                        grab_mode: CursorGrabMode::Locked,
-                        visible: false,
+                        grab_mode: CursorGrabMode::None,
+                        visible: true,
                         ..default()
                     },
                     ..default()
@@ -36,5 +36,6 @@ fn main() {
         .add_plugins(DungeonPlugin)
         .add_plugins(AlchemyPlugin)
         .add_plugins(HudPlugin)
+        .add_plugins(MenuPlugin)
         .run();
 }

@@ -10,7 +10,7 @@ pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<interaction::InteractionState>()
-            .add_systems(Startup, (camera::setup_player, camera::grab_mouse))
+            .add_systems(Startup, camera::setup_player)
             .add_systems(
                 Update,
                 (

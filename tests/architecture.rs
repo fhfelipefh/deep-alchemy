@@ -106,7 +106,7 @@ fn test_architecture_wgsl_shaders_integrity() {
     let code = fs::read_to_string(shader_path).expect("Failed to read shader");
     assert!(!code.is_empty(), "Shader must not be empty");
     assert!(code.contains("@fragment"), "Shader must contain @fragment entry point");
-    assert!(code.contains("MeshVertexOutput"), "Shader must import MeshVertexOutput");
+    assert!(code.contains("VertexOutput"), "Shader must import VertexOutput");
     assert!(code.contains("material_base"), "Shader must bind material_base uniform");
     assert!(code.contains("material_deep"), "Shader must bind material_deep uniform");
     assert!(code.contains("material_foam"), "Shader must bind material_foam uniform");
