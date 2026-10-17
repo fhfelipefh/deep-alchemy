@@ -13,3 +13,17 @@ impl Plugin for RenderPipelinePlugin {
             .add_systems(Update, (update_water_time, spawn_particles, update_particles));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_render_pipeline_plugin_build() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
+        app.init_asset::<bevy::render::render_resource::Shader>();
+        app.add_plugins(RenderPipelinePlugin);
+        assert!(app.is_plugin_added::<RenderPipelinePlugin>());
+    }
+}

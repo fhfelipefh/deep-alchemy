@@ -86,3 +86,75 @@ pub fn player_movement(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_player_movement_forward_and_stamina() {
+        let mut world = World::new();
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_millis(100));
+        world.insert_resource(time);
+
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::KeyW);
+        world.insert_resource(keys);
+
+        let player = world.spawn((
+            Player,
+            PlayerState::Active,
+            Transform::from_xyz(0.0, 0.0, 0.0),
+            Stamina { current: 100.0, max: 100.0 },
+        )).id();
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(player_movement);
+        schedule.run(&mut world);
+
+        let tf = world.get::<Transform>(player).unwrap();
+        // Since forward in Bevy is -Z, walking forward should decrease Z
+        assert!(tf.translation.z < 0.0, "Player must have moved forward");
+
+        // Now test sprinting with Shift
+        world.resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::ShiftLeft);
+        world.resource_mut::<Time>().advance_by(std::time::Duration::from_secs(1));
+        schedule.run(&mut world);
+
+        let stamina = world.get::<Stamina>(player).unwrap();
+        assert!(stamina.current < 100.0, "Sprinting must consume stamina");
+    }
+
+    #[test]
+    fn test_player_look_rotates_player_and_camera() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_event::<MouseMotion>();
+        app.add_systems(Update, player_look);
+
+        let player = app.world_mut().spawn((
+            Player,
+            PlayerState::Active,
+            Transform::IDENTITY,
+        )).id();
+
+        let camera = app.world_mut().spawn((
+            PlayerCamera,
+            Transform::IDENTITY,
+        )).id();
+
+        // Send mouse motion event
+        app.world_mut().send_event(MouseMotion {
+            delta: Vec2::new(100.0, 50.0),
+        });
+
+        app.update();
+
+        let player_tf = app.world().get::<Transform>(player).unwrap();
+        let cam_tf = app.world().get::<Transform>(camera).unwrap();
+
+        assert_ne!(player_tf.rotation, Quat::IDENTITY, "Player yaw must have changed");
+        assert_ne!(cam_tf.rotation, Quat::IDENTITY, "Camera pitch must have changed");
+    }
+}

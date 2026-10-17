@@ -1,20 +1,16 @@
-mod alchemy;
-mod dungeon;
-mod player;
-mod render;
-mod ui;
-
 use avian3d::prelude::*;
 use bevy::{
     prelude::*,
     window::{CursorGrabMode, PresentMode, WindowResolution},
 };
 
-use alchemy::AlchemyPlugin;
-use dungeon::DungeonPlugin;
-use player::PlayerPlugin;
-use render::RenderPipelinePlugin;
-use ui::HudPlugin;
+use deep_alchemy::{
+    alchemy::AlchemyPlugin,
+    dungeon::DungeonPlugin,
+    player::PlayerPlugin,
+    render::RenderPipelinePlugin,
+    ui::HudPlugin,
+};
 
 fn main() {
     App::new()

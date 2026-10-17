@@ -43,3 +43,40 @@ pub fn update_water_time(time: Res<Time>, mut materials: ResMut<Assets<WaterMate
         mat.params.x = t;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_water_material_alpha_and_shader() {
+        let mat = WaterMaterial::default();
+        assert_eq!(mat.alpha_mode(), AlphaMode::Blend);
+        match WaterMaterial::fragment_shader() {
+            ShaderRef::Path(path) => assert_eq!(path.path(), std::path::Path::new("shaders/water_material.wgsl")),
+            _ => panic!("Expected ShaderRef::Path"),
+        }
+    }
+
+    #[test]
+    fn test_update_water_time_system() {
+        let mut app = App::new();
+        app.init_resource::<Assets<WaterMaterial>>();
+        app.add_systems(Update, update_water_time);
+
+        let handle = {
+            let mut mats = app.world_mut().resource_mut::<Assets<WaterMaterial>>();
+            mats.add(WaterMaterial::default())
+        };
+
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_millis(500));
+        app.insert_resource(time);
+
+        app.update();
+
+        let mats = app.world().resource::<Assets<WaterMaterial>>();
+        let mat = mats.get(&handle).unwrap();
+        assert!(mat.params.x > 0.0, "Water time param must have updated");
+    }
+}

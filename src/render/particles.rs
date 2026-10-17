@@ -155,3 +155,63 @@ mod fastrand {
         (s & 0xFFFFFF) as f32 / 16777216.0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_spawn_particles_and_update_lifecycle() {
+        let mut world = World::new();
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_millis(50));
+        world.insert_resource(time);
+        world.insert_resource(Assets::<Mesh>::default());
+        world.insert_resource(Assets::<StandardMaterial>::default());
+
+        // Spawn emitter for each particle type
+        world.spawn((
+            ParticleEmitter {
+                spawn_timer: 1.0,
+                spawn_rate: 0.1, // will trigger spawn on first tick
+                particle_type: ParticleType::Steam,
+            },
+            Transform::from_xyz(0.0, 0.0, 0.0),
+        ));
+
+        world.spawn((
+            ParticleEmitter {
+                spawn_timer: 1.0,
+                spawn_rate: 0.1,
+                particle_type: ParticleType::WaterSplash,
+            },
+            Transform::from_xyz(1.0, 0.0, 0.0),
+        ));
+
+        world.spawn((
+            ParticleEmitter {
+                spawn_timer: 1.0,
+                spawn_rate: 0.1,
+                particle_type: ParticleType::GlowSpore,
+            },
+            Transform::from_xyz(2.0, 0.0, 0.0),
+        ));
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems((spawn_particles, update_particles));
+        schedule.run(&mut world);
+
+        // Check that particles were spawned
+        let count = world.query::<&Particle>().iter(&world).count();
+        assert_eq!(count, 3, "All 3 emitters must have spawned a particle");
+
+        // Advance time beyond max_lifetime to test despawning (run update_particles directly)
+        world.resource_mut::<Time<()>>().advance_by(std::time::Duration::from_secs(10));
+        let mut update_schedule = Schedule::default();
+        update_schedule.add_systems(update_particles);
+        update_schedule.run(&mut world);
+
+        let remaining = world.query::<&Particle>().iter(&world).count();
+        assert_eq!(remaining, 0, "Expired particles must be despawned");
+    }
+}

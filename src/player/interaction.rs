@@ -123,3 +123,93 @@ pub fn player_physics_grab(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_physics_grab_initiates_and_releases() {
+        let mut world = World::new();
+        let mut mouse = ButtonInput::<MouseButton>::default();
+        mouse.press(MouseButton::Right);
+        world.insert_resource(mouse);
+
+        let mut interaction_state = InteractionState::default();
+        let prop = world.spawn((
+            Transform::from_xyz(0.0, 0.0, -2.0),
+            RigidBody::Dynamic,
+        )).id();
+        interaction_state.hovered_entity = Some(prop);
+        world.insert_resource(interaction_state);
+
+        let _camera = world.spawn((
+            PlayerCamera,
+            Transform::IDENTITY,
+            GlobalTransform::IDENTITY,
+        )).id();
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(player_physics_grab);
+        schedule.run(&mut world);
+
+        // Prop should now have GrabbedProp component and be Kinematic
+        assert!(world.get::<GrabbedProp>(prop).is_some());
+        assert_eq!(*world.get::<RigidBody>(prop).unwrap(), RigidBody::Kinematic);
+
+        // Now release grab
+        let mut mouse_released = ButtonInput::<MouseButton>::default();
+        mouse_released.press(MouseButton::Right);
+        mouse_released.release(MouseButton::Right);
+        world.insert_resource(mouse_released);
+
+        schedule.run(&mut world);
+
+        assert!(world.get::<GrabbedProp>(prop).is_none());
+        assert_eq!(*world.get::<RigidBody>(prop).unwrap(), RigidBody::Dynamic);
+    }
+
+    #[test]
+    fn test_player_raycast_interaction_detects_and_harvests() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::asset::AssetPlugin::default(),
+            bevy::scene::ScenePlugin::default(),
+            PhysicsPlugins::default(),
+        ));
+        app.init_asset::<Mesh>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+        app.init_resource::<InteractionState>();
+        app.add_systems(Update, player_raycast_interaction);
+
+        // Camera looking forward along -Z
+        app.world_mut().spawn((
+            PlayerCamera,
+            Camera::default(),
+            Transform::from_xyz(0.0, 1.75, 0.0),
+            GlobalTransform::from_translation(Vec3::new(0.0, 1.75, 0.0)),
+        ));
+
+        // Interactable directly in front (Z = -2.0)
+        let target = app.world_mut().spawn((
+            Interactable { label: "Test Ingredient" },
+            AlchemicalIngredient {
+                id: "test_ing".to_string(),
+                name: "Test Herb".to_string(),
+                primary_effect: crate::alchemy::AlchemicalEffectKind::Vitality,
+                secondary_effect: crate::alchemy::AlchemicalEffectKind::Swiftness,
+                harvested: false,
+            },
+            Transform::from_xyz(0.0, 1.75, -2.0),
+            GlobalTransform::from_translation(Vec3::new(0.0, 1.75, -2.0)),
+        )).id();
+
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::KeyE);
+
+        app.update();
+
+        let state = app.world().resource::<InteractionState>();
+        assert_eq!(state.hovered_entity, Some(target), "Interactable must be detected in line of sight");
+    }
+}

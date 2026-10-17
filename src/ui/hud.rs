@@ -136,3 +136,77 @@ fn update_hud_bars(
         node.width = Val::Percent(st_pct);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_setup_hud_spawns_crosshair_and_bars() {
+        let mut app = App::new();
+        app.add_systems(Startup, setup_hud);
+        app.update();
+
+        assert_eq!(app.world_mut().query::<&CrosshairDot>().iter(app.world()).count(), 1);
+        assert_eq!(app.world_mut().query::<&HealthBarFill>().iter(app.world()).count(), 1);
+        assert_eq!(app.world_mut().query::<&StaminaBarFill>().iter(app.world()).count(), 1);
+    }
+
+    #[test]
+    fn test_crosshair_color_updates_on_hover() {
+        let mut app = App::new();
+        app.init_resource::<InteractionState>();
+        app.add_systems(Update, update_crosshair_target);
+
+        let dot = app.world_mut().spawn((
+            CrosshairDot,
+            BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.7)),
+        )).id();
+
+        // Hover over dummy entity
+        let dummy = app.world_mut().spawn_empty().id();
+        app.world_mut().resource_mut::<InteractionState>().hovered_entity = Some(dummy);
+
+        app.update();
+
+        let bg = app.world().get::<BackgroundColor>(dot).unwrap();
+        assert_eq!(bg.0, Color::srgb(0.1, 0.95, 1.0), "Crosshair must turn cyan when hovering an interactable");
+
+        // Clear hover
+        app.world_mut().resource_mut::<InteractionState>().hovered_entity = None;
+        app.update();
+
+        let bg_cleared = app.world().get::<BackgroundColor>(dot).unwrap();
+        assert_eq!(bg_cleared.0, Color::srgba(1.0, 1.0, 1.0, 0.7), "Crosshair must revert to default white");
+    }
+
+    #[test]
+    fn test_hud_bars_update_with_player_stats() {
+        let mut app = App::new();
+        app.add_systems(Update, update_hud_bars);
+
+        app.world_mut().spawn((
+            Player,
+            Health { current: 50.0, max: 100.0 }, // 50%
+            Stamina { current: 25.0, max: 100.0 }, // 25%
+        ));
+
+        let health_bar = app.world_mut().spawn((
+            HealthBarFill,
+            Node::default(),
+        )).id();
+
+        let stamina_bar = app.world_mut().spawn((
+            StaminaBarFill,
+            Node::default(),
+        )).id();
+
+        app.update();
+
+        let hp_node = app.world().get::<Node>(health_bar).unwrap();
+        let st_node = app.world().get::<Node>(stamina_bar).unwrap();
+
+        assert_eq!(hp_node.width, Val::Percent(50.0));
+        assert_eq!(st_node.width, Val::Percent(25.0));
+    }
+}

@@ -119,3 +119,101 @@ fn update_thermal_geysers(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_alchemy_plugin_build() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(AlchemyPlugin);
+        assert!(app.is_plugin_added::<AlchemyPlugin>());
+    }
+
+    #[test]
+    fn test_effect_receiver_apply_and_query() {
+        let mut receiver = EffectReceiverComponent::default();
+        assert!(!receiver.has_effect(AlchemicalEffectKind::Frost));
+
+        receiver.apply_effect(AlchemicalEffectKind::Frost, 3.0, 15.0);
+        assert!(receiver.has_effect(AlchemicalEffectKind::Frost));
+        assert_eq!(receiver.active_effects.len(), 1);
+
+        // Refresh with longer duration
+        receiver.apply_effect(AlchemicalEffectKind::Frost, 5.0, 25.0);
+        assert_eq!(receiver.active_effects.len(), 1);
+        assert_eq!(receiver.active_effects[0].duration, 5.0);
+        assert_eq!(receiver.active_effects[0].magnitude, 25.0);
+    }
+
+    #[test]
+    fn test_system_update_active_effects() {
+        let mut world = World::new();
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_millis(200));
+        world.insert_resource(time);
+
+        let entity = world.spawn(EffectReceiverComponent {
+            active_effects: vec![
+                ActiveEffect {
+                    kind: AlchemicalEffectKind::Vitality,
+                    duration: 0.1,
+                    elapsed: 0.0,
+                    magnitude: 20.0,
+                },
+            ],
+        }).id();
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(update_active_effects);
+        schedule.run(&mut world);
+
+        let receiver = world.get::<EffectReceiverComponent>(entity).unwrap();
+        assert!(!receiver.has_effect(AlchemicalEffectKind::Vitality), "Effect must have expired and been retained out");
+    }
+
+    #[test]
+    fn test_system_update_thermal_geysers() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(AlchemyPlugin);
+
+        // Spawn geyser that is erupting
+        app.world_mut().spawn((
+            ThermalGeyser {
+                eruption_timer: 0.0,
+                eruption_interval: 5.0,
+                is_erupting: true,
+                heat_radius: 6.0,
+            },
+            Transform::from_xyz(0.0, 0.0, 0.0),
+        ));
+
+        // Spawn close receiver
+        let close_entity = app.world_mut().spawn((
+            EffectReceiverComponent::default(),
+            Transform::from_xyz(2.0, 0.0, 2.0),
+        )).id();
+
+        // Spawn far receiver
+        let far_entity = app.world_mut().spawn((
+            EffectReceiverComponent::default(),
+            Transform::from_xyz(20.0, 0.0, 20.0),
+        )).id();
+
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_millis(16));
+        app.insert_resource(time);
+
+        app.update();
+
+        let close_recv = app.world().get::<EffectReceiverComponent>(close_entity).unwrap();
+        assert!(close_recv.has_effect(AlchemicalEffectKind::ThermalHeat));
+        assert!(close_recv.has_effect(AlchemicalEffectKind::Vaporize));
+
+        let far_recv = app.world().get::<EffectReceiverComponent>(far_entity).unwrap();
+        assert!(!far_recv.has_effect(AlchemicalEffectKind::ThermalHeat));
+    }
+}

@@ -209,3 +209,36 @@ pub fn setup_cavern_world(
 
     info!("Deep Cavern Grotto initialized with Grand Waterfall, Thermal Geysers, and River Stream!");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dungeon_plugin_build() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(DungeonPlugin);
+        assert!(app.is_plugin_added::<DungeonPlugin>());
+    }
+
+    #[test]
+    fn test_setup_cavern_world_spawns_environment() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
+        app.init_asset::<bevy::scene::Scene>();
+        app.init_asset::<Mesh>();
+        app.init_asset::<StandardMaterial>();
+        app.init_asset::<WaterMaterial>();
+        app.add_systems(Startup, setup_cavern_world);
+        app.update();
+
+        // Verify grand waterfall and river elements were spawned
+        assert!(app.world().resource::<AmbientLight>().brightness > 0.0);
+        let water_plane_count = app.world_mut().query::<&MeshMaterial3d<WaterMaterial>>().iter(app.world()).count();
+        assert!(water_plane_count >= 2, "Grand waterfall curtain and river stream must be spawned");
+
+        let geyser_count = app.world_mut().query::<&ThermalGeyser>().iter(app.world()).count();
+        assert_eq!(geyser_count, 2, "Thermal geysers must be spawned");
+    }
+}

@@ -71,3 +71,78 @@ pub fn update_death_camera(
         cam_tf.look_at(death_cam.target_point + Vec3::Y * 0.5, Vec3::Y);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_check_player_death_system_triggers_ragdoll() {
+        let mut app = App::new();
+        app.add_systems(Update, check_player_death);
+
+        let head = app.world_mut().spawn((
+            HeadHatPart,
+            RenderLayers::layer(1),
+        )).id();
+
+        let camera = app.world_mut().spawn((
+            PlayerCamera,
+            Transform::IDENTITY,
+        )).id();
+
+        let player = app.world_mut().spawn((
+            Player,
+            PlayerState::Active,
+            Health { current: 0.0, max: 100.0 }, // 0 HP = dead
+            Transform::from_xyz(0.0, 1.0, 0.0),
+        )).id();
+
+        app.update();
+
+        // 1. Player state should be dead
+        let state = app.world().get::<PlayerState>(player).unwrap();
+        assert_eq!(*state, PlayerState::Dead);
+
+        // 2. Head layer should have transitioned back to layer 0
+        let head_layers = app.world().get::<RenderLayers>(head).unwrap();
+        assert!(head_layers.intersects(&RenderLayers::layer(0)));
+
+        // 3. Player should now have RigidBody::Dynamic with impulse
+        assert!(app.world().get::<RigidBody>(player).is_some());
+        let vel = app.world().get::<LinearVelocity>(player).unwrap();
+        assert_eq!(vel.0, Vec3::new(0.0, 1.5, -2.0));
+
+        // 4. Camera should have DeathCamera component
+        assert!(app.world().get::<DeathCamera>(camera).is_some());
+    }
+
+    #[test]
+    fn test_update_death_camera_system() {
+        let mut app = App::new();
+        app.add_systems(Update, update_death_camera);
+
+        app.world_mut().spawn((
+            Player,
+            Transform::from_xyz(0.0, 0.0, 0.0),
+        ));
+
+        let camera = app.world_mut().spawn((
+            DeathCamera {
+                target_point: Vec3::ZERO,
+                orbit_angle: 0.0,
+                distance: 4.0,
+            },
+            Transform::IDENTITY,
+        )).id();
+
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_millis(100));
+        app.insert_resource(time);
+
+        app.update();
+
+        let death_cam = app.world().get::<DeathCamera>(camera).unwrap();
+        assert!(death_cam.orbit_angle > 0.0, "Orbit angle should have advanced");
+    }
+}

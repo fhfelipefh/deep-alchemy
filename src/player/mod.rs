@@ -25,3 +25,16 @@ impl Plugin for PlayerPlugin {
             );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_player_plugin_build() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(PlayerPlugin);
+        assert!(app.is_plugin_added::<PlayerPlugin>());
+    }
+}

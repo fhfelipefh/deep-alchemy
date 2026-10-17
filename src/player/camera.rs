@@ -95,3 +95,67 @@ pub fn configure_player_model_layers(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_configure_player_model_layers_assigns_layer_1_to_hat() {
+        let mut app = App::new();
+        app.add_systems(Update, configure_player_model_layers);
+
+        let hat_entity = app.world_mut().spawn(Name::new("Head_Hat")).id();
+        let coat_entity = app.world_mut().spawn(Name::new("Player_Coat")).id();
+
+        app.update();
+
+        // Hat must have received HeadHatPart and RenderLayers::layer(1)
+        assert!(app.world().get::<HeadHatPart>(hat_entity).is_some());
+        let hat_layer = app.world().get::<RenderLayers>(hat_entity).unwrap();
+        assert!(!hat_layer.intersects(&RenderLayers::layer(0)));
+        assert!(hat_layer.intersects(&RenderLayers::layer(1)));
+
+        // Coat must NOT have HeadHatPart
+        assert!(app.world().get::<HeadHatPart>(coat_entity).is_none());
+    }
+
+    #[test]
+    fn test_grab_mouse_locks_primary_window() {
+        let mut app = App::new();
+        app.add_systems(Update, grab_mouse);
+
+        let window_entity = app.world_mut().spawn((
+            PrimaryWindow,
+            Window {
+                cursor_options: bevy::window::CursorOptions {
+                    grab_mode: CursorGrabMode::None,
+                    visible: true,
+                    ..default()
+                },
+                ..default()
+            },
+        )).id();
+
+        app.update();
+
+        let window = app.world().get::<Window>(window_entity).unwrap();
+        assert_eq!(window.cursor_options.grab_mode, CursorGrabMode::Locked);
+        assert!(!window.cursor_options.visible);
+    }
+
+    #[test]
+    fn test_setup_player_spawns_player_hierarchy() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
+        app.init_asset::<bevy::scene::Scene>();
+        app.add_systems(Startup, setup_player);
+        app.update();
+
+        let player_count = app.world_mut().query::<&Player>().iter(app.world()).count();
+        assert_eq!(player_count, 1, "Player root entity must be spawned");
+
+        let camera_count = app.world_mut().query::<&PlayerCamera>().iter(app.world()).count();
+        assert_eq!(camera_count, 1, "Player 1P camera must be spawned");
+    }
+}
