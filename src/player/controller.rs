@@ -3,7 +3,139 @@ use bevy::{
     prelude::*,
 };
 use super::camera::{LocomotionState, Player, PlayerCamera, PlayerState, Stamina};
+use crate::dungeon::modular_kit::{CavernObstacle, ObstacleShape};
 use crate::ui::menu::{GameSettings, GameState};
+
+pub fn resolve_player_collision_sliding(
+    desired_pos: Vec3,
+    prev_pos: Vec3,
+    player_radius: f32,
+    obstacles: &[(&Transform, ObstacleShape)],
+) -> Vec3 {
+    let mut resolved = desired_pos;
+    let attempted_move = Vec2::new(desired_pos.x - prev_pos.x, desired_pos.z - prev_pos.z);
+    let is_moving = attempted_move.length_squared() > 1e-6;
+
+    // Relaxation passes for multi-obstacle and corner resolution
+    for _ in 0..3 {
+        for (tf, shape) in obstacles {
+            match shape {
+                ObstacleShape::Cylinder { radius, height } => {
+                    let obs_y = tf.translation.y;
+                    let half_h = height * 0.5;
+                    // Check height bounds
+                    if resolved.y < obs_y - half_h - 1.2 || resolved.y > obs_y + half_h + 0.5 {
+                        continue;
+                    }
+
+                    let center = Vec2::new(tf.translation.x, tf.translation.z);
+                    let p = Vec2::new(resolved.x, resolved.z);
+                    let diff = p - center;
+                    let dist = diff.length();
+                    let min_dist = *radius + player_radius;
+
+                    if dist < min_dist {
+                        let normal = if dist > 1e-4 { diff / dist } else { Vec2::new(1.0, 0.0) };
+                        let penetration = min_dist - dist;
+                        resolved.x += normal.x * penetration;
+                        resolved.z += normal.y * penetration;
+
+                        if is_moving {
+                            let dot = attempted_move.dot(normal);
+                            if dot < 0.0 {
+                                // Tangential sliding: subtract inward normal component
+                                let slide = attempted_move - normal * dot;
+                                let slid_target = Vec2::new(prev_pos.x, prev_pos.z) + slide;
+                                let re_diff = slid_target - center;
+                                let re_dist = re_diff.length();
+                                if re_dist >= min_dist {
+                                    resolved.x = slid_target.x;
+                                    resolved.z = slid_target.y;
+                                } else {
+                                    let re_norm = if re_dist > 1e-4 { re_diff / re_dist } else { normal };
+                                    resolved.x = center.x + re_norm.x * min_dist;
+                                    resolved.z = center.y + re_norm.y * min_dist;
+                                }
+                            }
+                        }
+                    }
+                }
+                ObstacleShape::Cuboid { half_extents } => {
+                    let obs_y = tf.translation.y;
+                    if resolved.y < obs_y - half_extents.y - 1.2 || resolved.y > obs_y + half_extents.y + 0.5 {
+                        continue;
+                    }
+
+                    let (_, rot_y, _) = tf.rotation.to_euler(EulerRot::YXZ);
+                    let diff_world = Vec2::new(resolved.x - tf.translation.x, resolved.z - tf.translation.z);
+                    let cos_r = (-rot_y).cos();
+                    let sin_r = (-rot_y).sin();
+                    let local_x = diff_world.x * cos_r - diff_world.y * sin_r;
+                    let local_z = diff_world.x * sin_r + diff_world.y * cos_r;
+
+                    let hx = half_extents.x;
+                    let hz = half_extents.z;
+
+                    let clamped_x = local_x.clamp(-hx, hx);
+                    let clamped_z = local_z.clamp(-hz, hz);
+
+                    let inside_box = local_x.abs() < hx && local_z.abs() < hz;
+
+                    if inside_box {
+                        let d_px = hx - local_x;
+                        let d_nx = local_x - (-hx);
+                        let d_pz = hz - local_z;
+                        let d_nz = local_z - (-hz);
+
+                        let min_d = d_px.min(d_nx).min(d_pz).min(d_nz);
+                        let mut push_local = Vec2::new(local_x, local_z);
+
+                        if min_d == d_px {
+                            push_local.x = hx + player_radius;
+                        } else if min_d == d_nx {
+                            push_local.x = -hx - player_radius;
+                        } else if min_d == d_pz {
+                            push_local.y = hz + player_radius;
+                        } else {
+                            push_local.y = -hz - player_radius;
+                        }
+
+                        let cos_b = rot_y.cos();
+                        let sin_b = rot_y.sin();
+                        resolved.x = tf.translation.x + push_local.x * cos_b - push_local.y * sin_b;
+                        resolved.z = tf.translation.z + push_local.x * sin_b + push_local.y * cos_b;
+                    } else {
+                        let to_player = Vec2::new(local_x - clamped_x, local_z - clamped_z);
+                        let dist = to_player.length();
+                        if dist < player_radius {
+                            let local_norm = if dist > 1e-4 { to_player / dist } else { Vec2::new(1.0, 0.0) };
+                            let push_local = Vec2::new(clamped_x, clamped_z) + local_norm * player_radius;
+
+                            let cos_b = rot_y.cos();
+                            let sin_b = rot_y.sin();
+                            resolved.x = tf.translation.x + push_local.x * cos_b - push_local.y * sin_b;
+                            resolved.z = tf.translation.z + push_local.x * sin_b + push_local.y * cos_b;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Cavern perimeter boundary limits (Canyon walls and rear grotto enclosure)
+        if resolved.x < -5.0 + player_radius {
+            resolved.x = -5.0 + player_radius;
+        } else if resolved.x > 5.0 - player_radius {
+            resolved.x = 5.0 - player_radius;
+        }
+        if resolved.z > 2.2 - player_radius {
+            resolved.z = 2.2 - player_radius;
+        } else if resolved.z < -12.5 + player_radius {
+            resolved.z = -12.5 + player_radius;
+        }
+    }
+
+    resolved
+}
 
 pub fn player_look(
     game_state: Option<Res<State<GameState>>>,
@@ -52,6 +184,10 @@ pub fn player_movement(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     mut query: Query<(&PlayerState, &mut Transform, &mut Stamina, &mut LocomotionState), With<Player>>,
+    obstacles_query: Query<
+        (&Transform, Option<&ObstacleShape>),
+        (With<CavernObstacle>, Without<Player>),
+    >,
 ) {
     if let Some(state) = game_state {
         if *state.get() != GameState::InGame {
@@ -60,6 +196,15 @@ pub fn player_movement(
     }
 
     let dt = time.delta_secs();
+
+    // Query scene obstacles once per frame
+    let obstacle_list: Vec<(&Transform, ObstacleShape)> = obstacles_query
+        .iter()
+        .map(|(obs_tf, shape_opt)| {
+            let shape = shape_opt.copied().unwrap_or(ObstacleShape::Cylinder { radius: 0.55, height: 2.0 });
+            (obs_tf, shape)
+        })
+        .collect();
 
     for (state, mut tf, mut stamina, mut locomotion) in query.iter_mut() {
         if *state != PlayerState::Active {
@@ -129,10 +274,17 @@ pub fn player_movement(
             }
         }
 
-        // Horizontal Movement
+        // Horizontal Movement with Sliding Collision Resolution
         if is_moving {
             let vel = move_dir.normalize() * locomotion.current_speed * dt;
-            tf.translation += vel;
+            let desired_pos = tf.translation + vel;
+            let player_radius = 0.35;
+            tf.translation = resolve_player_collision_sliding(
+                desired_pos,
+                tf.translation,
+                player_radius,
+                &obstacle_list,
+            );
 
             // Head-Bob oscillation step
             let bob_freq = if is_sprinting { 14.0 } else { 8.0 };
@@ -367,5 +519,178 @@ mod tests {
 
         assert_ne!(player_tf.rotation, Quat::IDENTITY, "Player yaw must have changed");
         assert_ne!(cam_tf.rotation, Quat::IDENTITY, "Camera pitch must have changed");
+    }
+
+    #[test]
+    fn test_collision_blocks_player_walking_into_mushroom() {
+        let mut app = App::new();
+        app.add_systems(Update, player_movement);
+        app.init_resource::<Time>();
+
+        let player = app.world_mut().spawn((
+            Player,
+            PlayerState::Active,
+            LocomotionState::default(),
+            Transform::from_xyz(0.0, 1.2, 0.0),
+            Stamina { current: 100.0, max: 100.0 },
+        )).id();
+
+        // Spawn Mushroom obstacle 1.0m ahead
+        app.world_mut().spawn((
+            CavernObstacle,
+            ObstacleShape::Cylinder { radius: 0.5, height: 2.0 },
+            Transform::from_xyz(0.0, 1.0, -1.0),
+        ));
+
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::KeyW);
+        app.world_mut().insert_resource(keys);
+
+        // Run 40 frames walking towards obstacle
+        for _ in 0..40 {
+            app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+            app.update();
+        }
+
+        let player_z = app.world().get::<Transform>(player).unwrap().translation.z;
+        // Obstacle at -1.0 with radius 0.5 + player radius 0.35 => player cannot pass z = -0.15
+        assert!(
+            player_z >= -0.16,
+            "Player must be blocked before mushroom obstacle: z={:.3} must be >= -0.16",
+            player_z
+        );
+    }
+
+    #[test]
+    fn test_collision_slides_player_diagonally_along_obstacle() {
+        let mut app = App::new();
+        app.add_systems(Update, player_movement);
+        app.init_resource::<Time>();
+
+        let player = app.world_mut().spawn((
+            Player,
+            PlayerState::Active,
+            LocomotionState::default(),
+            Transform::from_xyz(0.0, 1.2, 0.0),
+            Stamina { current: 100.0, max: 100.0 },
+        )).id();
+
+        // Spawn Mushroom obstacle directly ahead
+        app.world_mut().spawn((
+            CavernObstacle,
+            ObstacleShape::Cylinder { radius: 0.5, height: 2.0 },
+            Transform::from_xyz(0.0, 1.0, -1.0),
+        ));
+
+        // Press W + D (attempting to walk diagonally forward-right)
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::KeyW);
+        keys.press(KeyCode::KeyD);
+        app.world_mut().insert_resource(keys);
+
+        // Run 10 frames: player contacts the obstacle, forward motion arrested, deflected along +X
+        for _ in 0..10 {
+            app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+            app.update();
+        }
+
+        let contact_tf = app.world().get::<Transform>(player).unwrap();
+        let dist_to_obs = (Vec2::new(contact_tf.translation.x, contact_tf.translation.z) - Vec2::new(0.0, -1.0)).length();
+        assert!(
+            dist_to_obs >= 0.849,
+            "Player must never penetrate obstacle cylinder radius (0.85): dist={:.3}",
+            dist_to_obs
+        );
+        assert!(
+            contact_tf.translation.x > 0.2,
+            "Player must deflect tangentially along surface: x={:.3}",
+            contact_tf.translation.x
+        );
+
+        // Run 30 more frames: player completes sliding around the obstacle
+        for _ in 0..30 {
+            app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+            app.update();
+        }
+
+        let cleared_tf = app.world().get::<Transform>(player).unwrap();
+        assert!(
+            cleared_tf.translation.x > 0.8,
+            "Player must have smoothly slid past the right side of the obstacle: x={:.3}",
+            cleared_tf.translation.x
+        );
+    }
+
+    #[test]
+    fn test_collision_blocks_player_at_bench_cuboid() {
+        let mut app = App::new();
+        app.add_systems(Update, player_movement);
+        app.init_resource::<Time>();
+
+        // Player starting just in front of bench
+        let player = app.world_mut().spawn((
+            Player,
+            PlayerState::Active,
+            LocomotionState::default(),
+            Transform::from_xyz(2.15, 1.2, -0.8),
+            Stamina { current: 100.0, max: 100.0 },
+        )).id();
+
+        // Bench cuboid at z = -1.75, half_extents = (0.8, 0.45, 0.35)
+        app.world_mut().spawn((
+            CavernObstacle,
+            ObstacleShape::Cuboid { half_extents: Vec3::new(0.8, 0.45, 0.35) },
+            Transform::from_xyz(2.15, 0.5, -1.75),
+        ));
+
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::KeyW); // Walk forward towards bench
+        app.world_mut().insert_resource(keys);
+
+        for _ in 0..40 {
+            app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+            app.update();
+        }
+
+        let player_z = app.world().get::<Transform>(player).unwrap().translation.z;
+        // Bench front edge is at -1.75 + 0.35 = -1.40. With player radius 0.35, player cannot pass z = -1.05
+        assert!(
+            player_z >= -1.06,
+            "Player must be blocked before bench cuboid: z={:.3} must be >= -1.06",
+            player_z
+        );
+    }
+
+    #[test]
+    fn test_collision_blocks_player_at_cavern_canyon_walls() {
+        let mut app = App::new();
+        app.add_systems(Update, player_movement);
+        app.init_resource::<Time>();
+
+        // Player starting near left canyon wall boundary
+        let player = app.world_mut().spawn((
+            Player,
+            PlayerState::Active,
+            LocomotionState::default(),
+            Transform::from_xyz(-4.5, 1.2, 0.0),
+            Stamina { current: 100.0, max: 100.0 },
+        )).id();
+
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::KeyA); // Walk left into canyon wall
+        app.world_mut().insert_resource(keys);
+
+        for _ in 0..40 {
+            app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+            app.update();
+        }
+
+        let player_x = app.world().get::<Transform>(player).unwrap().translation.x;
+        // Canyon wall limit is at -5.0 + player radius 0.35 = -4.65
+        assert!(
+            player_x >= -4.66,
+            "Player must be blocked by canyon wall: x={:.3} must be >= -4.66",
+            player_x
+        );
     }
 }

@@ -187,7 +187,7 @@ def build_visible_cavern_roof_and_arch():
     grid = []
     for iv in range(segments_v + 1):
         v_frac = iv / segments_v
-        curr_y = -2.5 + v_frac * 14.5
+        curr_y = -3.5 + v_frac * 16.0
         
         row = []
         for iu in range(segments_u + 1):
@@ -345,6 +345,9 @@ visible_stalactite_targets = [
     (-4.8, 5.2, 4.20, 0.44, (0.07, -0.05)),
     (-3.6, 4.8, 4.60, 0.36, (-0.03, 0.04)),
     (-3.4, 6.2, 4.80, 0.38, (-0.04, 0.03)),
+    (-4.2, 0.8, 3.80, 0.40, (0.05, -0.04)),
+    (-3.8, -0.8, 3.60, 0.38, (0.04, 0.03)),
+    (-3.5, 2.0, 4.00, 0.36, (-0.03, 0.04)),
 
     # Top-Right framing stalactites: (x, y, target_tip_z, radius, tilt)
     (5.2, 3.8, 4.30, 0.42, (-0.06, -0.04)),
@@ -352,6 +355,9 @@ visible_stalactite_targets = [
     (4.8, 5.2, 4.20, 0.44, (-0.07, -0.05)),
     (3.6, 4.8, 4.60, 0.36, (0.03, 0.04)),
     (3.4, 6.2, 4.80, 0.38, (0.04, 0.03)),
+    (4.2, 0.8, 3.80, 0.40, (-0.05, -0.04)),
+    (3.8, -0.8, 3.60, 0.38, (-0.04, 0.03)),
+    (3.5, 2.0, 4.00, 0.36, (0.03, 0.04)),
 ]
 
 for idx, (sx, sy, target_tip_z, sr, stilt) in enumerate(visible_stalactite_targets):
@@ -361,95 +367,134 @@ for idx, (sx, sy, target_tip_z, sr, stilt) in enumerate(visible_stalactite_targe
     spawn_organic_stalactite(sx, sy, z_top, height=sh, radius=sr, tilt=stilt, name=f"VisibleStalactite_{idx}")
 
 # ==============================================================================
-# 3. CONTINUOUS AMPHITHEATER ROCK WALL & ORGANIC TRAVERTINE TERRACES
+# 3. CONTINUOUS U-CANYON GROTTO WALLS & 3-TIER ROCK TERRACES
 # ==============================================================================
-def build_continuous_rock_amphitheater():
+def build_continuous_u_canyon_grotto_walls():
     """
-    Unified Continuous Horseshoe Rock Amphitheater:
-    - Sweeps continuously from the left grass banks (X = -5.1, Y = 4.4), around the lake shores,
-      directly behind the waterfall cascade (X = 0, Y = 11.15), and back to the right grass banks (X = +5.1, Y = 4.4).
-    - Rises from ground level (Z = 0.0) up to the cavern vault ceiling (Z = 18.2), seamlessly enclosing the grotto.
-    - Completely eliminates any horizon gaps, void leaks, or blocky artifacts.
-    - Uses 72 radial segments x 40 vertical height slices with multi-scale continuous 3D noise.
-    - Assigns integrated velvet moss on horizontal ledges (Normal_Z > 0.55) and smooth shading.
+    Unified Continuous Horseshoe Canyon & Amphitheater Walls:
+    - Runs continuously from rear wall behind player (Y = -3.5, X in [-6.0, 6.0]),
+      along the left canyon rock wall (X in [-6.2, -5.5], Y in [-3.5, 5.5]),
+      around the lake amphitheater horseshoe (Y in [5.5, 12.0], curving tightly behind waterfall cascade at X=0, Y=11.2),
+      along the right canyon rock wall (X in [5.5, 6.2], Y in [5.5, -3.5]),
+      and closing seamlessly behind the player!
+    - 100% seals the grotto horizontally: no empty green voids or black gaps in camera view.
+    - Rises from terrain surface level up to the cavern ceiling vault, connecting seamlessly.
+    - 3-tier stepped terracing:
+      * Tier 1 (Base ledge, 0.0..0.28): Inward bulge forming natural travertine base shelves.
+      * Tier 2 (Mid plant terrace, 0.28..0.55): Stepped horizontal ledge for moss, ferns, and hanging vines.
+      * Tier 3 (Upper cliff, 0.55..1.0): Sheer vertical cliff connecting to ceiling vault.
+    - 100% smooth shading (p.use_smooth = True) and multi-scale continuous 3D noise.
+    - Integrated velvet moss on horizontal surfaces (normal.z > 0.50).
     """
     bm = bmesh.new()
-    u_segs = 72
-    v_segs = 40
-    
-    lake_cx = 0.0
-    lake_cy = 8.5
-    
+    u_segs = 128
+    v_segs = 44
+
     grid = []
-    for iv in range(v_segs + 1):
-        v_frac = iv / v_segs
-        curr_z = 0.0 + v_frac * 18.2
-        
-        row = []
-        for iu in range(u_segs + 1):
-            u_frac = iu / u_segs
-            # Horseshoe angle sweep: -129 deg to +129 deg
-            ang = -2.25 + u_frac * 4.50
-            t_ang = abs(ang) / 2.25 # 0.0 at waterfall center, 1.0 at lateral banks
-            
-            # Distance from lake center: hugs waterfall closely at center (2.65m), expands to 6.5m at sides
+    for iu in range(u_segs + 1):
+        u_frac = iu / u_segs
+
+        # Parameterize the continuous closed U-contour in (X, Y)
+        if u_frac < 0.22:
+            # Segment 1: Left canyon wall from rear to lake margin
+            t = u_frac / 0.22
+            y0 = -3.5 + t * 9.0
+            meander = math.sin(t * math.pi * 2.0) * 0.35 + continuous_noise_3d(-5.8, y0 * 0.4, 0.0) * 0.25
+            x0 = -5.8 + meander
+            inward_nx = 1.0
+            inward_ny = 0.0
+        elif u_frac < 0.55:
+            # Segment 2: Horseshoe curve around lake and behind waterfall
+            t = (u_frac - 0.22) / 0.33
+            ang = -2.25 + t * 4.50
+            t_ang = abs(ang) / 2.25
             dist_base = 2.65 + 3.85 * (t_ang ** 1.5)
-            dist = dist_base + (curr_z * 0.08)
-            
-            # Organic rock noise in 3D
-            n_disp = continuous_noise_3d(math.sin(ang) * dist * 0.5, math.cos(ang) * dist * 0.5, curr_z * 0.35) * 0.42
-            dist += n_disp
-            
-            vx = lake_cx + math.sin(ang) * dist
-            vy = lake_cy + math.cos(ang) * dist
+            x0 = 0.0 + math.sin(ang) * dist_base
+            y0 = 8.5 + math.cos(ang) * dist_base
+            inward_nx = -math.sin(ang)
+            inward_ny = -math.cos(ang)
+        elif u_frac < 0.77:
+            # Segment 3: Right canyon wall from lake margin down to rear
+            t = (u_frac - 0.55) / 0.22
+            y0 = 5.5 - t * 9.0
+            meander = math.sin(t * math.pi * 2.0) * 0.35 + continuous_noise_3d(5.8, y0 * 0.4, 0.0) * 0.25
+            x0 = 5.8 - meander
+            inward_nx = -1.0
+            inward_ny = 0.0
+        else:
+            # Segment 4: Rear wall behind player closing from right to left
+            t = (u_frac - 0.77) / 0.23
+            x0 = 5.8 - t * 11.6
+            meander = math.sin(t * math.pi) * 0.4
+            y0 = -3.5 - meander
+            inward_nx = 0.0
+            inward_ny = 1.0
+
+        z_ground = get_terrain_surface_z(x0, y0) - 0.30
+        z_ceil = get_cavern_ceiling_z(x0, y0) + 0.20
+        h_total = max(3.5, z_ceil - z_ground)
+
+        col = []
+        for iv in range(v_segs + 1):
+            v_frac = iv / v_segs
+            curr_z = z_ground + v_frac * h_total
+
+            # 3-tier stepped terracing profile
+            if v_frac < 0.28:
+                d_tier = math.sin((v_frac / 0.28) * math.pi) * 0.65
+            elif v_frac < 0.55:
+                d_tier = math.sin(((v_frac - 0.28) / 0.27) * math.pi) * 0.52
+            else:
+                d_tier = ((v_frac - 0.55) / 0.45) * 0.15
+
+            n_disp = continuous_noise_3d(x0 * 0.45, y0 * 0.45, curr_z * 0.35) * 0.45
+            d_total = d_tier + n_disp
+
+            vx = x0 + inward_nx * d_total
+            vy = y0 + inward_ny * d_total
             vz = curr_z
-            row.append(bm.verts.new((vx, vy, vz)))
-        grid.append(row)
-        
+            vert = bm.verts.new((vx, vy, vz))
+            col.append(vert)
+        grid.append(col)
+
     bm.verts.ensure_lookup_table()
-    for iv in range(v_segs):
-        for iu in range(u_segs):
-            v1 = grid[iv][iu]
-            v2 = grid[iv][iu + 1]
-            v3 = grid[iv + 1][iu + 1]
-            v4 = grid[iv + 1][iu]
+    for iu in range(u_segs):
+        for iv in range(v_segs):
+            v1 = grid[iu][iv]
+            v2 = grid[iu + 1][iv]
+            v3 = grid[iu + 1][iv + 1]
+            v4 = grid[iu][iv + 1]
             f = bm.faces.new((v1, v2, v3, v4))
-            
+
             norm = f.normal
             center = f.calc_center_median()
-            if norm.z > 0.55:
-                f.material_index = 2 # M_Cavern_Moss on horizontal ledges
-            elif center.z > 8.0 and abs(center.x) < 3.5:
+            if norm.z > 0.50:
+                f.material_index = 2 # M_Cavern_Moss on horizontal terraced ledges
+            elif center.z > 8.0 and abs(center.x) < 3.5 and center.y > 8.0:
                 f.material_index = 1 # M_Rock_Lit near upper skylight
             else:
                 f.material_index = 0 # M_Rock_Shadow (wet dark cavern stone)
-                
+
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    mesh = bpy.data.meshes.new("Continuous_Amphitheater_Mesh")
-    obj = bpy.data.objects.new("Continuous_Amphitheater", mesh)
+    mesh = bpy.data.meshes.new("Continuous_U_Canyon_Walls_Mesh")
+    obj = bpy.data.objects.new("Continuous_U_Canyon_Walls", mesh)
     bpy.context.collection.objects.link(obj)
     bm.to_mesh(mesh)
     bm.free()
-    
+
     for p in mesh.polygons:
         p.use_smooth = True
     mesh.update()
-    
+
     obj.data.materials.append(mat_rock_shadow)
     obj.data.materials.append(mat_rock_lit)
     obj.data.materials.append(mat_cavern_moss)
     return obj
 
-build_continuous_rock_amphitheater()
+build_continuous_u_canyon_grotto_walls()
 
-
-
-# Organic Travertine Boulder Terraces flanking waterfall (Subdivided Icospheres + Noise)
+# Organic Travertine Boulder Terraces flanking waterfall & canyon walls (Subdivided Icospheres + Noise)
 def spawn_organic_boulder(name, center_x, center_y, center_z, scale=(1.0, 1.0, 1.0), rot_z=0.0, seed=42):
-    """
-    Generates a natural rounded travertine boulder with high subdivision (subdivisions=4),
-    continuous 3D noise displacement, and integrated top moss (Normal_Z > 0.55).
-    """
     bm = bmesh.new()
     bmesh.ops.create_icosphere(bm, subdivisions=4, radius=1.0)
     
@@ -461,7 +506,6 @@ def spawn_organic_boulder(name, center_x, center_y, center_z, scale=(1.0, 1.0, 1
         if dist > 0.0001:
             norm = p.normalized()
             n = continuous_noise_3d(norm.x * 2.2 + seed, norm.y * 2.2 + seed, norm.z * 2.2 + seed)
-            # Flatten bottom slightly to seat on terrain
             bottom_flatten = 0.82 if p.z < -0.15 else 1.0
             disp = 1.0 + (n * 0.24) + rng.uniform(-0.06, 0.06)
             v.co = norm * (dist * disp * bottom_flatten)
@@ -469,15 +513,11 @@ def spawn_organic_boulder(name, center_x, center_y, center_z, scale=(1.0, 1.0, 1
             v.co.y *= scale[1]
             v.co.z *= scale[2]
             
-    # Apply rotation
     rot_mat = Matrix.Rotation(rot_z, 4, 'Z')
     bm.transform(rot_mat)
-    
-    # Translate to position
     trans_mat = Matrix.Translation((center_x, center_y, center_z))
     bm.transform(trans_mat)
     
-    # Assign material based on surface normal (integrated moss)
     for f in bm.faces:
         if f.normal.z > 0.55:
             f.material_index = 2 # M_Cavern_Moss on top
@@ -500,21 +540,53 @@ def spawn_organic_boulder(name, center_x, center_y, center_z, scale=(1.0, 1.0, 1
     obj.data.materials.append(mat_cavern_moss)
     return obj
 
-# Stepped organic boulder terraces hugging the lagoon sides
+# Stepped organic boulder terraces in 3 height levels (Base, Mid, Upper) framing both sides
 organic_terraces = [
-    # Left tiered shelves
+    # Left tiered shelves (Base, Mid, Upper tiers from camera foreground to waterfall)
+    # Tier 1 (Base shelves):
+    ("Left_Terrace_B0", -4.2, -1.8, 0.45, (1.6, 1.4, 0.85), 0.3, 110),
+    ("Left_Terrace_B1", -4.0, -0.4, 0.48, (1.5, 1.3, 0.90), -0.2, 111),
+    ("Left_Terrace_B2", -3.8, 1.0, 0.50, (1.6, 1.4, 0.95), 0.4, 112),
+    ("Left_Terrace_B3", -3.9, 2.5, 0.52, (1.5, 1.3, 0.90), -0.3, 113),
+    ("Left_Terrace_B4", -4.2, 4.4, 0.55, (1.6, 1.4, 0.90), 0.2, 114),
     ("Left_Terrace_1", -4.2, 6.8, 0.55, (1.6, 1.4, 0.9), 0.2, 101),
-    ("Left_Terrace_2", -4.8, 7.8, 1.40, (1.5, 1.3, 1.1), -0.3, 102),
-    ("Left_Terrace_3", -5.2, 8.8, 2.45, (1.4, 1.2, 1.2), 0.4, 103),
-    ("Left_Terrace_4", -5.5, 9.8, 3.65, (1.3, 1.1, 1.3), -0.2, 104),
     ("Left_Terrace_Low", -3.6, 5.8, 0.40, (1.2, 1.1, 0.65), 0.5, 105),
 
-    # Right tiered shelves
+    # Tier 2 (Mid-height shelves):
+    ("Left_Terrace_M0", -4.8, -1.2, 1.80, (1.5, 1.3, 1.10), -0.4, 120),
+    ("Left_Terrace_M1", -4.6, 0.6, 1.95, (1.6, 1.3, 1.15), 0.3, 121),
+    ("Left_Terrace_M2", -4.7, 2.4, 2.15, (1.5, 1.2, 1.10), -0.2, 122),
+    ("Left_Terrace_M3", -4.8, 4.2, 2.30, (1.5, 1.3, 1.15), 0.4, 123),
+    ("Left_Terrace_2", -4.8, 7.8, 1.40, (1.5, 1.3, 1.1), -0.3, 102),
+    ("Left_Terrace_3", -5.2, 8.8, 2.45, (1.4, 1.2, 1.2), 0.4, 103),
+
+    # Tier 3 (Upper cliff shelves connecting to ceiling):
+    ("Left_Terrace_U0", -5.4, -0.6, 3.80, (1.4, 1.2, 1.30), 0.2, 130),
+    ("Left_Terrace_U1", -5.2, 1.5, 4.00, (1.5, 1.2, 1.25), -0.3, 131),
+    ("Left_Terrace_U2", -5.3, 3.8, 4.20, (1.4, 1.1, 1.30), 0.3, 132),
+    ("Left_Terrace_4", -5.5, 9.8, 3.65, (1.3, 1.1, 1.3), -0.2, 104),
+
+    # Right tiered shelves (Base, Mid, Upper tiers):
+    # Tier 1 (Base shelves):
+    ("Right_Terrace_B0", 4.2, -1.8, 0.45, (1.6, 1.4, 0.85), -0.3, 210),
+    ("Right_Terrace_B1", 4.0, -0.4, 0.48, (1.5, 1.3, 0.90), 0.2, 211),
+    ("Right_Terrace_B2", 3.8, 0.9, 0.50, (1.5, 1.3, 0.90), -0.4, 212),
     ("Right_Terrace_1", 4.2, 6.8, 0.55, (1.6, 1.4, 0.9), -0.2, 201),
+    ("Right_Terrace_Low", 3.6, 5.8, 0.40, (1.2, 1.1, 0.65), -0.5, 205),
+
+    # Tier 2 (Mid-height shelves):
+    ("Right_Terrace_M0", 4.8, -1.2, 1.80, (1.5, 1.3, 1.10), 0.4, 220),
+    ("Right_Terrace_M1", 4.6, 0.6, 1.95, (1.6, 1.3, 1.15), -0.3, 221),
+    ("Right_Terrace_M2", 5.0, 2.5, 2.20, (1.5, 1.2, 1.10), 0.3, 222),
+    ("Right_Terrace_M3", 4.8, 4.6, 2.35, (1.5, 1.3, 1.15), -0.4, 223),
     ("Right_Terrace_2", 4.8, 7.8, 1.40, (1.5, 1.3, 1.1), 0.3, 202),
     ("Right_Terrace_3", 5.2, 8.8, 2.45, (1.4, 1.2, 1.2), -0.4, 203),
+
+    # Tier 3 (Upper cliff shelves connecting to ceiling):
+    ("Right_Terrace_U0", 5.4, -0.6, 3.80, (1.4, 1.2, 1.30), -0.2, 230),
+    ("Right_Terrace_U1", 5.2, 1.5, 4.00, (1.5, 1.2, 1.25), 0.3, 231),
+    ("Right_Terrace_U2", 5.3, 3.8, 4.20, (1.4, 1.1, 1.30), -0.3, 232),
     ("Right_Terrace_4", 5.5, 9.8, 3.65, (1.3, 1.1, 1.3), 0.2, 204),
-    ("Right_Terrace_Low", 3.6, 5.8, 0.40, (1.2, 1.1, 0.65), -0.5, 205),
 ]
 
 for (tname, tx, ty, tz, tscale, trot, tseed) in organic_terraces:
@@ -556,15 +628,185 @@ def spawn_hanging_vine(x, y, z_top, length=1.8, segments=12, name="HangingVine")
     obj.data.materials.append(mat_cavern_vine)
 
 vine_locations = [
-    (-3.8, 6.9, 1.1, 0.95),
-    (-4.5, 7.9, 2.2, 1.25),
+    # Flanking waterfall
+    (-2.4, 10.2, 7.5, 3.2),
+    (2.4, 10.2, 7.5, 3.2),
+    (-3.2, 9.5, 5.2, 2.4),
+    (3.2, 9.5, 5.2, 2.4),
     (-4.9, 8.9, 3.4, 1.45),
-    (3.8, 6.9, 1.1, 0.95),
-    (4.5, 7.9, 2.2, 1.25),
     (4.9, 8.9, 3.4, 1.45),
+    (-4.5, 7.9, 2.2, 1.25),
+    (4.5, 7.9, 2.2, 1.25),
+    (-3.8, 6.9, 1.1, 0.95),
+    (3.8, 6.9, 1.1, 0.95),
+    # Left canyon wall
+    (-4.5, 4.2, 2.6, 1.5),
+    (-4.4, 2.4, 2.4, 1.6),
+    (-4.3, 0.6, 2.2, 1.4),
+    (-4.5, -1.2, 2.0, 1.3),
+    # Right canyon wall
+    (4.5, 4.4, 2.6, 1.5),
+    (4.7, 2.4, 2.4, 1.6),
+    (4.3, 0.6, 2.2, 1.4),
+    (4.5, -1.2, 2.0, 1.3),
 ]
 for idx, (vx, vy, vz, vl) in enumerate(vine_locations):
     spawn_hanging_vine(vx, vy, vz, length=vl, name=f"Rock_Vine_{idx}")
+
+# Cascading Moss Curtains draping down sheer rock walls
+def spawn_moss_curtain(x, y, z_top, length=1.8, width=0.45, name="MossCurtain"):
+    bm = bmesh.new()
+    segments_y = 12
+    segments_x = 6
+    grid = []
+    for iy in range(segments_y + 1):
+        t = iy / segments_y
+        cz = z_top - t * length
+        w_curr = width * (1.0 - t * 0.25)
+        row = []
+        for ix in range(segments_x + 1):
+            tx = ix / segments_x
+            cx = x + (tx - 0.5) * w_curr
+            cy = y + math.sin(t * math.pi * 2.5 + tx * 3.0) * 0.05
+            fringe = math.sin(tx * math.pi * 6.0) * 0.06 if t > 0.85 else 0.0
+            row.append(bm.verts.new((cx, cy, cz + fringe)))
+        grid.append(row)
+    for iy in range(segments_y):
+        for ix in range(segments_x):
+            bm.faces.new((grid[iy][ix], grid[iy][ix+1], grid[iy+1][ix+1], grid[iy+1][ix]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new(f"{name}_Mesh")
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    bm.to_mesh(mesh)
+    bm.free()
+    for p in mesh.polygons:
+        p.use_smooth = True
+    mesh.update()
+    obj.data.materials.append(mat_cavern_moss)
+    return obj
+
+moss_curtain_locations = [
+    (-2.8, 10.0, 6.8, 2.4, 0.55),
+    (2.8, 10.0, 6.8, 2.4, 0.55),
+    (-4.6, 5.5, 3.2, 1.8, 0.50),
+    (4.6, 5.5, 3.2, 1.8, 0.50),
+    (-4.4, 1.8, 2.6, 1.6, 0.45),
+    (4.4, 1.8, 2.6, 1.6, 0.45),
+]
+for idx, (mx, my, mz, ml, mw) in enumerate(moss_curtain_locations):
+    spawn_moss_curtain(mx, my, mz, length=ml, width=mw, name=f"Moss_Curtain_{idx}")
+
+# Rosette Ferns on rock ledges
+def spawn_rock_fern_rosette(x, y, z, scale=1.0, num_fronds=7, name="RockFern"):
+    bm = bmesh.new()
+    for ifr in range(num_fronds):
+        ang = (ifr / float(num_fronds)) * math.pi * 2.0 + (ifr * 0.3)
+        length = 0.95 * scale
+        width = 0.28 * scale
+        segs = 10
+        left_v = []
+        right_v = []
+        for iseg in range(segs + 1):
+            t = iseg / segs
+            dist = t * length
+            w = math.sin(t * math.pi) * width * 0.5
+            drop = (t ** 2.2) * 0.45 * scale
+            lx = x + math.cos(ang) * dist
+            ly = y + math.sin(ang) * dist
+            lz = z + (t * 0.15 * scale) - drop
+            
+            px = -math.sin(ang) * w
+            py = math.cos(ang) * w
+            left_v.append(bm.verts.new((lx - px, ly - py, lz)))
+            right_v.append(bm.verts.new((lx + px, ly + py, lz)))
+        for iseg in range(segs):
+            bm.faces.new((left_v[iseg], right_v[iseg], right_v[iseg + 1], left_v[iseg + 1]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new(f"{name}_Mesh")
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    bm.to_mesh(mesh)
+    bm.free()
+    for p in mesh.polygons:
+        p.use_smooth = True
+    mesh.update()
+    obj.data.materials.append(mat_broad_leaf)
+    return obj
+
+fern_rosette_locations = [
+    # Flanking waterfall & lake margin
+    (-3.2, 6.6, 0.95, 1.1),
+    (3.2, 6.6, 0.95, 1.1),
+    (-4.1, 7.6, 1.85, 1.2),
+    (4.1, 7.6, 1.85, 1.2),
+    (-4.8, 8.6, 2.85, 1.0),
+    (4.8, 8.6, 2.85, 1.0),
+    # Canyon wall shelves
+    (-3.6, -0.6, 0.85, 1.05),
+    (3.6, -0.6, 0.85, 1.05),
+    (-3.5, 1.2, 0.90, 1.15),
+    (3.5, 1.0, 0.90, 1.15),
+    (-4.4, 3.2, 2.50, 1.0),
+    (4.6, 4.2, 2.60, 1.0),
+]
+for idx, (fx, fy, fz, fs) in enumerate(fern_rosette_locations):
+    spawn_rock_fern_rosette(fx, fy, fz, scale=fs, name=f"Rock_Fern_{idx}")
+
+# Bioluminescent Cyan Wall Spores / Miniature bracket fungi on shaded rock faces
+def spawn_wall_cyan_spores(x, y, z, num_shrooms=5, name="WallCyanSpores"):
+    bm = bmesh.new()
+    rng = random.Random(int((abs(x) + abs(y) + abs(z)) * 100))
+    for ish in range(num_shrooms):
+        ox = rng.uniform(-0.25, 0.25)
+        oy = rng.uniform(-0.15, 0.15)
+        oz = rng.uniform(-0.20, 0.20)
+        r_sh = rng.uniform(0.045, 0.085)
+        segs_u = 12
+        segs_v = 8
+        sh_grid = []
+        for iv in range(segs_v + 1):
+            tv = iv / segs_v
+            curr_r = tv * r_sh
+            dz = - (tv ** 2.0) * 0.035
+            row = []
+            for iu in range(segs_u + 1):
+                tu = iu / segs_u
+                ang = -math.pi * 0.5 + tu * math.pi
+                vx = x + ox + math.cos(ang) * curr_r
+                vy = y + oy + math.sin(ang) * curr_r
+                vz = z + oz + dz
+                row.append(bm.verts.new((vx, vy, vz)))
+            sh_grid.append(row)
+        for iv in range(segs_v):
+            for iu in range(segs_u):
+                bm.faces.new((sh_grid[iv][iu], sh_grid[iv][iu+1], sh_grid[iv+1][iu+1], sh_grid[iv+1][iu]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new(f"{name}_Mesh")
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    bm.to_mesh(mesh)
+    bm.free()
+    for p in mesh.polygons:
+        p.use_smooth = True
+    mesh.update()
+    obj.data.materials.append(mat_shroom_pale_cap)
+    return obj
+
+wall_spore_locations = [
+    (-4.8, -0.5, 2.8),
+    (-4.7, 1.8, 3.2),
+    (-4.9, 3.8, 3.5),
+    (-4.4, 6.2, 2.4),
+    (-3.0, 9.6, 6.0),
+    (4.8, -0.5, 2.8),
+    (4.7, 1.8, 3.2),
+    (4.9, 3.8, 3.5),
+    (4.4, 6.2, 2.4),
+    (3.0, 9.6, 6.0),
+]
+for idx, (wx, wy, wz) in enumerate(wall_spore_locations):
+    spawn_wall_cyan_spores(wx, wy, wz, num_shrooms=6, name=f"Wall_Cyan_Spore_{idx}")
 
 # ==============================================================================
 # 4. TERRAIN (140x140 GRID, SINUOUS MEANDERING DIRT PATH & NATURAL RELIEF)
@@ -739,6 +981,11 @@ organic_rock_coords = [
     (2.3, 1.0, 0.10, 0.50, 0.40, 0.28, -0.4, 304),
     (2.4, 2.2, 0.12, 0.56, 0.44, 0.32, 0.6, 305),
     (2.6, 3.3, 0.15, 0.62, 0.48, 0.36, -0.8, 306),
+    # Foreground path-framing rocks
+    (-2.3, -0.8, 0.08, 0.50, 0.42, 0.28, 0.3, 310),
+    (-2.4, 0.2, 0.09, 0.54, 0.44, 0.32, -0.5, 312),
+    (2.3, -0.8, 0.08, 0.48, 0.40, 0.26, -0.3, 311),
+    (2.4, 0.2, 0.09, 0.52, 0.42, 0.30, 0.5, 313),
 ]
 for (ax, ay, az, asx, asy, asz, arot, aseed) in organic_rock_coords:
     spawn_organic_transition_rock(ax, ay, az, asx, asy, asz, arot, aseed)
@@ -920,6 +1167,9 @@ def spawn_broad_leaf_spray(x, y, z, scale=1.0, num_leaves=7, name="BroadLeafSpra
 
 spawn_broad_leaf_spray(-4.0, 2.2, 0.10, scale=1.15, name="Left_Fern_Spray_1")
 spawn_broad_leaf_spray(-4.6, 3.4, 0.12, scale=0.95, name="Left_Fern_Spray_2")
+# Creeping foreground ground plants advancing softly over the brown dirt boundary
+spawn_broad_leaf_spray(-2.3, -0.2, 0.08, scale=0.85, name="Path_Creeping_Leaf_L")
+spawn_broad_leaf_spray(2.3, -0.2, 0.08, scale=0.85, name="Path_Creeping_Leaf_R")
 
 # Slender Stalks with Glowing Tips
 def spawn_glowing_stalk(x, y, z, h=0.75, name="GlowingStalk"):
@@ -1105,7 +1355,13 @@ def spawn_tall_grass_clump(x, y, z, scale=1.0, num_blades=14, name="TallGrass"):
     mesh.update()
     obj.data.materials.append(mat_tall_grass)
 
-for idx, (tx, ty) in enumerate([(3.9, 3.1), (4.5, 3.8), (5.0, 3.2), (4.8, 4.3)]):
+tall_grass_coords = [
+    (3.9, 3.1), (4.5, 3.8), (5.0, 3.2), (4.8, 4.3),
+    # Foreground lateral grass tufts framing dirt path
+    (-2.8, -1.0), (-3.1, -0.2), (-2.8, 0.8),
+    (2.8, -1.0), (3.1, -0.2), (2.8, 0.8),
+]
+for idx, (tx, ty) in enumerate(tall_grass_coords):
     tz = get_terrain_surface_z(tx, ty)
     spawn_tall_grass_clump(tx, ty, tz, scale=0.85, name=f"Right_TallGrass_{idx}")
 

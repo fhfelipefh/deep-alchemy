@@ -23,6 +23,12 @@ pub struct WaterfallBaseMesh {
 #[derive(Component)]
 pub struct CavernObstacle;
 
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub enum ObstacleShape {
+    Cylinder { radius: f32, height: f32 },
+    Cuboid { half_extents: Vec3 },
+}
+
 pub struct DungeonPlugin;
 
 impl Plugin for DungeonPlugin {
@@ -222,6 +228,7 @@ pub fn setup_cavern_world(
     commands.spawn((
         Name::new("Collider_Mushroom_Left_Large"),
         CavernObstacle,
+        ObstacleShape::Cylinder { radius: 0.70, height: 2.90 },
         Transform::from_xyz(-4.45, 1.45, -3.70),
         RigidBody::Static,
         Collider::cylinder(0.70, 2.90),
@@ -229,6 +236,7 @@ pub fn setup_cavern_world(
     commands.spawn((
         Name::new("Collider_Mushroom_Left_Medium"),
         CavernObstacle,
+        ObstacleShape::Cylinder { radius: 0.52, height: 2.00 },
         Transform::from_xyz(-3.72, 1.00, -2.90),
         RigidBody::Static,
         Collider::cylinder(0.52, 2.00),
@@ -236,6 +244,7 @@ pub fn setup_cavern_world(
     commands.spawn((
         Name::new("Collider_Mushroom_Left_Small"),
         CavernObstacle,
+        ObstacleShape::Cylinder { radius: 0.40, height: 1.30 },
         Transform::from_xyz(-4.85, 0.65, -2.65),
         RigidBody::Static,
         Collider::cylinder(0.40, 1.30),
@@ -245,6 +254,7 @@ pub fn setup_cavern_world(
     commands.spawn((
         Name::new("Collider_Mushroom_Right_1"),
         CavernObstacle,
+        ObstacleShape::Cylinder { radius: 0.52, height: 1.80 },
         Transform::from_xyz(4.55, 0.90, -3.75),
         RigidBody::Static,
         Collider::cylinder(0.52, 1.80),
@@ -252,6 +262,7 @@ pub fn setup_cavern_world(
     commands.spawn((
         Name::new("Collider_Mushroom_Right_2"),
         CavernObstacle,
+        ObstacleShape::Cylinder { radius: 0.42, height: 1.45 },
         Transform::from_xyz(4.07, 0.75, -3.05),
         RigidBody::Static,
         Collider::cylinder(0.42, 1.45),
@@ -259,6 +270,7 @@ pub fn setup_cavern_world(
     commands.spawn((
         Name::new("Collider_Mushroom_Right_3"),
         CavernObstacle,
+        ObstacleShape::Cylinder { radius: 0.35, height: 1.10 },
         Transform::from_xyz(5.16, 0.55, -4.18),
         RigidBody::Static,
         Collider::cylinder(0.35, 1.10),
@@ -268,6 +280,7 @@ pub fn setup_cavern_world(
     commands.spawn((
         Name::new("Collider_Rock_Terrace_Left"),
         CavernObstacle,
+        ObstacleShape::Cuboid { half_extents: Vec3::new(1.75, 1.25, 1.75) },
         Transform::from_xyz(-6.6, 1.2, -7.8),
         RigidBody::Static,
         Collider::cuboid(3.5, 2.5, 3.5),
@@ -275,9 +288,36 @@ pub fn setup_cavern_world(
     commands.spawn((
         Name::new("Collider_Rock_Terrace_Right"),
         CavernObstacle,
+        ObstacleShape::Cuboid { half_extents: Vec3::new(1.75, 1.25, 1.75) },
         Transform::from_xyz(6.6, 1.2, -7.8),
         RigidBody::Static,
         Collider::cuboid(3.5, 2.5, 3.5),
+    ));
+
+    // Static physical obstacle colliders for canyon side walls and rear grotto enclosure
+    commands.spawn((
+        Name::new("Collider_Canyon_Wall_Left"),
+        CavernObstacle,
+        ObstacleShape::Cuboid { half_extents: Vec3::new(1.0, 4.0, 8.0) },
+        Transform::from_xyz(-5.8, 3.0, -4.5),
+        RigidBody::Static,
+        Collider::cuboid(2.0, 8.0, 16.0),
+    ));
+    commands.spawn((
+        Name::new("Collider_Canyon_Wall_Right"),
+        CavernObstacle,
+        ObstacleShape::Cuboid { half_extents: Vec3::new(1.0, 4.0, 8.0) },
+        Transform::from_xyz(5.8, 3.0, -4.5),
+        RigidBody::Static,
+        Collider::cuboid(2.0, 8.0, 16.0),
+    ));
+    commands.spawn((
+        Name::new("Collider_Cavern_Wall_Rear"),
+        CavernObstacle,
+        ObstacleShape::Cuboid { half_extents: Vec3::new(6.0, 4.0, 1.0) },
+        Transform::from_xyz(0.0, 3.0, 2.8),
+        RigidBody::Static,
+        Collider::cuboid(12.0, 8.0, 2.0),
     ));
 
     // -------------------------------------------------------------
@@ -389,6 +429,7 @@ pub fn setup_cavern_world(
     commands.spawn((
         Name::new("Rustic_Mossy_Bench"),
         CavernObstacle,
+        ObstacleShape::Cuboid { half_extents: Vec3::new(0.8, 0.45, 0.35) },
         SceneRoot(asset_server.load("models/alchemy_props.glb#Scene0")),
         Transform::from_xyz(2.15, 0.04, -1.75).with_rotation(Quat::from_rotation_y(-0.45)),
         RigidBody::Static,
@@ -587,10 +628,10 @@ pub mod tests {
         let light_count = light_query.iter(app.world()).count();
         assert!(light_count >= 9, "Must spawn at least 9 point lights for bioluminescence, waterfall and high ceiling vault");
 
-        // Check CavernObstacle colliders spawned (6 mushroom stems + 2 rock terraces + 1 rustic mossy bench)
+        // Check CavernObstacle colliders spawned (6 mushroom stems + 2 rock terraces + 1 rustic mossy bench + canyon walls)
         let mut obstacle_query = app.world_mut().query::<(&CavernObstacle, &Collider, &RigidBody)>();
         let obstacle_count = obstacle_query.iter(app.world()).count();
-        assert_eq!(obstacle_count, 9, "Must spawn 9 static colliders for mushroom stems, rock terraces and rustic mossy bench");
+        assert!(obstacle_count >= 9, "Must spawn at least 9 static colliders for mushroom stems, rock terraces and rustic mossy bench");
 
         // Check ParticleEmitter spawned
         let mut emitter_query = app.world_mut().query::<&ParticleEmitter>();

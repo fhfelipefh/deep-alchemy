@@ -66,10 +66,19 @@
             "z_plane": -8.5,
             "impact_foam_billows": true,
             "ink_line_outline": false
-          }
         },
         "background_and_ceiling": {
           "z_range": [-9.0, -12.0],
+          "continuous_u_canyon_walls": {
+            "lateral_x_range": [-6.2, 6.2],
+            "depth_z_range": [-12.5, 2.5],
+            "three_tier_terracing": true,
+            "top_surface_moss": true,
+            "lateral_vines_count": 18,
+            "cascading_moss_curtains": 6,
+            "rock_fern_rosettes": 12,
+            "bioluminescent_wall_cyan_spores": 10
+          },
           "amphitheater_tiers": {
             "left_x_range": [-6.0, -2.4],
             "right_x_range": [2.4, 6.0],
