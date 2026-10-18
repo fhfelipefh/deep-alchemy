@@ -1,6 +1,6 @@
-use std::fs;
-use bevy::prelude::*;
 use crate::dungeon::modular_kit::{CavernObstacle, WaterfallMarker};
+use bevy::prelude::*;
+use std::fs;
 
 /// Zero-Vision Telemetry dumper: exports camera viewpoint and scene graph in text/JSON
 /// consuming <100 tokens instead of thousands of tokens per vision prompt.
@@ -48,7 +48,12 @@ pub fn dump_camera_frustum_telemetry(
 
         visible_items.push(format!(
             r#"{{"name":"{}","world_pos":[{:.2},{:.2},{:.2}],"dist_m":{:.2},"in_frustum":{}}}"#,
-            name_str, ob_tf.translation.x, ob_tf.translation.y, ob_tf.translation.z, dist, in_frustum
+            name_str,
+            ob_tf.translation.x,
+            ob_tf.translation.y,
+            ob_tf.translation.z,
+            dist,
+            in_frustum
         ));
     }
 
@@ -68,8 +73,12 @@ pub fn dump_camera_frustum_telemetry(
   "entities": [{}],
   "diagnostics": [{}]
 }}"#,
-        cam_pos.x, cam_pos.y, cam_pos.z,
-        cam_forward.x, cam_forward.y, cam_forward.z,
+        cam_pos.x,
+        cam_pos.y,
+        cam_pos.z,
+        cam_forward.x,
+        cam_forward.y,
+        cam_forward.z,
         visible_items.len(),
         visible_items.join(","),
         diag_json

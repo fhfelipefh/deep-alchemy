@@ -1,9 +1,9 @@
+use crate::player::camera::PlayerCamera;
 use bevy::{
     app::AppExit,
     prelude::*,
     window::{CursorGrabMode, MonitorSelection, PrimaryWindow, WindowMode},
 };
-use crate::player::camera::PlayerCamera;
 
 /// Global application lifecycle states.
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -155,8 +155,8 @@ pub enum MenuButtonAction {
 
 // Visual Palette: Cel-Shaded Alchemical Fantasy & Bioluminescent Cyan
 pub const COLOR_TITLE_MAJESTIC: Color = Color::srgba(0.92, 0.98, 1.00, 1.00); // Majestic white with cyan reflection
-pub const COLOR_TITLE_GLOW: Color = Color::srgba(0.25, 0.92, 1.00, 0.90);     // Bioluminescent cyan #40e0ff
-pub const COLOR_DIVIDER_GLOW: Color = Color::srgba(0.20, 0.88, 1.00, 0.85);   // Glowing ornamental line
+pub const COLOR_TITLE_GLOW: Color = Color::srgba(0.25, 0.92, 1.00, 0.90); // Bioluminescent cyan #40e0ff
+pub const COLOR_DIVIDER_GLOW: Color = Color::srgba(0.20, 0.88, 1.00, 0.85); // Glowing ornamental line
 pub const COLOR_DIVIDER_ACCENT: Color = Color::srgba(0.85, 0.72, 0.35, 0.90); // Alchemical gold accent
 
 // Floating mystical plate buttons
@@ -165,7 +165,7 @@ pub const COLOR_BTN_HOVER: Color = Color::srgba(0.00, 0.88, 1.00, 0.40); // Tran
 pub const COLOR_BTN_PRESSED: Color = Color::srgba(0.08, 0.45, 0.62, 0.85);
 
 pub const COLOR_BTN_BORDER_NORMAL: Color = Color::srgba(0.18, 0.35, 0.48, 0.85); // Ink contour with soft cyan rim
-pub const COLOR_BTN_BORDER_HOVER: Color = Color::srgba(0.28, 0.96, 1.00, 1.00);   // Radiant cyan border
+pub const COLOR_BTN_BORDER_HOVER: Color = Color::srgba(0.28, 0.96, 1.00, 1.00); // Radiant cyan border
 pub const COLOR_BTN_BORDER_PRESSED: Color = Color::srgba(0.48, 1.00, 1.00, 1.00);
 
 // Legacy palette aliases preserved for test compatibility
@@ -244,10 +244,7 @@ pub fn apply_default_font_to_unassigned_texts(
     }
 }
 
-pub fn setup_menu_ui(
-    mut commands: Commands,
-    asset_server: Option<Res<AssetServer>>,
-) {
+pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServer>>) {
     let font_handle: Handle<Font> = asset_server
         .as_ref()
         .map(|s| s.load("fonts/DejaVuSans.ttf"))
@@ -280,7 +277,13 @@ pub fn setup_menu_ui(
                 let base_x = (i as f32 * 2.38 + seed * 8.0) % 94.0 + 3.0;
                 let start_y = (i as f32 * 2.45 + seed2 * 20.0) % 100.0;
                 let speed = 2.0 + seed * 3.5;
-                let size = if i % 3 == 0 { 4.5 } else if i % 2 == 0 { 3.2 } else { 2.4 };
+                let size = if i % 3 == 0 {
+                    4.5
+                } else if i % 2 == 0 {
+                    3.2
+                } else {
+                    2.4
+                };
                 let color = if i % 3 == 0 {
                     Color::srgba(0.18, 0.95, 0.90, 0.65) // Bioluminescent cyan
                 } else if i % 4 == 0 {
@@ -599,37 +602,36 @@ pub fn setup_menu_ui(
                     ];
 
                     for (key, desc) in controls_list {
-                        controls_view.spawn((
-                            Node {
+                        controls_view
+                            .spawn((Node {
                                 width: Val::Percent(95.0),
                                 justify_content: JustifyContent::SpaceBetween,
                                 align_items: AlignItems::Center,
                                 padding: UiRect::axes(Val::Px(10.0), Val::Px(4.0)),
                                 ..default()
-                            },
-                        ))
-                        .with_children(|item| {
-                            item.spawn((
-                                Text::new(key),
-                                TextFont {
-                                    font: font_handle.clone(),
-                                    font_size: 13.0,
-                                    ..default()
-                                },
-                                TextColor(COLOR_TEXT_ACCENT),
-                                Node::default(),
-                            ));
-                            item.spawn((
-                                Text::new(desc),
-                                TextFont {
-                                    font: font_handle.clone(),
-                                    font_size: 13.0,
-                                    ..default()
-                                },
-                                TextColor(COLOR_TEXT_LIGHT),
-                                Node::default(),
-                            ));
-                        });
+                            },))
+                            .with_children(|item| {
+                                item.spawn((
+                                    Text::new(key),
+                                    TextFont {
+                                        font: font_handle.clone(),
+                                        font_size: 13.0,
+                                        ..default()
+                                    },
+                                    TextColor(COLOR_TEXT_ACCENT),
+                                    Node::default(),
+                                ));
+                                item.spawn((
+                                    Text::new(desc),
+                                    TextFont {
+                                        font: font_handle.clone(),
+                                        font_size: 13.0,
+                                        ..default()
+                                    },
+                                    TextColor(COLOR_TEXT_LIGHT),
+                                    Node::default(),
+                                ));
+                            });
                     }
 
                     // Back Button
@@ -694,15 +696,13 @@ fn spawn_settings_row<F: FnOnce(&mut ChildBuilder)>(
     control_builder: F,
 ) {
     parent
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                justify_content: JustifyContent::SpaceBetween,
-                align_items: AlignItems::Center,
-                padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
-                ..default()
-            },
-        ))
+        .spawn((Node {
+            width: Val::Percent(100.0),
+            justify_content: JustifyContent::SpaceBetween,
+            align_items: AlignItems::Center,
+            padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
+            ..default()
+        },))
         .with_children(|row| {
             row.spawn((
                 Text::new(label),
@@ -733,102 +733,103 @@ fn spawn_stepper_row<T: Component>(
 ) {
     let font_clone = font.clone();
     spawn_settings_row(parent, font.clone(), label, move |row| {
-        row.spawn((
-            Node {
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(8.0),
-                width: Val::Px(240.0),
-                justify_content: JustifyContent::FlexEnd,
-                ..default()
-            },
-        ))
-        .with_children(|controls| {
-            // Decrement Button
-            controls.spawn((
-                Button,
-                dec_action,
-                Node {
-                    width: Val::Px(34.0),
-                    height: Val::Px(32.0),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    border: UiRect::all(Val::Px(1.0)),
-                    ..default()
-                },
-                BorderRadius::all(Val::Px(4.0)),
-                BackgroundColor(COLOR_BTN_NORMAL),
-                BorderColor(COLOR_BORDER_MUTED),
-            ))
-            .with_children(|b| {
-                b.spawn((
-                    Text::new("-"),
-                    TextFont {
-                        font: font_clone.clone(),
-                        font_size: 16.0,
-                        ..default()
-                    },
-                    TextColor(COLOR_TEXT_LIGHT),
-                    Node::default(),
-                ));
-            });
+        row.spawn((Node {
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(8.0),
+            width: Val::Px(240.0),
+            justify_content: JustifyContent::FlexEnd,
+            ..default()
+        },))
+            .with_children(|controls| {
+                // Decrement Button
+                controls
+                    .spawn((
+                        Button,
+                        dec_action,
+                        Node {
+                            width: Val::Px(34.0),
+                            height: Val::Px(32.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            border: UiRect::all(Val::Px(1.0)),
+                            ..default()
+                        },
+                        BorderRadius::all(Val::Px(4.0)),
+                        BackgroundColor(COLOR_BTN_NORMAL),
+                        BorderColor(COLOR_BORDER_MUTED),
+                    ))
+                    .with_children(|b| {
+                        b.spawn((
+                            Text::new("-"),
+                            TextFont {
+                                font: font_clone.clone(),
+                                font_size: 16.0,
+                                ..default()
+                            },
+                            TextColor(COLOR_TEXT_LIGHT),
+                            Node::default(),
+                        ));
+                    });
 
-            // Value Display Box
-            controls.spawn((
-                Node {
-                    width: Val::Px(90.0),
-                    height: Val::Px(32.0),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    border: UiRect::all(Val::Px(1.0)),
-                    ..default()
-                },
-                BorderRadius::all(Val::Px(4.0)),
-                BackgroundColor(Color::srgba(0.04, 0.05, 0.08, 0.8)),
-                BorderColor(COLOR_BORDER_MUTED),
-            ))
-            .with_children(|val_box| {
-                val_box.spawn((
-                    value_marker,
-                    Text::new(initial_val),
-                    TextFont {
-                        font: font_clone.clone(),
-                        font_size: 13.0,
-                        ..default()
-                    },
-                    TextColor(COLOR_TEXT_GOLD),
-                    Node::default(),
-                ));
-            });
+                // Value Display Box
+                controls
+                    .spawn((
+                        Node {
+                            width: Val::Px(90.0),
+                            height: Val::Px(32.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            border: UiRect::all(Val::Px(1.0)),
+                            ..default()
+                        },
+                        BorderRadius::all(Val::Px(4.0)),
+                        BackgroundColor(Color::srgba(0.04, 0.05, 0.08, 0.8)),
+                        BorderColor(COLOR_BORDER_MUTED),
+                    ))
+                    .with_children(|val_box| {
+                        val_box.spawn((
+                            value_marker,
+                            Text::new(initial_val),
+                            TextFont {
+                                font: font_clone.clone(),
+                                font_size: 13.0,
+                                ..default()
+                            },
+                            TextColor(COLOR_TEXT_GOLD),
+                            Node::default(),
+                        ));
+                    });
 
-            // Increment Button
-            controls.spawn((
-                Button,
-                inc_action,
-                Node {
-                    width: Val::Px(34.0),
-                    height: Val::Px(32.0),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    border: UiRect::all(Val::Px(1.0)),
-                    ..default()
-                },
-                BorderRadius::all(Val::Px(4.0)),
-                BackgroundColor(COLOR_BTN_NORMAL),
-                BorderColor(COLOR_BORDER_MUTED),
-            ))
-            .with_children(|b| {
-                b.spawn((
-                    Text::new("+"),
-                    TextFont {
-                        font: font_clone,
-                        font_size: 16.0,
-                        ..default()
-                    },
-                    TextColor(COLOR_TEXT_LIGHT),
-                    Node::default(),
-                ));
+                // Increment Button
+                controls
+                    .spawn((
+                        Button,
+                        inc_action,
+                        Node {
+                            width: Val::Px(34.0),
+                            height: Val::Px(32.0),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            border: UiRect::all(Val::Px(1.0)),
+                            ..default()
+                        },
+                        BorderRadius::all(Val::Px(4.0)),
+                        BackgroundColor(COLOR_BTN_NORMAL),
+                        BorderColor(COLOR_BORDER_MUTED),
+                    ))
+                    .with_children(|b| {
+                        b.spawn((
+                            Text::new("+"),
+                            TextFont {
+                                font: font_clone,
+                                font_size: 16.0,
+                                ..default()
+                            },
+                            TextColor(COLOR_TEXT_LIGHT),
+                            Node::default(),
+                        ));
+                    });
             });
-        });
     });
 }
 
@@ -888,7 +889,9 @@ pub fn handle_menu_button_interactions(
     mut settings: ResMut<GameSettings>,
     mut exit_events: EventWriter<AppExit>,
 ) {
-    for (interaction, action, mut bg, mut border, mut node_opt, children_opt, is_large) in interaction_query.iter_mut() {
+    for (interaction, action, mut bg, mut border, mut node_opt, children_opt, is_large) in
+        interaction_query.iter_mut()
+    {
         match *interaction {
             Interaction::Pressed => {
                 *bg = BackgroundColor(COLOR_BTN_PRESSED);
@@ -928,8 +931,7 @@ pub fn handle_menu_button_interactions(
                         settings.fov_degrees = (settings.fov_degrees + delta).clamp(55.0, 115.0);
                     }
                     MenuButtonAction::AdjustVolume(delta) => {
-                        settings.master_volume =
-                            (settings.master_volume + delta).clamp(0.0, 1.0);
+                        settings.master_volume = (settings.master_volume + delta).clamp(0.0, 1.0);
                     }
                     MenuButtonAction::Quit => {
                         exit_events.send(AppExit::Success);
@@ -947,7 +949,9 @@ pub fn handle_menu_button_interactions(
                 if let Some(children) = children_opt {
                     for child in children.iter() {
                         if let Ok(mut text) = text_query.get_mut(*child) {
-                            let raw = text.0.trim_matches(|c| c == '>' || c == '<' || c == ' ' || c == '✦' || c == '⚗');
+                            let raw = text.0.trim_matches(|c| {
+                                c == '>' || c == '<' || c == ' ' || c == '✦' || c == '⚗'
+                            });
                             text.0 = format!("> {} <", raw);
                         }
                     }
@@ -964,7 +968,9 @@ pub fn handle_menu_button_interactions(
                 if let Some(children) = children_opt {
                     for child in children.iter() {
                         if let Ok(mut text) = text_query.get_mut(*child) {
-                            let raw = text.0.trim_matches(|c| c == '>' || c == '<' || c == ' ' || c == '✦' || c == '⚗');
+                            let raw = text.0.trim_matches(|c| {
+                                c == '>' || c == '<' || c == ' ' || c == '✦' || c == '⚗'
+                            });
                             text.0 = raw.to_string();
                         }
                     }
@@ -999,9 +1005,30 @@ pub fn update_menu_spores(
 
 pub fn update_menu_subview_visibility(
     nav: Res<MenuNavigation>,
-    mut main_views: Query<&mut Node, (With<MainViewNode>, Without<SettingsViewNode>, Without<ControlsViewNode>)>,
-    mut settings_views: Query<&mut Node, (With<SettingsViewNode>, Without<MainViewNode>, Without<ControlsViewNode>)>,
-    mut controls_views: Query<&mut Node, (With<ControlsViewNode>, Without<MainViewNode>, Without<SettingsViewNode>)>,
+    mut main_views: Query<
+        &mut Node,
+        (
+            With<MainViewNode>,
+            Without<SettingsViewNode>,
+            Without<ControlsViewNode>,
+        ),
+    >,
+    mut settings_views: Query<
+        &mut Node,
+        (
+            With<SettingsViewNode>,
+            Without<MainViewNode>,
+            Without<ControlsViewNode>,
+        ),
+    >,
+    mut controls_views: Query<
+        &mut Node,
+        (
+            With<ControlsViewNode>,
+            Without<MainViewNode>,
+            Without<SettingsViewNode>,
+        ),
+    >,
     mut start_btn_query: Query<&mut Text, With<StartResumeButtonText>>,
 ) {
     if !nav.is_changed() {
@@ -1044,11 +1071,56 @@ pub fn update_menu_subview_visibility(
 
 pub fn update_settings_labels(
     settings: Res<GameSettings>,
-    mut fullscreen_txt: Query<&mut Text, (With<FullscreenButtonText>, Without<RtxButtonText>, Without<SensitivityValueText>, Without<FovValueText>, Without<VolumeValueText>)>,
-    mut rtx_txt: Query<&mut Text, (With<RtxButtonText>, Without<FullscreenButtonText>, Without<SensitivityValueText>, Without<FovValueText>, Without<VolumeValueText>)>,
-    mut sens_txt: Query<&mut Text, (With<SensitivityValueText>, Without<FullscreenButtonText>, Without<RtxButtonText>, Without<FovValueText>, Without<VolumeValueText>)>,
-    mut fov_txt: Query<&mut Text, (With<FovValueText>, Without<FullscreenButtonText>, Without<RtxButtonText>, Without<SensitivityValueText>, Without<VolumeValueText>)>,
-    mut vol_txt: Query<&mut Text, (With<VolumeValueText>, Without<FullscreenButtonText>, Without<RtxButtonText>, Without<SensitivityValueText>, Without<FovValueText>)>,
+    mut fullscreen_txt: Query<
+        &mut Text,
+        (
+            With<FullscreenButtonText>,
+            Without<RtxButtonText>,
+            Without<SensitivityValueText>,
+            Without<FovValueText>,
+            Without<VolumeValueText>,
+        ),
+    >,
+    mut rtx_txt: Query<
+        &mut Text,
+        (
+            With<RtxButtonText>,
+            Without<FullscreenButtonText>,
+            Without<SensitivityValueText>,
+            Without<FovValueText>,
+            Without<VolumeValueText>,
+        ),
+    >,
+    mut sens_txt: Query<
+        &mut Text,
+        (
+            With<SensitivityValueText>,
+            Without<FullscreenButtonText>,
+            Without<RtxButtonText>,
+            Without<FovValueText>,
+            Without<VolumeValueText>,
+        ),
+    >,
+    mut fov_txt: Query<
+        &mut Text,
+        (
+            With<FovValueText>,
+            Without<FullscreenButtonText>,
+            Without<RtxButtonText>,
+            Without<SensitivityValueText>,
+            Without<VolumeValueText>,
+        ),
+    >,
+    mut vol_txt: Query<
+        &mut Text,
+        (
+            With<VolumeValueText>,
+            Without<FullscreenButtonText>,
+            Without<RtxButtonText>,
+            Without<SensitivityValueText>,
+            Without<FovValueText>,
+        ),
+    >,
 ) {
     if !settings.is_changed() {
         return;
@@ -1083,11 +1155,20 @@ pub fn apply_rtx_settings(
     settings: Res<GameSettings>,
     mut commands: Commands,
     camera_query: Query<Entity, With<PlayerCamera>>,
-    ssao_query: Query<Entity, (With<PlayerCamera>, With<bevy::pbr::ScreenSpaceAmbientOcclusion>)>,
+    ssao_query: Query<
+        Entity,
+        (
+            With<PlayerCamera>,
+            With<bevy::pbr::ScreenSpaceAmbientOcclusion>,
+        ),
+    >,
     mut ambient_light: Option<ResMut<AmbientLight>>,
     mut dir_lights: Query<&mut DirectionalLight>,
     mut key_point_lights: Query<&mut PointLight, With<crate::dungeon::modular_kit::KeyShadowLight>>,
-    mut all_point_lights: Query<&mut PointLight, Without<crate::dungeon::modular_kit::KeyShadowLight>>,
+    mut all_point_lights: Query<
+        &mut PointLight,
+        Without<crate::dungeon::modular_kit::KeyShadowLight>,
+    >,
 ) {
     if !settings.is_changed() {
         return;
@@ -1125,7 +1206,8 @@ pub fn apply_rtx_settings(
     }
 
     // 3. Point Lights (Only KeyShadowLights cast shadow in Medium/Ultra; never in Off or Low)
-    let enable_key_point_shadows = matches!(settings.rtx_quality, RtxQuality::Medium | RtxQuality::Ultra);
+    let enable_key_point_shadows =
+        matches!(settings.rtx_quality, RtxQuality::Medium | RtxQuality::Ultra);
     for mut light in key_point_lights.iter_mut() {
         light.shadows_enabled = enable_key_point_shadows;
         if enable_key_point_shadows {
@@ -1274,16 +1356,76 @@ mod tests {
         app.add_systems(Startup, setup_menu_ui);
         app.update();
 
-        assert_eq!(app.world_mut().query::<&MenuRoot>().iter(app.world()).count(), 1);
-        assert_eq!(app.world_mut().query::<&MainViewNode>().iter(app.world()).count(), 1);
-        assert_eq!(app.world_mut().query::<&SettingsViewNode>().iter(app.world()).count(), 1);
-        assert_eq!(app.world_mut().query::<&ControlsViewNode>().iter(app.world()).count(), 1);
-        assert_eq!(app.world_mut().query::<&StartResumeButtonText>().iter(app.world()).count(), 1);
-        assert_eq!(app.world_mut().query::<&FullscreenButtonText>().iter(app.world()).count(), 1);
-        assert_eq!(app.world_mut().query::<&RtxButtonText>().iter(app.world()).count(), 1);
-        assert_eq!(app.world_mut().query::<&SensitivityValueText>().iter(app.world()).count(), 1);
-        assert_eq!(app.world_mut().query::<&FovValueText>().iter(app.world()).count(), 1);
-        assert_eq!(app.world_mut().query::<&VolumeValueText>().iter(app.world()).count(), 1);
+        assert_eq!(
+            app.world_mut()
+                .query::<&MenuRoot>()
+                .iter(app.world())
+                .count(),
+            1
+        );
+        assert_eq!(
+            app.world_mut()
+                .query::<&MainViewNode>()
+                .iter(app.world())
+                .count(),
+            1
+        );
+        assert_eq!(
+            app.world_mut()
+                .query::<&SettingsViewNode>()
+                .iter(app.world())
+                .count(),
+            1
+        );
+        assert_eq!(
+            app.world_mut()
+                .query::<&ControlsViewNode>()
+                .iter(app.world())
+                .count(),
+            1
+        );
+        assert_eq!(
+            app.world_mut()
+                .query::<&StartResumeButtonText>()
+                .iter(app.world())
+                .count(),
+            1
+        );
+        assert_eq!(
+            app.world_mut()
+                .query::<&FullscreenButtonText>()
+                .iter(app.world())
+                .count(),
+            1
+        );
+        assert_eq!(
+            app.world_mut()
+                .query::<&RtxButtonText>()
+                .iter(app.world())
+                .count(),
+            1
+        );
+        assert_eq!(
+            app.world_mut()
+                .query::<&SensitivityValueText>()
+                .iter(app.world())
+                .count(),
+            1
+        );
+        assert_eq!(
+            app.world_mut()
+                .query::<&FovValueText>()
+                .iter(app.world())
+                .count(),
+            1
+        );
+        assert_eq!(
+            app.world_mut()
+                .query::<&VolumeValueText>()
+                .iter(app.world())
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -1297,27 +1439,44 @@ mod tests {
         app.add_systems(Update, handle_global_shortcuts);
 
         // Test F11 toggles fullscreen
-        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::F11);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::F11);
         app.update();
         assert_eq!(app.world().resource::<GameSettings>().fullscreen, true);
-        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().reset_all();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
 
         // Switch to InGame and test Escape pauses to MainMenu
-        app.world_mut().resource_mut::<NextState<GameState>>().set(GameState::InGame);
+        app.world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::InGame);
         app.update();
 
-        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Escape);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Escape);
         app.update();
-        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().reset_all();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
         app.update();
         let state = app.world().resource::<State<GameState>>();
         assert_eq!(*state.get(), GameState::MainMenu);
 
         // In Subview Settings, Escape returns to Main view
-        app.world_mut().resource_mut::<MenuNavigation>().current_view = MenuView::Settings;
-        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Escape);
+        app.world_mut()
+            .resource_mut::<MenuNavigation>()
+            .current_view = MenuView::Settings;
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Escape);
         app.update();
-        assert_eq!(app.world().resource::<MenuNavigation>().current_view, MenuView::Main);
+        assert_eq!(
+            app.world().resource::<MenuNavigation>().current_view,
+            MenuView::Main
+        );
     }
 
     #[test]
@@ -1331,13 +1490,16 @@ mod tests {
         app.add_systems(Update, handle_menu_button_interactions);
 
         // Test StartOrResume
-        let start_btn = app.world_mut().spawn((
-            Button,
-            MenuButtonAction::StartOrResume,
-            Interaction::Pressed,
-            BackgroundColor(COLOR_BTN_NORMAL),
-            BorderColor(COLOR_BORDER_MUTED),
-        )).id();
+        let start_btn = app
+            .world_mut()
+            .spawn((
+                Button,
+                MenuButtonAction::StartOrResume,
+                Interaction::Pressed,
+                BackgroundColor(COLOR_BTN_NORMAL),
+                BorderColor(COLOR_BORDER_MUTED),
+            ))
+            .id();
         app.update();
 
         assert_eq!(app.world().resource::<MenuNavigation>().has_started, true);
@@ -1352,7 +1514,10 @@ mod tests {
             BorderColor(COLOR_BORDER_MUTED),
         ));
         app.update();
-        assert_eq!(app.world().resource::<MenuNavigation>().current_view, MenuView::Settings);
+        assert_eq!(
+            app.world().resource::<MenuNavigation>().current_view,
+            MenuView::Settings
+        );
 
         // Test AdjustSensitivity, AdjustFov, AdjustVolume, ToggleFullscreen, ToggleRtx
         app.world_mut().spawn((
@@ -1407,26 +1572,78 @@ mod tests {
         app.init_resource::<MenuNavigation>();
         app.add_systems(Update, update_menu_subview_visibility);
 
-        let main_node = app.world_mut().spawn((MainViewNode, Node { display: Display::None, ..default() })).id();
-        let settings_node = app.world_mut().spawn((SettingsViewNode, Node { display: Display::None, ..default() })).id();
-        let controls_node = app.world_mut().spawn((ControlsViewNode, Node { display: Display::None, ..default() })).id();
-        let btn_text = app.world_mut().spawn((StartResumeButtonText, Text::new("INICIAR JORNADA"))).id();
+        let main_node = app
+            .world_mut()
+            .spawn((
+                MainViewNode,
+                Node {
+                    display: Display::None,
+                    ..default()
+                },
+            ))
+            .id();
+        let settings_node = app
+            .world_mut()
+            .spawn((
+                SettingsViewNode,
+                Node {
+                    display: Display::None,
+                    ..default()
+                },
+            ))
+            .id();
+        let controls_node = app
+            .world_mut()
+            .spawn((
+                ControlsViewNode,
+                Node {
+                    display: Display::None,
+                    ..default()
+                },
+            ))
+            .id();
+        let btn_text = app
+            .world_mut()
+            .spawn((StartResumeButtonText, Text::new("INICIAR JORNADA")))
+            .id();
 
         // When in Main view
-        app.world_mut().resource_mut::<MenuNavigation>().current_view = MenuView::Main;
+        app.world_mut()
+            .resource_mut::<MenuNavigation>()
+            .current_view = MenuView::Main;
         app.world_mut().resource_mut::<MenuNavigation>().has_started = true;
         app.update();
 
-        assert_eq!(app.world().get::<Node>(main_node).unwrap().display, Display::Flex);
-        assert_eq!(app.world().get::<Node>(settings_node).unwrap().display, Display::None);
-        assert_eq!(app.world().get::<Node>(controls_node).unwrap().display, Display::None);
-        assert_eq!(app.world().get::<Text>(btn_text).unwrap().0, "CONTINUAR EXPLORAÇÃO");
+        assert_eq!(
+            app.world().get::<Node>(main_node).unwrap().display,
+            Display::Flex
+        );
+        assert_eq!(
+            app.world().get::<Node>(settings_node).unwrap().display,
+            Display::None
+        );
+        assert_eq!(
+            app.world().get::<Node>(controls_node).unwrap().display,
+            Display::None
+        );
+        assert_eq!(
+            app.world().get::<Text>(btn_text).unwrap().0,
+            "CONTINUAR EXPLORAÇÃO"
+        );
 
         // When in Settings view
-        app.world_mut().resource_mut::<MenuNavigation>().current_view = MenuView::Settings;
+        app.world_mut()
+            .resource_mut::<MenuNavigation>()
+            .current_view = MenuView::Settings;
         app.update();
-        assert_eq!(app.world().get::<Node>(main_node).unwrap().display, Display::None);
-        assert_eq!(app.world().get::<Node>(settings_node).unwrap().display, Display::Flex);
+        assert_eq!(
+            app.world().get::<Node>(main_node).unwrap().display,
+            Display::None
+        );
+        assert_eq!(
+            app.world().get::<Node>(settings_node).unwrap().display,
+            Display::Flex
+        );
     }
 
     #[test]
@@ -1435,22 +1652,36 @@ mod tests {
         app.init_resource::<GameSettings>();
         app.add_systems(Update, update_settings_labels);
 
-        let fs_text = app.world_mut().spawn((FullscreenButtonText, Text::new(""))).id();
+        let fs_text = app
+            .world_mut()
+            .spawn((FullscreenButtonText, Text::new("")))
+            .id();
         let rtx_text = app.world_mut().spawn((RtxButtonText, Text::new(""))).id();
-        let sens_text = app.world_mut().spawn((SensitivityValueText, Text::new(""))).id();
+        let sens_text = app
+            .world_mut()
+            .spawn((SensitivityValueText, Text::new("")))
+            .id();
         let fov_text = app.world_mut().spawn((FovValueText, Text::new(""))).id();
         let vol_text = app.world_mut().spawn((VolumeValueText, Text::new(""))).id();
 
         app.world_mut().resource_mut::<GameSettings>().fullscreen = true;
         app.world_mut().resource_mut::<GameSettings>().rtx_quality = RtxQuality::Low;
-        app.world_mut().resource_mut::<GameSettings>().mouse_sensitivity = 0.0035;
+        app.world_mut()
+            .resource_mut::<GameSettings>()
+            .mouse_sensitivity = 0.0035;
         app.world_mut().resource_mut::<GameSettings>().fov_degrees = 90.0;
         app.world_mut().resource_mut::<GameSettings>().master_volume = 0.65;
 
         app.update();
 
-        assert_eq!(app.world().get::<Text>(fs_text).unwrap().0, "ATIVADO (TELA CHEIA)");
-        assert_eq!(app.world().get::<Text>(rtx_text).unwrap().0, "BAIXO (ALVO 30 FPS)");
+        assert_eq!(
+            app.world().get::<Text>(fs_text).unwrap().0,
+            "ATIVADO (TELA CHEIA)"
+        );
+        assert_eq!(
+            app.world().get::<Text>(rtx_text).unwrap().0,
+            "BAIXO (ALVO 30 FPS)"
+        );
         assert_eq!(app.world().get::<Text>(sens_text).unwrap().0, "0.0035");
         assert_eq!(app.world().get::<Text>(fov_text).unwrap().0, "90°");
         assert_eq!(app.world().get::<Text>(vol_text).unwrap().0, "65%");
@@ -1467,52 +1698,125 @@ mod tests {
         app.add_systems(Update, apply_rtx_settings);
 
         let cam = app.world_mut().spawn(PlayerCamera).id();
-        let dir_light = app.world_mut().spawn(DirectionalLight {
-            shadows_enabled: false,
-            ..default()
-        }).id();
-        let key_light = app.world_mut().spawn((
-            PointLight {
+        let dir_light = app
+            .world_mut()
+            .spawn(DirectionalLight {
                 shadows_enabled: false,
                 ..default()
-            },
-            crate::dungeon::modular_kit::KeyShadowLight,
-        )).id();
-        let fill_light = app.world_mut().spawn(PointLight {
-            shadows_enabled: false,
-            ..default()
-        }).id();
+            })
+            .id();
+        let key_light = app
+            .world_mut()
+            .spawn((
+                PointLight {
+                    shadows_enabled: false,
+                    ..default()
+                },
+                crate::dungeon::modular_kit::KeyShadowLight,
+            ))
+            .id();
+        let fill_light = app
+            .world_mut()
+            .spawn(PointLight {
+                shadows_enabled: false,
+                ..default()
+            })
+            .id();
 
         // 1. Test Low RTX (Target 30 FPS): directional shadow ON, point light cubemaps OFF, SSAO ON
         app.world_mut().resource_mut::<GameSettings>().rtx_quality = RtxQuality::Low;
         app.update();
 
-        assert!(app.world().get::<DirectionalLight>(dir_light).unwrap().shadows_enabled);
-        assert!(!app.world().get::<PointLight>(key_light).unwrap().shadows_enabled);
-        assert!(!app.world().get::<PointLight>(fill_light).unwrap().shadows_enabled);
-        assert!(app.world().get::<bevy::pbr::ScreenSpaceAmbientOcclusion>(cam).is_some());
-        assert_eq!(*app.world().get::<bevy::pbr::ShadowFilteringMethod>(cam).unwrap(), bevy::pbr::ShadowFilteringMethod::Hardware2x2);
+        assert!(
+            app.world()
+                .get::<DirectionalLight>(dir_light)
+                .unwrap()
+                .shadows_enabled
+        );
+        assert!(
+            !app.world()
+                .get::<PointLight>(key_light)
+                .unwrap()
+                .shadows_enabled
+        );
+        assert!(
+            !app.world()
+                .get::<PointLight>(fill_light)
+                .unwrap()
+                .shadows_enabled
+        );
+        assert!(app
+            .world()
+            .get::<bevy::pbr::ScreenSpaceAmbientOcclusion>(cam)
+            .is_some());
+        assert_eq!(
+            *app.world()
+                .get::<bevy::pbr::ShadowFilteringMethod>(cam)
+                .unwrap(),
+            bevy::pbr::ShadowFilteringMethod::Hardware2x2
+        );
         assert_eq!(app.world().resource::<AmbientLight>().brightness, 740.0);
 
         // 2. Test Medium RTX: directional ON, key point lights ON, fill lights OFF
         app.world_mut().resource_mut::<GameSettings>().rtx_quality = RtxQuality::Medium;
         app.update();
 
-        assert!(app.world().get::<DirectionalLight>(dir_light).unwrap().shadows_enabled);
-        assert!(app.world().get::<PointLight>(key_light).unwrap().shadows_enabled);
-        assert!(!app.world().get::<PointLight>(fill_light).unwrap().shadows_enabled);
-        assert_eq!(*app.world().get::<bevy::pbr::ShadowFilteringMethod>(cam).unwrap(), bevy::pbr::ShadowFilteringMethod::Gaussian);
+        assert!(
+            app.world()
+                .get::<DirectionalLight>(dir_light)
+                .unwrap()
+                .shadows_enabled
+        );
+        assert!(
+            app.world()
+                .get::<PointLight>(key_light)
+                .unwrap()
+                .shadows_enabled
+        );
+        assert!(
+            !app.world()
+                .get::<PointLight>(fill_light)
+                .unwrap()
+                .shadows_enabled
+        );
+        assert_eq!(
+            *app.world()
+                .get::<bevy::pbr::ShadowFilteringMethod>(cam)
+                .unwrap(),
+            bevy::pbr::ShadowFilteringMethod::Gaussian
+        );
         assert_eq!(app.world().resource::<AmbientLight>().brightness, 780.0);
 
         // 3. Test Off: all shadows OFF, SSAO removed, ambient reduced
         app.world_mut().resource_mut::<GameSettings>().rtx_quality = RtxQuality::Off;
         app.update();
 
-        assert!(!app.world().get::<DirectionalLight>(dir_light).unwrap().shadows_enabled);
-        assert!(!app.world().get::<PointLight>(key_light).unwrap().shadows_enabled);
-        assert!(!app.world().get::<PointLight>(fill_light).unwrap().shadows_enabled);
-        assert!(app.world().get::<bevy::pbr::ScreenSpaceAmbientOcclusion>(cam).is_none());
-        assert!(app.world().get::<bevy::pbr::ShadowFilteringMethod>(cam).is_none());
+        assert!(
+            !app.world()
+                .get::<DirectionalLight>(dir_light)
+                .unwrap()
+                .shadows_enabled
+        );
+        assert!(
+            !app.world()
+                .get::<PointLight>(key_light)
+                .unwrap()
+                .shadows_enabled
+        );
+        assert!(
+            !app.world()
+                .get::<PointLight>(fill_light)
+                .unwrap()
+                .shadows_enabled
+        );
+        assert!(app
+            .world()
+            .get::<bevy::pbr::ScreenSpaceAmbientOcclusion>(cam)
+            .is_none());
+        assert!(app
+            .world()
+            .get::<bevy::pbr::ShadowFilteringMethod>(cam)
+            .is_none());
         assert_eq!(app.world().resource::<AmbientLight>().brightness, 480.0);
     }
 
@@ -1522,13 +1826,16 @@ mod tests {
         app.init_resource::<GameSettings>();
         app.add_systems(Update, apply_camera_fov);
 
-        let cam = app.world_mut().spawn((
-            PlayerCamera,
-            Projection::Perspective(PerspectiveProjection {
-                fov: 75.0_f32.to_radians(),
-                ..default()
-            }),
-        )).id();
+        let cam = app
+            .world_mut()
+            .spawn((
+                PlayerCamera,
+                Projection::Perspective(PerspectiveProjection {
+                    fov: 75.0_f32.to_radians(),
+                    ..default()
+                }),
+            ))
+            .id();
 
         app.world_mut().resource_mut::<GameSettings>().fov_degrees = 90.0;
         app.update();
@@ -1546,42 +1853,54 @@ mod tests {
         app.init_resource::<GameSettings>();
         app.add_systems(Update, apply_window_settings);
 
-        let win = app.world_mut().spawn((
-            PrimaryWindow,
-            Window {
-                mode: WindowMode::Windowed,
-                ..default()
-            },
-        )).id();
+        let win = app
+            .world_mut()
+            .spawn((
+                PrimaryWindow,
+                Window {
+                    mode: WindowMode::Windowed,
+                    ..default()
+                },
+            ))
+            .id();
 
         app.world_mut().resource_mut::<GameSettings>().fullscreen = true;
         app.update();
 
         let window = app.world().get::<Window>(win).unwrap();
-        assert_eq!(window.mode, WindowMode::BorderlessFullscreen(MonitorSelection::Primary));
+        assert_eq!(
+            window.mode,
+            WindowMode::BorderlessFullscreen(MonitorSelection::Primary)
+        );
     }
 
     #[test]
     fn test_on_enter_menu_and_ingame_state() {
         let mut app = App::new();
         let menu_root = app.world_mut().spawn((MenuRoot, Visibility::Hidden)).id();
-        let win = app.world_mut().spawn((
-            PrimaryWindow,
-            Window {
-                cursor_options: bevy::window::CursorOptions {
-                    grab_mode: CursorGrabMode::Locked,
-                    visible: false,
+        let win = app
+            .world_mut()
+            .spawn((
+                PrimaryWindow,
+                Window {
+                    cursor_options: bevy::window::CursorOptions {
+                        grab_mode: CursorGrabMode::Locked,
+                        visible: false,
+                        ..default()
+                    },
                     ..default()
                 },
-                ..default()
-            },
-        )).id();
+            ))
+            .id();
 
         // Run on_enter_menu_state
         app.add_systems(Update, on_enter_menu_state);
         app.update();
 
-        assert_eq!(*app.world().get::<Visibility>(menu_root).unwrap(), Visibility::Inherited);
+        assert_eq!(
+            *app.world().get::<Visibility>(menu_root).unwrap(),
+            Visibility::Inherited
+        );
         let win_menu = app.world().get::<Window>(win).unwrap();
         assert_eq!(win_menu.cursor_options.grab_mode, CursorGrabMode::None);
         assert_eq!(win_menu.cursor_options.visible, true);
@@ -1592,21 +1911,24 @@ mod tests {
         let mut app = App::new();
         app.add_systems(Update, update_menu_spores);
 
-        let spore = app.world_mut().spawn((
-            MenuSpore {
-                speed: 10.0,
-                sway_phase: 0.0,
-                sway_freq: 1.0,
-                base_x: 50.0,
-                current_y: 80.0,
-            },
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Percent(50.0),
-                top: Val::Percent(80.0),
-                ..default()
-            },
-        )).id();
+        let spore = app
+            .world_mut()
+            .spawn((
+                MenuSpore {
+                    speed: 10.0,
+                    sway_phase: 0.0,
+                    sway_freq: 1.0,
+                    base_x: 50.0,
+                    current_y: 80.0,
+                },
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Percent(50.0),
+                    top: Val::Percent(80.0),
+                    ..default()
+                },
+            ))
+            .id();
 
         let mut time = Time::<()>::default();
         time.advance_by(std::time::Duration::from_millis(500));
@@ -1614,6 +1936,9 @@ mod tests {
         app.update();
 
         let updated_spore = app.world().get::<MenuSpore>(spore).unwrap();
-        assert!(updated_spore.current_y < 80.0, "Spore must drift upward over time");
+        assert!(
+            updated_spore.current_y < 80.0,
+            "Spore must drift upward over time"
+        );
     }
 }

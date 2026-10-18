@@ -16,7 +16,11 @@ fn main() {
         for rc in rc_candidates {
             if Path::new(rc).exists() || rc == "rc.exe" {
                 let status = Command::new(rc)
-                    .args(&["/fo", "assets/icons/app_icon.res", "assets/icons/app_icon.rc"])
+                    .args(&[
+                        "/fo",
+                        "assets/icons/app_icon.res",
+                        "assets/icons/app_icon.rc",
+                    ])
                     .status();
                 if let Ok(s) = status {
                     if s.success() {

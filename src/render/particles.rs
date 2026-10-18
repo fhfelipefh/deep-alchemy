@@ -209,7 +209,9 @@ mod tests {
         assert_eq!(count, 3, "All 3 emitters must have spawned a particle");
 
         // Advance time beyond max_lifetime to test despawning (run update_particles directly)
-        world.resource_mut::<Time<()>>().advance_by(std::time::Duration::from_secs(10));
+        world
+            .resource_mut::<Time<()>>()
+            .advance_by(std::time::Duration::from_secs(10));
         let mut update_schedule = Schedule::default();
         update_schedule.add_systems(update_particles);
         update_schedule.run(&mut world);

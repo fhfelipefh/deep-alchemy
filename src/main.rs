@@ -16,29 +16,29 @@ use deep_alchemy::{
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let is_screenshot_test = args.iter().any(|arg| arg == "--screenshot-test" || arg == "--validate-frame");
+    let is_screenshot_test = args
+        .iter()
+        .any(|arg| arg == "--screenshot-test" || arg == "--validate-frame");
     let is_menu_screenshot = args.iter().any(|arg| arg == "--screenshot-menu");
     let is_settings_screenshot = args.iter().any(|arg| arg == "--screenshot-settings");
 
     let mut app = App::new();
 
     app.insert_resource(ClearColor(Color::srgb(0.02, 0.03, 0.05)))
-        .add_plugins(
-            DefaultPlugins.set(WindowPlugin {
-                primary_window: Some(Window {
-                    title: "Deep Alchemy".to_string(),
-                    resolution: WindowResolution::new(1280.0, 720.0),
-                    present_mode: PresentMode::AutoVsync,
-                    cursor_options: bevy::window::CursorOptions {
-                        grab_mode: CursorGrabMode::None,
-                        visible: true,
-                        ..default()
-                    },
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Deep Alchemy".to_string(),
+                resolution: WindowResolution::new(1280.0, 720.0),
+                present_mode: PresentMode::AutoVsync,
+                cursor_options: bevy::window::CursorOptions {
+                    grab_mode: CursorGrabMode::None,
+                    visible: true,
                     ..default()
-                }),
+                },
                 ..default()
             }),
-        )
+            ..default()
+        }))
         .add_plugins(PhysicsPlugins::default())
         .add_plugins(RenderPipelinePlugin)
         .add_plugins(PlayerPlugin)
@@ -50,7 +50,13 @@ fn main() {
     if is_screenshot_test {
         info!(">>> [GATE 4] Running in --screenshot-test mode: capturing frame 20 and dumping telemetry");
         app.add_systems(Startup, switch_to_ingame_for_screenshot_test)
-            .add_systems(Update, (handle_screenshot_test_lifecycle, deep_alchemy::dungeon::dump_camera_frustum_telemetry));
+            .add_systems(
+                Update,
+                (
+                    handle_screenshot_test_lifecycle,
+                    deep_alchemy::dungeon::dump_camera_frustum_telemetry,
+                ),
+            );
     } else if is_menu_screenshot {
         info!(">>> [MENU SCREENSHOT] Capturing main menu frame to ./debug_output/menu_check.png");
         app.add_systems(Update, handle_menu_screenshot_lifecycle);
@@ -62,9 +68,7 @@ fn main() {
     app.run();
 }
 
-fn switch_to_ingame_for_screenshot_test(
-    mut next_state: ResMut<NextState<GameState>>,
-) {
+fn switch_to_ingame_for_screenshot_test(mut next_state: ResMut<NextState<GameState>>) {
     next_state.set(GameState::InGame);
 }
 

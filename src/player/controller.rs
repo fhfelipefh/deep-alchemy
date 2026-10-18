@@ -1,10 +1,7 @@
-use bevy::{
-    input::mouse::MouseMotion,
-    prelude::*,
-};
 use super::camera::{LocomotionState, Player, PlayerCamera, PlayerState, Stamina};
 use crate::dungeon::modular_kit::{CavernObstacle, ObstacleShape};
 use crate::ui::menu::{GameSettings, GameState};
+use bevy::{input::mouse::MouseMotion, prelude::*};
 
 pub fn resolve_player_collision_sliding(
     desired_pos: Vec3,
@@ -35,7 +32,11 @@ pub fn resolve_player_collision_sliding(
                     let min_dist = *radius + player_radius;
 
                     if dist < min_dist {
-                        let normal = if dist > 1e-4 { diff / dist } else { Vec2::new(1.0, 0.0) };
+                        let normal = if dist > 1e-4 {
+                            diff / dist
+                        } else {
+                            Vec2::new(1.0, 0.0)
+                        };
                         let penetration = min_dist - dist;
                         resolved.x += normal.x * penetration;
                         resolved.z += normal.y * penetration;
@@ -52,7 +53,11 @@ pub fn resolve_player_collision_sliding(
                                     resolved.x = slid_target.x;
                                     resolved.z = slid_target.y;
                                 } else {
-                                    let re_norm = if re_dist > 1e-4 { re_diff / re_dist } else { normal };
+                                    let re_norm = if re_dist > 1e-4 {
+                                        re_diff / re_dist
+                                    } else {
+                                        normal
+                                    };
                                     resolved.x = center.x + re_norm.x * min_dist;
                                     resolved.z = center.y + re_norm.y * min_dist;
                                 }
@@ -62,12 +67,15 @@ pub fn resolve_player_collision_sliding(
                 }
                 ObstacleShape::Cuboid { half_extents } => {
                     let obs_y = tf.translation.y;
-                    if resolved.y < obs_y - half_extents.y - 1.2 || resolved.y > obs_y + half_extents.y + 0.5 {
+                    if resolved.y < obs_y - half_extents.y - 1.2
+                        || resolved.y > obs_y + half_extents.y + 0.5
+                    {
                         continue;
                     }
 
                     let (_, rot_y, _) = tf.rotation.to_euler(EulerRot::YXZ);
-                    let diff_world = Vec2::new(resolved.x - tf.translation.x, resolved.z - tf.translation.z);
+                    let diff_world =
+                        Vec2::new(resolved.x - tf.translation.x, resolved.z - tf.translation.z);
                     let cos_r = (-rot_y).cos();
                     let sin_r = (-rot_y).sin();
                     let local_x = diff_world.x * cos_r - diff_world.y * sin_r;
@@ -108,13 +116,20 @@ pub fn resolve_player_collision_sliding(
                         let to_player = Vec2::new(local_x - clamped_x, local_z - clamped_z);
                         let dist = to_player.length();
                         if dist < player_radius {
-                            let local_norm = if dist > 1e-4 { to_player / dist } else { Vec2::new(1.0, 0.0) };
-                            let push_local = Vec2::new(clamped_x, clamped_z) + local_norm * player_radius;
+                            let local_norm = if dist > 1e-4 {
+                                to_player / dist
+                            } else {
+                                Vec2::new(1.0, 0.0)
+                            };
+                            let push_local =
+                                Vec2::new(clamped_x, clamped_z) + local_norm * player_radius;
 
                             let cos_b = rot_y.cos();
                             let sin_b = rot_y.sin();
-                            resolved.x = tf.translation.x + push_local.x * cos_b - push_local.y * sin_b;
-                            resolved.z = tf.translation.z + push_local.x * sin_b + push_local.y * cos_b;
+                            resolved.x =
+                                tf.translation.x + push_local.x * cos_b - push_local.y * sin_b;
+                            resolved.z =
+                                tf.translation.z + push_local.x * sin_b + push_local.y * cos_b;
                         }
                     }
                 }
@@ -190,7 +205,10 @@ pub fn player_look(
         return;
     }
 
-    let sensitivity = settings.as_ref().map(|s| s.mouse_sensitivity).unwrap_or(0.0022);
+    let sensitivity = settings
+        .as_ref()
+        .map(|s| s.mouse_sensitivity)
+        .unwrap_or(0.0022);
 
     for (state, mut player_tf) in player_query.iter_mut() {
         if *state != PlayerState::Active {
@@ -214,7 +232,15 @@ pub fn player_movement(
     game_state: Option<Res<State<GameState>>>,
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
-    mut query: Query<(&PlayerState, &mut Transform, &mut Stamina, &mut LocomotionState), With<Player>>,
+    mut query: Query<
+        (
+            &PlayerState,
+            &mut Transform,
+            &mut Stamina,
+            &mut LocomotionState,
+        ),
+        With<Player>,
+    >,
     obstacles_query: Query<
         (&Transform, Option<&ObstacleShape>),
         (With<CavernObstacle>, Without<Player>),
@@ -232,7 +258,10 @@ pub fn player_movement(
     let obstacle_list: Vec<(&Transform, ObstacleShape)> = obstacles_query
         .iter()
         .map(|(obs_tf, shape_opt)| {
-            let shape = shape_opt.copied().unwrap_or(ObstacleShape::Cylinder { radius: 0.55, height: 2.0 });
+            let shape = shape_opt.copied().unwrap_or(ObstacleShape::Cylinder {
+                radius: 0.55,
+                height: 2.0,
+            });
             (obs_tf, shape)
         })
         .collect();
@@ -283,10 +312,12 @@ pub fn player_movement(
             locomotion.stamina_regen_delay_timer = 1.0; // Reset regen delay
         } else if locomotion.is_crouching {
             locomotion.current_speed = 2.2;
-            locomotion.stamina_regen_delay_timer = (locomotion.stamina_regen_delay_timer - dt).max(0.0);
+            locomotion.stamina_regen_delay_timer =
+                (locomotion.stamina_regen_delay_timer - dt).max(0.0);
         } else {
             locomotion.current_speed = 4.2;
-            locomotion.stamina_regen_delay_timer = (locomotion.stamina_regen_delay_timer - dt).max(0.0);
+            locomotion.stamina_regen_delay_timer =
+                (locomotion.stamina_regen_delay_timer - dt).max(0.0);
         }
 
         // Stamina Regeneration after delay
@@ -358,7 +389,10 @@ pub fn player_camera_effects(
             cam_tf.translation.y = base_eye_height + bob_y;
             cam_tf.translation.x = bob_x;
         } else {
-            cam_tf.translation.y = cam_tf.translation.y.lerp(base_eye_height, (8.0 * dt).min(1.0));
+            cam_tf.translation.y = cam_tf
+                .translation
+                .y
+                .lerp(base_eye_height, (8.0 * dt).min(1.0));
             cam_tf.translation.x = cam_tf.translation.x.lerp(0.0, (8.0 * dt).min(1.0));
         }
     }
@@ -378,13 +412,19 @@ mod tests {
         app_walk.add_systems(Update, player_movement);
         app_walk.init_resource::<Time>();
 
-        let walk_player = app_walk.world_mut().spawn((
-            Player,
-            PlayerState::Active,
-            LocomotionState::default(),
-            Transform::from_xyz(0.0, 1.2, 0.0),
-            Stamina { current: 100.0, max: 100.0 },
-        )).id();
+        let walk_player = app_walk
+            .world_mut()
+            .spawn((
+                Player,
+                PlayerState::Active,
+                LocomotionState::default(),
+                Transform::from_xyz(0.0, 1.2, 0.0),
+                Stamina {
+                    current: 100.0,
+                    max: 100.0,
+                },
+            ))
+            .id();
 
         let mut walk_keys = ButtonInput::<KeyCode>::default();
         walk_keys.press(KeyCode::KeyW);
@@ -392,11 +432,19 @@ mod tests {
 
         // Run 60 frames of walking at fixed dt = 16ms
         for _ in 0..60 {
-            app_walk.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+            app_walk
+                .world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
             app_walk.update();
         }
 
-        let z_walk_end = app_walk.world().get::<Transform>(walk_player).unwrap().translation.z;
+        let z_walk_end = app_walk
+            .world()
+            .get::<Transform>(walk_player)
+            .unwrap()
+            .translation
+            .z;
         let delta_z1 = z_walk_end.abs();
 
         // Now run Sprint simulation
@@ -404,13 +452,19 @@ mod tests {
         app_sprint.add_systems(Update, player_movement);
         app_sprint.init_resource::<Time>();
 
-        let sprint_player = app_sprint.world_mut().spawn((
-            Player,
-            PlayerState::Active,
-            LocomotionState::default(),
-            Transform::from_xyz(0.0, 1.2, 0.0),
-            Stamina { current: 100.0, max: 100.0 },
-        )).id();
+        let sprint_player = app_sprint
+            .world_mut()
+            .spawn((
+                Player,
+                PlayerState::Active,
+                LocomotionState::default(),
+                Transform::from_xyz(0.0, 1.2, 0.0),
+                Stamina {
+                    current: 100.0,
+                    max: 100.0,
+                },
+            ))
+            .id();
 
         let mut sprint_keys = ButtonInput::<KeyCode>::default();
         sprint_keys.press(KeyCode::KeyW);
@@ -418,20 +472,33 @@ mod tests {
         app_sprint.world_mut().insert_resource(sprint_keys);
 
         for _ in 0..60 {
-            app_sprint.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+            app_sprint
+                .world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
             app_sprint.update();
         }
 
-        let z_sprint_end = app_sprint.world().get::<Transform>(sprint_player).unwrap().translation.z;
+        let z_sprint_end = app_sprint
+            .world()
+            .get::<Transform>(sprint_player)
+            .unwrap()
+            .translation
+            .z;
         let delta_z2 = z_sprint_end.abs();
 
-        let stamina_sprint = app_sprint.world().get::<Stamina>(sprint_player).unwrap().current;
+        let stamina_sprint = app_sprint
+            .world()
+            .get::<Stamina>(sprint_player)
+            .unwrap()
+            .current;
 
         // GATE 2 ASSERTIONS:
         assert!(
             delta_z2 > delta_z1 * 1.4,
             "Sprinting must be at least 40% faster than walking: delta_z2={:.3}, delta_z1={:.3}",
-            delta_z2, delta_z1
+            delta_z2,
+            delta_z1
         );
         assert!(
             stamina_sprint < 100.0,
@@ -446,13 +513,19 @@ mod tests {
         app.add_plugins(MinimalPlugins);
         app.add_systems(Update, player_movement);
 
-        let player = app.world_mut().spawn((
-            Player,
-            PlayerState::Active,
-            LocomotionState::default(),
-            Transform::from_xyz(0.0, 1.2, 0.0),
-            Stamina { current: 50.0, max: 100.0 },
-        )).id();
+        let player = app
+            .world_mut()
+            .spawn((
+                Player,
+                PlayerState::Active,
+                LocomotionState::default(),
+                Transform::from_xyz(0.0, 1.2, 0.0),
+                Stamina {
+                    current: 50.0,
+                    max: 100.0,
+                },
+            ))
+            .id();
 
         let mut keys = ButtonInput::<KeyCode>::default();
         app.world_mut().insert_resource(keys.clone());
@@ -461,7 +534,9 @@ mod tests {
         keys.press(KeyCode::ControlLeft);
         keys.press(KeyCode::KeyW);
         *app.world_mut().resource_mut::<ButtonInput<KeyCode>>() = keys.clone();
-        app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(100));
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_millis(100));
         app.update();
 
         let locomotion = app.world().get::<LocomotionState>(player).unwrap();
@@ -472,12 +547,20 @@ mod tests {
         keys.release(KeyCode::ControlLeft);
         keys.press(KeyCode::Space);
         *app.world_mut().resource_mut::<ButtonInput<KeyCode>>() = keys.clone();
-        app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_millis(16));
         app.update();
 
         let jumping_locomotion = app.world().get::<LocomotionState>(player).unwrap();
-        assert!(jumping_locomotion.vertical_velocity > 0.0, "Jump must apply upward velocity");
-        assert!(!jumping_locomotion.is_grounded, "Player must not be grounded while ascending");
+        assert!(
+            jumping_locomotion.vertical_velocity > 0.0,
+            "Jump must apply upward velocity"
+        );
+        assert!(
+            !jumping_locomotion.is_grounded,
+            "Player must not be grounded while ascending"
+        );
     }
 
     #[test]
@@ -490,22 +573,24 @@ mod tests {
         locomotion.is_sprinting = true;
         locomotion.head_bob_timer = 1.5;
 
-        app.world_mut().spawn((
-            Player,
-            locomotion,
-        ));
+        app.world_mut().spawn((Player, locomotion));
 
-        let camera = app.world_mut().spawn((
-            PlayerCamera,
-            Transform::from_xyz(0.0, 0.55, 0.0),
-            Projection::Perspective(PerspectiveProjection {
-                fov: 75.0_f32.to_radians(),
-                ..default()
-            }),
-        )).id();
+        let camera = app
+            .world_mut()
+            .spawn((
+                PlayerCamera,
+                Transform::from_xyz(0.0, 0.55, 0.0),
+                Projection::Perspective(PerspectiveProjection {
+                    fov: 75.0_f32.to_radians(),
+                    ..default()
+                }),
+            ))
+            .id();
 
         for _ in 0..30 {
-            app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
             app.update();
         }
 
@@ -527,16 +612,15 @@ mod tests {
         app.add_event::<MouseMotion>();
         app.add_systems(Update, player_look);
 
-        let player = app.world_mut().spawn((
-            Player,
-            PlayerState::Active,
-            Transform::IDENTITY,
-        )).id();
+        let player = app
+            .world_mut()
+            .spawn((Player, PlayerState::Active, Transform::IDENTITY))
+            .id();
 
-        let camera = app.world_mut().spawn((
-            PlayerCamera,
-            Transform::IDENTITY,
-        )).id();
+        let camera = app
+            .world_mut()
+            .spawn((PlayerCamera, Transform::IDENTITY))
+            .id();
 
         // Send mouse motion event
         app.world_mut().send_event(MouseMotion {
@@ -548,8 +632,16 @@ mod tests {
         let player_tf = app.world().get::<Transform>(player).unwrap();
         let cam_tf = app.world().get::<Transform>(camera).unwrap();
 
-        assert_ne!(player_tf.rotation, Quat::IDENTITY, "Player yaw must have changed");
-        assert_ne!(cam_tf.rotation, Quat::IDENTITY, "Camera pitch must have changed");
+        assert_ne!(
+            player_tf.rotation,
+            Quat::IDENTITY,
+            "Player yaw must have changed"
+        );
+        assert_ne!(
+            cam_tf.rotation,
+            Quat::IDENTITY,
+            "Camera pitch must have changed"
+        );
     }
 
     #[test]
@@ -558,18 +650,27 @@ mod tests {
         app.add_systems(Update, player_movement);
         app.init_resource::<Time>();
 
-        let player = app.world_mut().spawn((
-            Player,
-            PlayerState::Active,
-            LocomotionState::default(),
-            Transform::from_xyz(0.0, 1.2, 0.0),
-            Stamina { current: 100.0, max: 100.0 },
-        )).id();
+        let player = app
+            .world_mut()
+            .spawn((
+                Player,
+                PlayerState::Active,
+                LocomotionState::default(),
+                Transform::from_xyz(0.0, 1.2, 0.0),
+                Stamina {
+                    current: 100.0,
+                    max: 100.0,
+                },
+            ))
+            .id();
 
         // Spawn Mushroom obstacle 1.0m ahead
         app.world_mut().spawn((
             CavernObstacle,
-            ObstacleShape::Cylinder { radius: 0.5, height: 2.0 },
+            ObstacleShape::Cylinder {
+                radius: 0.5,
+                height: 2.0,
+            },
             Transform::from_xyz(0.0, 1.0, -1.0),
         ));
 
@@ -579,7 +680,9 @@ mod tests {
 
         // Run 40 frames walking towards obstacle
         for _ in 0..40 {
-            app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
             app.update();
         }
 
@@ -598,18 +701,27 @@ mod tests {
         app.add_systems(Update, player_movement);
         app.init_resource::<Time>();
 
-        let player = app.world_mut().spawn((
-            Player,
-            PlayerState::Active,
-            LocomotionState::default(),
-            Transform::from_xyz(0.0, 1.2, 0.0),
-            Stamina { current: 100.0, max: 100.0 },
-        )).id();
+        let player = app
+            .world_mut()
+            .spawn((
+                Player,
+                PlayerState::Active,
+                LocomotionState::default(),
+                Transform::from_xyz(0.0, 1.2, 0.0),
+                Stamina {
+                    current: 100.0,
+                    max: 100.0,
+                },
+            ))
+            .id();
 
         // Spawn Mushroom obstacle directly ahead
         app.world_mut().spawn((
             CavernObstacle,
-            ObstacleShape::Cylinder { radius: 0.5, height: 2.0 },
+            ObstacleShape::Cylinder {
+                radius: 0.5,
+                height: 2.0,
+            },
             Transform::from_xyz(0.0, 1.0, -1.0),
         ));
 
@@ -621,12 +733,16 @@ mod tests {
 
         // Run 10 frames: player contacts the obstacle, forward motion arrested, deflected along +X
         for _ in 0..10 {
-            app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
             app.update();
         }
 
         let contact_tf = app.world().get::<Transform>(player).unwrap();
-        let dist_to_obs = (Vec2::new(contact_tf.translation.x, contact_tf.translation.z) - Vec2::new(0.0, -1.0)).length();
+        let dist_to_obs = (Vec2::new(contact_tf.translation.x, contact_tf.translation.z)
+            - Vec2::new(0.0, -1.0))
+        .length();
         assert!(
             dist_to_obs >= 0.849,
             "Player must never penetrate obstacle cylinder radius (0.85): dist={:.3}",
@@ -640,7 +756,9 @@ mod tests {
 
         // Run 30 more frames: player completes sliding around the obstacle
         for _ in 0..30 {
-            app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
             app.update();
         }
 
@@ -659,18 +777,26 @@ mod tests {
         app.init_resource::<Time>();
 
         // Player starting just in front of bench
-        let player = app.world_mut().spawn((
-            Player,
-            PlayerState::Active,
-            LocomotionState::default(),
-            Transform::from_xyz(2.15, 1.2, -0.8),
-            Stamina { current: 100.0, max: 100.0 },
-        )).id();
+        let player = app
+            .world_mut()
+            .spawn((
+                Player,
+                PlayerState::Active,
+                LocomotionState::default(),
+                Transform::from_xyz(2.15, 1.2, -0.8),
+                Stamina {
+                    current: 100.0,
+                    max: 100.0,
+                },
+            ))
+            .id();
 
         // Bench cuboid at z = -1.75, half_extents = (0.8, 0.45, 0.35)
         app.world_mut().spawn((
             CavernObstacle,
-            ObstacleShape::Cuboid { half_extents: Vec3::new(0.8, 0.45, 0.35) },
+            ObstacleShape::Cuboid {
+                half_extents: Vec3::new(0.8, 0.45, 0.35),
+            },
             Transform::from_xyz(2.15, 0.5, -1.75),
         ));
 
@@ -679,7 +805,9 @@ mod tests {
         app.world_mut().insert_resource(keys);
 
         for _ in 0..40 {
-            app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
             app.update();
         }
 
@@ -699,20 +827,28 @@ mod tests {
         app.init_resource::<Time>();
 
         // Player starting near left canyon wall boundary
-        let player = app.world_mut().spawn((
-            Player,
-            PlayerState::Active,
-            LocomotionState::default(),
-            Transform::from_xyz(-6.3, 1.2, 0.0),
-            Stamina { current: 100.0, max: 100.0 },
-        )).id();
+        let player = app
+            .world_mut()
+            .spawn((
+                Player,
+                PlayerState::Active,
+                LocomotionState::default(),
+                Transform::from_xyz(-6.3, 1.2, 0.0),
+                Stamina {
+                    current: 100.0,
+                    max: 100.0,
+                },
+            ))
+            .id();
 
         let mut keys = ButtonInput::<KeyCode>::default();
         keys.press(KeyCode::KeyA); // Walk left into canyon wall
         app.world_mut().insert_resource(keys);
 
         for _ in 0..40 {
-            app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
             app.update();
         }
 
@@ -732,20 +868,29 @@ mod tests {
         app.init_resource::<Time>();
 
         // Player starting near portal opening at x = 0.0, facing south (+Z) towards dungeon
-        let player = app.world_mut().spawn((
-            Player,
-            PlayerState::Active,
-            LocomotionState::default(),
-            Transform::from_xyz(0.0, 1.2, 2.0).with_rotation(Quat::from_rotation_y(std::f32::consts::PI)),
-            Stamina { current: 100.0, max: 100.0 },
-        )).id();
+        let player = app
+            .world_mut()
+            .spawn((
+                Player,
+                PlayerState::Active,
+                LocomotionState::default(),
+                Transform::from_xyz(0.0, 1.2, 2.0)
+                    .with_rotation(Quat::from_rotation_y(std::f32::consts::PI)),
+                Stamina {
+                    current: 100.0,
+                    max: 100.0,
+                },
+            ))
+            .id();
 
         let mut keys = ButtonInput::<KeyCode>::default();
         keys.press(KeyCode::KeyW); // Walk forward through the portal archway (+Z)
         app.world_mut().insert_resource(keys);
 
         for _ in 0..60 {
-            app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
             app.update();
         }
 
@@ -764,20 +909,29 @@ mod tests {
         app.init_resource::<Time>();
 
         // Player starting at x = 4.0 (outside portal width 2.2), facing south (+Z) into solid rear wall
-        let player = app.world_mut().spawn((
-            Player,
-            PlayerState::Active,
-            LocomotionState::default(),
-            Transform::from_xyz(4.0, 1.2, 2.0).with_rotation(Quat::from_rotation_y(std::f32::consts::PI)),
-            Stamina { current: 100.0, max: 100.0 },
-        )).id();
+        let player = app
+            .world_mut()
+            .spawn((
+                Player,
+                PlayerState::Active,
+                LocomotionState::default(),
+                Transform::from_xyz(4.0, 1.2, 2.0)
+                    .with_rotation(Quat::from_rotation_y(std::f32::consts::PI)),
+                Stamina {
+                    current: 100.0,
+                    max: 100.0,
+                },
+            ))
+            .id();
 
         let mut keys = ButtonInput::<KeyCode>::default();
         keys.press(KeyCode::KeyW); // Attempt to walk through solid rock wall (+Z)
         app.world_mut().insert_resource(keys);
 
         for _ in 0..60 {
-            app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
             app.update();
         }
 

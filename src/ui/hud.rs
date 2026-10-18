@@ -1,4 +1,3 @@
-use bevy::prelude::*;
 use crate::{
     player::{
         camera::{Health, Player, Stamina},
@@ -6,6 +5,7 @@ use crate::{
     },
     ui::menu::GameState,
 };
+use bevy::prelude::*;
 
 pub struct HudPlugin;
 
@@ -85,64 +85,62 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
             // -------------------------------------------------------------
             // 1. TOP-LEFT: STYLIZED HEARTS ROW & EMERALD STAMINA GAUGE
             // -------------------------------------------------------------
-            root.spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(24.0),
-                    top: Val::Px(20.0),
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(6.0),
-                    ..default()
-                },
-            ))
-            .with_children(|vitality_col| {
-                // Row of Stylized Alchemical Hearts (PNG icons with black ink outline and gloss)
-                vitality_col.spawn((
-                    Node {
-                        flex_direction: FlexDirection::Row,
-                        column_gap: Val::Px(6.0),
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                ))
-                .with_children(|hearts_row| {
-                    for i in 0..5 {
-                        hearts_row.spawn((
-                            HealthHeartFill { index: i },
-                            ImageNode::new(asset_server.load("textures/ui/heart_full.png")),
+            root.spawn((Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(24.0),
+                top: Val::Px(20.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(6.0),
+                ..default()
+            },))
+                .with_children(|vitality_col| {
+                    // Row of Stylized Alchemical Hearts (PNG icons with black ink outline and gloss)
+                    vitality_col
+                        .spawn((Node {
+                            flex_direction: FlexDirection::Row,
+                            column_gap: Val::Px(6.0),
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },))
+                        .with_children(|hearts_row| {
+                            for i in 0..5 {
+                                hearts_row.spawn((
+                                    HealthHeartFill { index: i },
+                                    ImageNode::new(asset_server.load("textures/ui/heart_full.png")),
+                                    Node {
+                                        width: Val::Px(26.0),
+                                        height: Val::Px(26.0),
+                                        ..default()
+                                    },
+                                ));
+                            }
+                        });
+
+                    // Sleek Emerald Stamina Gauge underneath
+                    vitality_col
+                        .spawn((
                             Node {
-                                width: Val::Px(26.0),
-                                height: Val::Px(26.0),
+                                width: Val::Px(154.0),
+                                height: Val::Px(7.0),
+                                border: UiRect::all(Val::Px(1.2)),
+                                padding: UiRect::all(Val::Px(0.5)),
                                 ..default()
                             },
-                        ));
-                    }
+                            BackgroundColor(Color::srgba(0.02, 0.08, 0.04, 0.9)),
+                            BorderColor(COLOR_BORDER_GOLD),
+                        ))
+                        .with_children(|st_bg| {
+                            st_bg.spawn((
+                                StaminaBarFill,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    height: Val::Percent(100.0),
+                                    ..default()
+                                },
+                                BackgroundColor(COLOR_STAMINA_FILL),
+                            ));
+                        });
                 });
-
-                // Sleek Emerald Stamina Gauge underneath
-                vitality_col.spawn((
-                    Node {
-                        width: Val::Px(154.0),
-                        height: Val::Px(7.0),
-                        border: UiRect::all(Val::Px(1.2)),
-                        padding: UiRect::all(Val::Px(0.5)),
-                        ..default()
-                    },
-                    BackgroundColor(Color::srgba(0.02, 0.08, 0.04, 0.9)),
-                    BorderColor(COLOR_BORDER_GOLD),
-                ))
-                .with_children(|st_bg| {
-                    st_bg.spawn((
-                        StaminaBarFill,
-                        Node {
-                            width: Val::Percent(100.0),
-                            height: Val::Percent(100.0),
-                            ..default()
-                        },
-                        BackgroundColor(COLOR_STAMINA_FILL),
-                    ));
-                });
-            });
 
             // -------------------------------------------------------------
             // 2. CENTER: RETICLE / CROSSHAIR
@@ -199,53 +197,70 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                         _ => "textures/ui/flask_green.png",
                     };
 
-                    hotbar.spawn((
-                        HotbarSlotUi { slot_index: slot_num },
-                        Node {
-                            width: Val::Px(54.0),
-                            height: Val::Px(54.0),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            padding: UiRect::all(Val::Px(3.0)),
-                            border: UiRect::all(if slot_num == 1 { Val::Px(2.5) } else { Val::Px(1.0) }),
-                            ..default()
-                        },
-                        BackgroundColor(Color::srgba(0.06, 0.08, 0.12, 0.88)),
-                        BorderColor(if slot_num == 1 { COLOR_BORDER_ACTIVE } else { COLOR_BORDER_GOLD }),
-                    ))
-                    .with_children(|slot| {
-                        // Slot number tag (top-left aligned tag)
-                        slot.spawn((
-                            Text::new(format!("{slot_num}")),
-                            TextFont {
-                                font: font_handle.clone(),
-                                font_size: 11.0,
+                    hotbar
+                        .spawn((
+                            HotbarSlotUi {
+                                slot_index: slot_num,
+                            },
+                            Node {
+                                width: Val::Px(54.0),
+                                height: Val::Px(54.0),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                padding: UiRect::all(Val::Px(3.0)),
+                                border: UiRect::all(if slot_num == 1 {
+                                    Val::Px(2.5)
+                                } else {
+                                    Val::Px(1.0)
+                                }),
                                 ..default()
                             },
-                            TextColor(if slot_num == 1 { COLOR_BORDER_ACTIVE } else { COLOR_BORDER_GOLD }),
-                            Node {
-                                position_type: PositionType::Absolute,
-                                left: Val::Px(5.0),
-                                top: Val::Px(2.0),
-                                ..default()
-                            },
-                        ));
-
-                        // Alchemical Potion Flask Icon (unique shape, color, and stopper per slot)
-                        slot.spawn((
-                            PotionSlotIcon { slot_index: slot_num },
-                            ImageNode::new(asset_server.load(potion_texture)),
-                            Node {
-                                width: Val::Px(38.0),
-                                height: Val::Px(38.0),
-                                margin: UiRect {
-                                    top: Val::Px(4.0),
+                            BackgroundColor(Color::srgba(0.06, 0.08, 0.12, 0.88)),
+                            BorderColor(if slot_num == 1 {
+                                COLOR_BORDER_ACTIVE
+                            } else {
+                                COLOR_BORDER_GOLD
+                            }),
+                        ))
+                        .with_children(|slot| {
+                            // Slot number tag (top-left aligned tag)
+                            slot.spawn((
+                                Text::new(format!("{slot_num}")),
+                                TextFont {
+                                    font: font_handle.clone(),
+                                    font_size: 11.0,
                                     ..default()
                                 },
-                                ..default()
-                            },
-                        ));
-                    });
+                                TextColor(if slot_num == 1 {
+                                    COLOR_BORDER_ACTIVE
+                                } else {
+                                    COLOR_BORDER_GOLD
+                                }),
+                                Node {
+                                    position_type: PositionType::Absolute,
+                                    left: Val::Px(5.0),
+                                    top: Val::Px(2.0),
+                                    ..default()
+                                },
+                            ));
+
+                            // Alchemical Potion Flask Icon (unique shape, color, and stopper per slot)
+                            slot.spawn((
+                                PotionSlotIcon {
+                                    slot_index: slot_num,
+                                },
+                                ImageNode::new(asset_server.load(potion_texture)),
+                                Node {
+                                    width: Val::Px(38.0),
+                                    height: Val::Px(38.0),
+                                    margin: UiRect {
+                                        top: Val::Px(4.0),
+                                        ..default()
+                                    },
+                                    ..default()
+                                },
+                            ));
+                        });
                 }
             });
         });
@@ -292,10 +307,7 @@ fn update_hud_bars(
     }
 }
 
-fn handle_hotbar_input(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut active_slot: ResMut<ActiveHotbarSlot>,
-) {
+fn handle_hotbar_input(keys: Res<ButtonInput<KeyCode>>, mut active_slot: ResMut<ActiveHotbarSlot>) {
     if keys.just_pressed(KeyCode::Digit1) {
         active_slot.0 = 1;
     } else if keys.just_pressed(KeyCode::Digit2) {
@@ -370,19 +382,37 @@ pub mod tests {
 
         // 3. Verify exactly 5 hotbar slots spawned (slots 1..=5)
         let mut hotbar_query = app.world_mut().query::<&HotbarSlotUi>();
-        let mut found_slots: Vec<usize> = hotbar_query.iter(app.world()).map(|s| s.slot_index).collect();
+        let mut found_slots: Vec<usize> = hotbar_query
+            .iter(app.world())
+            .map(|s| s.slot_index)
+            .collect();
         found_slots.sort();
-        assert_eq!(found_slots, vec![1, 2, 3, 4, 5], "Hotbar must contain slots 1 through 5");
+        assert_eq!(
+            found_slots,
+            vec![1, 2, 3, 4, 5],
+            "Hotbar must contain slots 1 through 5"
+        );
 
         // 4. Verify crosshair dot exists
         let mut crosshair_query = app.world_mut().query::<&CrosshairDot>();
-        assert_eq!(crosshair_query.iter(app.world()).count(), 1, "Crosshair reticle must exist");
+        assert_eq!(
+            crosshair_query.iter(app.world()).count(),
+            1,
+            "Crosshair reticle must exist"
+        );
 
         // 5. Verify all 5 stylized alchemical potion icons spawned (slots 1..=5)
         let mut potion_query = app.world_mut().query::<&PotionSlotIcon>();
-        let mut found_potions: Vec<usize> = potion_query.iter(app.world()).map(|p| p.slot_index).collect();
+        let mut found_potions: Vec<usize> = potion_query
+            .iter(app.world())
+            .map(|p| p.slot_index)
+            .collect();
         found_potions.sort();
-        assert_eq!(found_potions, vec![1, 2, 3, 4, 5], "Hotbar must contain potion icons for slots 1 through 5");
+        assert_eq!(
+            found_potions,
+            vec![1, 2, 3, 4, 5],
+            "Hotbar must contain potion icons for slots 1 through 5"
+        );
     }
 
     #[test]
@@ -394,15 +424,29 @@ pub mod tests {
         app.add_systems(Update, handle_hotbar_input);
 
         // Press Digit3
-        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Digit3);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Digit3);
         app.update();
-        assert_eq!(app.world().resource::<ActiveHotbarSlot>().0, 3, "Pressing 3 must select slot 3");
+        assert_eq!(
+            app.world().resource::<ActiveHotbarSlot>().0,
+            3,
+            "Pressing 3 must select slot 3"
+        );
 
         // Clear and press Digit5
-        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().clear();
-        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Digit5);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .clear();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Digit5);
         app.update();
-        assert_eq!(app.world().resource::<ActiveHotbarSlot>().0, 5, "Pressing 5 must select slot 5");
+        assert_eq!(
+            app.world().resource::<ActiveHotbarSlot>().0,
+            5,
+            "Pressing 5 must select slot 5"
+        );
     }
 
     #[test]
@@ -419,15 +463,25 @@ pub mod tests {
         // Spawn player with 60 HP (3 hearts active out of 5) and 40 Stamina
         app.world_mut().spawn((
             Player,
-            Health { current: 60.0, max: 100.0 },
-            Stamina { current: 40.0, max: 100.0 },
+            Health {
+                current: 60.0,
+                max: 100.0,
+            },
+            Stamina {
+                current: 40.0,
+                max: 100.0,
+            },
         ));
 
         app.update();
 
         let mut stamina_query = app.world_mut().query::<(&StaminaBarFill, &Node)>();
         for (_, node) in stamina_query.iter(app.world()) {
-            assert_eq!(node.width, Val::Percent(40.0), "Stamina bar width must reflect 40%");
+            assert_eq!(
+                node.width,
+                Val::Percent(40.0),
+                "Stamina bar width must reflect 40%"
+            );
         }
     }
 
@@ -451,19 +505,29 @@ pub mod tests {
 
         // Set hovered entity
         let dummy = app.world_mut().spawn_empty().id();
-        app.world_mut().resource_mut::<InteractionState>().hovered_entity = Some(dummy);
+        app.world_mut()
+            .resource_mut::<InteractionState>()
+            .hovered_entity = Some(dummy);
         app.update();
 
         let mut dot_query = app.world_mut().query::<(&CrosshairDot, &BackgroundColor)>();
         for (_, bg) in dot_query.iter(app.world()) {
-            assert_eq!(bg.0, Color::srgb(0.1, 0.95, 1.0), "Hovered crosshair must turn cyan");
+            assert_eq!(
+                bg.0,
+                Color::srgb(0.1, 0.95, 1.0),
+                "Hovered crosshair must turn cyan"
+            );
         }
     }
 
     #[test]
     fn test_update_hud_visibility_switches_with_state() {
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default(), bevy::state::app::StatesPlugin));
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::asset::AssetPlugin::default(),
+            bevy::state::app::StatesPlugin,
+        ));
         app.init_asset::<Font>();
         app.init_asset::<Image>();
         app.init_resource::<ActiveHotbarSlot>();

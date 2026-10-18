@@ -212,7 +212,9 @@ pub fn prepare_outline_pipelines(
             },
         );
 
-        commands.entity(entity).insert(OutlinePipelineId(pipeline_id));
+        commands
+            .entity(entity)
+            .insert(OutlinePipelineId(pipeline_id));
     }
 }
 
@@ -220,11 +222,10 @@ pub struct OutlinePostProcessPlugin;
 
 impl Plugin for OutlinePostProcessPlugin {
     fn build(&self, app: &mut App) {
-        app.register_type::<OutlineSettings>()
-            .add_plugins((
-                ExtractComponentPlugin::<OutlineSettings>::default(),
-                UniformComponentPlugin::<OutlineSettings>::default(),
-            ));
+        app.register_type::<OutlineSettings>().add_plugins((
+            ExtractComponentPlugin::<OutlineSettings>::default(),
+            UniformComponentPlugin::<OutlineSettings>::default(),
+        ));
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
@@ -232,10 +233,7 @@ impl Plugin for OutlinePostProcessPlugin {
 
         render_app
             .init_resource::<SpecializedRenderPipelines<OutlinePipeline>>()
-            .add_systems(
-                Render,
-                prepare_outline_pipelines.in_set(RenderSet::Prepare),
-            )
+            .add_systems(Render, prepare_outline_pipelines.in_set(RenderSet::Prepare))
             .add_render_graph_node::<ViewNodeRunner<OutlineNode>>(Core3d, OutlineLabel)
             .add_render_graph_edges(
                 Core3d,

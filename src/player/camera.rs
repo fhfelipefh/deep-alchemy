@@ -1,9 +1,9 @@
+use avian3d::prelude::*;
 use bevy::{
     prelude::*,
     render::view::RenderLayers,
     window::{CursorGrabMode, PrimaryWindow},
 };
-use avian3d::prelude::*;
 
 #[derive(Component)]
 pub struct Player;
@@ -74,18 +74,21 @@ pub fn grab_mouse(mut windows: Query<&mut Window, With<PrimaryWindow>>) {
     }
 }
 
-pub fn setup_player(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-) {
+pub fn setup_player(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Spawn Player Root with Avian3D physics controller
     let player_id = commands
         .spawn((
             Player,
             PlayerState::Active,
             LocomotionState::default(),
-            Health { current: 100.0, max: 100.0 },
-            Stamina { current: 100.0, max: 100.0 },
+            Health {
+                current: 100.0,
+                max: 100.0,
+            },
+            Stamina {
+                current: 100.0,
+                max: 100.0,
+            },
             RigidBody::Kinematic,
             Collider::capsule(0.35, 1.1),
             Transform::from_xyz(0.0, 1.2, 0.0),
@@ -95,6 +98,9 @@ pub fn setup_player(
             parent.spawn((
                 PlayerCamera,
                 Camera3d::default(),
+                // SSAO is per-camera in Bevy 0.15 and requires MSAA disabled.
+                // The toon outline pass supplies the silhouette smoothing instead.
+                Msaa::Off,
                 bevy::core_pipeline::prepass::DepthPrepass,
                 bevy::core_pipeline::prepass::NormalPrepass,
                 crate::render::outline::OutlineSettings::default(),
@@ -132,18 +138,19 @@ pub fn setup_player(
 
             for (joint_name, local_pos) in joints {
                 let mut joint_cmd = parent.spawn((
-                    BoneJoint { name: joint_name.to_string() },
-                    RagdollLimb { limb_name: joint_name.to_string() },
+                    BoneJoint {
+                        name: joint_name.to_string(),
+                    },
+                    RagdollLimb {
+                        limb_name: joint_name.to_string(),
+                    },
                     Transform::from_translation(local_pos),
                     GlobalTransform::default(),
                 ));
 
                 if joint_name == "Head" {
                     // Head & Hat is specifically placed on layer 1 for 1P shadow/reflection only
-                    joint_cmd.insert((
-                        HeadHatPart,
-                        RenderLayers::layer(1),
-                    ));
+                    joint_cmd.insert((HeadHatPart, RenderLayers::layer(1)));
                 }
             }
         })
@@ -188,10 +195,17 @@ pub fn configure_player_model_layers(
                 HeadHatPart,
                 RenderLayers::layer(1), // Invisible to 1P camera (layer 0)
             ));
-        } else if n.contains("Arm") || n.contains("Hand")
-            || n.contains("Leg") || n.contains("Boot") || n.contains("Foot")
-            || n.contains("Torso") || n.contains("Vest") || n.contains("CoatTail")
-            || n.contains("Thigh") || n.contains("Shin") {
+        } else if n.contains("Arm")
+            || n.contains("Hand")
+            || n.contains("Leg")
+            || n.contains("Boot")
+            || n.contains("Foot")
+            || n.contains("Torso")
+            || n.contains("Vest")
+            || n.contains("CoatTail")
+            || n.contains("Thigh")
+            || n.contains("Shin")
+        {
             commands.entity(entity).insert((
                 RenderLayers::layer(1), // Invisible to 1P camera (layer 0)
             ));
@@ -228,17 +242,20 @@ mod tests {
         let mut app = App::new();
         app.add_systems(Update, grab_mouse);
 
-        let window_entity = app.world_mut().spawn((
-            PrimaryWindow,
-            Window {
-                cursor_options: bevy::window::CursorOptions {
-                    grab_mode: CursorGrabMode::None,
-                    visible: true,
+        let window_entity = app
+            .world_mut()
+            .spawn((
+                PrimaryWindow,
+                Window {
+                    cursor_options: bevy::window::CursorOptions {
+                        grab_mode: CursorGrabMode::None,
+                        visible: true,
+                        ..default()
+                    },
                     ..default()
                 },
-                ..default()
-            },
-        )).id();
+            ))
+            .id();
 
         app.update();
 
@@ -258,13 +275,29 @@ mod tests {
         let player_count = app.world_mut().query::<&Player>().iter(app.world()).count();
         assert_eq!(player_count, 1, "Player root entity must be spawned");
 
-        let camera_count = app.world_mut().query::<&PlayerCamera>().iter(app.world()).count();
+        let camera_count = app
+            .world_mut()
+            .query::<&PlayerCamera>()
+            .iter(app.world())
+            .count();
         assert_eq!(camera_count, 1, "Player 1P camera must be spawned");
 
-        let bone_count = app.world_mut().query::<&BoneJoint>().iter(app.world()).count();
-        assert!(bone_count >= 8, "Player hierarchy must include skeleton bone joints for full body awareness");
+        let bone_count = app
+            .world_mut()
+            .query::<&BoneJoint>()
+            .iter(app.world())
+            .count();
+        assert!(
+            bone_count >= 8,
+            "Player hierarchy must include skeleton bone joints for full body awareness"
+        );
 
-        let has_locomotion = app.world_mut().query::<(&Player, &LocomotionState)>().iter(app.world()).count() == 1;
+        let has_locomotion = app
+            .world_mut()
+            .query::<(&Player, &LocomotionState)>()
+            .iter(app.world())
+            .count()
+            == 1;
         assert!(has_locomotion, "Player must possess LocomotionState");
     }
 }

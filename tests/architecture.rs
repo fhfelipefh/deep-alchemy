@@ -1,7 +1,7 @@
+use deep_alchemy::alchemy::AlchemicalEffectKind;
+use serde::Deserialize;
 use std::fs;
 use std::path::Path;
-use serde::Deserialize;
-use deep_alchemy::alchemy::AlchemicalEffectKind;
 
 #[derive(Debug, Deserialize)]
 struct RonDatabase {
@@ -40,28 +40,57 @@ struct RonEffect {
 #[test]
 fn test_architecture_static_alchemy_recipes_ron_integrity() {
     let ron_path = Path::new("assets/data/alchemy_recipes.ron");
-    assert!(ron_path.exists(), "assets/data/alchemy_recipes.ron must exist");
+    assert!(
+        ron_path.exists(),
+        "assets/data/alchemy_recipes.ron must exist"
+    );
 
     let content = fs::read_to_string(ron_path).expect("Failed to read alchemy_recipes.ron");
     let database: RonDatabase = ron::from_str(&content).expect("Failed to parse RON database");
 
-    assert!(!database.ingredients.is_empty(), "Database must contain ingredients");
-    assert!(!database.potions.is_empty(), "Database must contain potions");
+    assert!(
+        !database.ingredients.is_empty(),
+        "Database must contain ingredients"
+    );
+    assert!(
+        !database.potions.is_empty(),
+        "Database must contain potions"
+    );
 
     for ing in &database.ingredients {
         assert!(!ing.id.is_empty(), "Ingredient ID must not be empty");
         assert!(!ing.name.is_empty(), "Ingredient Name must not be empty");
-        assert!(ing.weight > 0.0, "Ingredient weight must be positive: {}", ing.name);
-        assert!(ing.value > 0, "Ingredient value must be positive: {}", ing.name);
+        assert!(
+            ing.weight > 0.0,
+            "Ingredient weight must be positive: {}",
+            ing.name
+        );
+        assert!(
+            ing.value > 0,
+            "Ingredient value must be positive: {}",
+            ing.name
+        );
     }
 
     for pot in &database.potions {
         assert!(!pot.id.is_empty(), "Potion ID must not be empty");
         assert!(!pot.name.is_empty(), "Potion Name must not be empty");
-        assert!(!pot.effects.is_empty(), "Potion must contain effects: {}", pot.name);
+        assert!(
+            !pot.effects.is_empty(),
+            "Potion must contain effects: {}",
+            pot.name
+        );
         for eff in &pot.effects {
-            assert!(eff.duration > 0.0, "Effect duration must be > 0: {:?}", eff.kind);
-            assert!(eff.magnitude > 0.0, "Effect magnitude must be > 0: {:?}", eff.kind);
+            assert!(
+                eff.duration > 0.0,
+                "Effect duration must be > 0: {:?}",
+                eff.kind
+            );
+            assert!(
+                eff.magnitude > 0.0,
+                "Effect magnitude must be > 0: {:?}",
+                eff.kind
+            );
         }
     }
 }
@@ -69,10 +98,10 @@ fn test_architecture_static_alchemy_recipes_ron_integrity() {
 #[test]
 fn test_architecture_gltf_models_binary_integrity() {
     let models = [
-        ("assets/models/player.glb", 30_000),       // > 30KB
-        ("assets/models/cavern_kit.glb", 25_000),   // > 25KB
+        ("assets/models/player.glb", 30_000),        // > 30KB
+        ("assets/models/cavern_kit.glb", 25_000),    // > 25KB
         ("assets/models/alchemy_props.glb", 25_000), // > 25KB
-        ("assets/models/dungeon_kit.glb", 20_000),  // > 20KB
+        ("assets/models/dungeon_kit.glb", 20_000),   // > 20KB
     ];
 
     let gltf_magic: u32 = 0x46546C67; // "glTF" in little-endian
@@ -92,7 +121,11 @@ fn test_architecture_gltf_models_binary_integrity() {
 
         // Check glTF binary header
         let magic = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-        assert_eq!(magic, gltf_magic, "Model {} is not a valid GLB binary", model_path);
+        assert_eq!(
+            magic, gltf_magic,
+            "Model {} is not a valid GLB binary",
+            model_path
+        );
 
         let version = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
         assert_eq!(version, 2, "Model {} must be glTF version 2", model_path);
@@ -106,12 +139,30 @@ fn test_architecture_wgsl_shaders_integrity() {
 
     let code = fs::read_to_string(shader_path).expect("Failed to read shader");
     assert!(!code.is_empty(), "Shader must not be empty");
-    assert!(code.contains("@fragment"), "Shader must contain @fragment entry point");
-    assert!(code.contains("VertexOutput"), "Shader must import VertexOutput");
-    assert!(code.contains("material_base"), "Shader must bind material_base uniform");
-    assert!(code.contains("material_deep"), "Shader must bind material_deep uniform");
-    assert!(code.contains("material_foam"), "Shader must bind material_foam uniform");
-    assert!(code.contains("material_params"), "Shader must bind material_params uniform");
+    assert!(
+        code.contains("@fragment"),
+        "Shader must contain @fragment entry point"
+    );
+    assert!(
+        code.contains("VertexOutput"),
+        "Shader must import VertexOutput"
+    );
+    assert!(
+        code.contains("material_base"),
+        "Shader must bind material_base uniform"
+    );
+    assert!(
+        code.contains("material_deep"),
+        "Shader must bind material_deep uniform"
+    );
+    assert!(
+        code.contains("material_foam"),
+        "Shader must bind material_foam uniform"
+    );
+    assert!(
+        code.contains("material_params"),
+        "Shader must bind material_params uniform"
+    );
 }
 
 #[test]
@@ -140,7 +191,11 @@ fn test_architecture_desktop_exclusive_constraints() {
     use bevy::window::CursorGrabMode;
 
     let default_grab = CursorGrabMode::Locked;
-    assert_eq!(default_grab, CursorGrabMode::Locked, "Desktop mode requires locked cursor");
+    assert_eq!(
+        default_grab,
+        CursorGrabMode::Locked,
+        "Desktop mode requires locked cursor"
+    );
 }
 
 #[test]
@@ -175,7 +230,8 @@ fn test_architecture_ptbr_font_file_integrity_and_cmap_coverage() {
     }
 
     let cmap_off = cmap_offset.expect("Font must contain 'cmap' table");
-    let num_subtables = u16::from_be_bytes([font_bytes[cmap_off + 2], font_bytes[cmap_off + 3]]) as usize;
+    let num_subtables =
+        u16::from_be_bytes([font_bytes[cmap_off + 2], font_bytes[cmap_off + 3]]) as usize;
 
     // Locate Format 4 subtable (Unicode BMP: platform 3, encoding 1 or platform 0)
     let mut format4_offset: Option<usize> = None;
@@ -191,7 +247,10 @@ fn test_architecture_ptbr_font_file_integrity_and_cmap_coverage() {
         ]) as usize;
 
         let absolute_sub_off = cmap_off + sub_offset;
-        let format = u16::from_be_bytes([font_bytes[absolute_sub_off], font_bytes[absolute_sub_off + 1]]);
+        let format = u16::from_be_bytes([
+            font_bytes[absolute_sub_off],
+            font_bytes[absolute_sub_off + 1],
+        ]);
 
         if (platform_id == 3 && encoding_id == 1 && format == 4)
             || (platform_id == 0 && format == 4)
@@ -202,7 +261,8 @@ fn test_architecture_ptbr_font_file_integrity_and_cmap_coverage() {
     }
 
     let f4_off = format4_offset.expect("Font must contain Format 4 Unicode subtable in cmap");
-    let seg_count = (u16::from_be_bytes([font_bytes[f4_off + 6], font_bytes[f4_off + 7]]) / 2) as usize;
+    let seg_count =
+        (u16::from_be_bytes([font_bytes[f4_off + 6], font_bytes[f4_off + 7]]) / 2) as usize;
 
     let end_codes_start = f4_off + 14;
     let start_codes_start = end_codes_start + seg_count * 2 + 2; // +2 for reservedPad
@@ -222,20 +282,15 @@ fn test_architecture_ptbr_font_file_integrity_and_cmap_coverage() {
 
     // All mandatory Portuguese glyphs that previously broke or were missing
     let required_chars = [
-        'á', 'é', 'í', 'ó', 'ú',
-        'â', 'ê', 'ô',
-        'ã', 'õ',
-        'ç',
-        'Á', 'É', 'Í', 'Ó', 'Ú',
-        'Â', 'Ê', 'Ô',
-        'Ã', 'Õ',
-        'Ç',
-        'ª', 'º',
+        'á', 'é', 'í', 'ó', 'ú', 'â', 'ê', 'ô', 'ã', 'õ', 'ç', 'Á', 'É', 'Í', 'Ó', 'Ú', 'Â', 'Ê',
+        'Ô', 'Ã', 'Õ', 'Ç', 'ª', 'º',
     ];
 
     for &ch in &required_chars {
         let code = ch as u32;
-        let is_mapped = segments.iter().any(|&(start, end)| code >= start as u32 && code <= end as u32);
+        let is_mapped = segments
+            .iter()
+            .any(|&(start, end)| code >= start as u32 && code <= end as u32);
         assert!(
             is_mapped,
             "Font 'DejaVuSans.ttf' is missing glyph coverage for Portuguese character '{}' (U+{:04X})",
@@ -254,8 +309,20 @@ fn test_architecture_ui_utf8_strings_no_mojibake() {
     ];
 
     let mojibake_patterns = [
-        "Ã§", "Ã£", "Ã¡", "Ã©", "Ã³", "Ãº", "Ã¢", "Ãª", "Ã´", "Ãµ",
-        "â€™", "â€œ", "â€\u{9d}", "\u{FFFD}",
+        "Ã§",
+        "Ã£",
+        "Ã¡",
+        "Ã©",
+        "Ã³",
+        "Ãº",
+        "Ã¢",
+        "Ãª",
+        "Ã´",
+        "Ãµ",
+        "â€™",
+        "â€œ",
+        "â€\u{9d}",
+        "\u{FFFD}",
     ];
 
     for file_path in source_files {
@@ -267,7 +334,8 @@ fn test_architecture_ui_utf8_strings_no_mojibake() {
             assert!(
                 !content.contains(pattern),
                 "Mojibake / corrupted encoding pattern '{}' detected in {}",
-                pattern, file_path
+                pattern,
+                file_path
             );
         }
     }
@@ -287,16 +355,31 @@ fn test_architecture_executable_icon_and_metadata_integrity() {
     assert!(png_path.exists(), "app_icon.png must exist");
     let png_bytes = fs::read(png_path).expect("Failed to read app_icon.png");
     assert!(png_bytes.len() > 5_000, "app_icon.png must be > 5KB");
-    assert_eq!(&png_bytes[0..4], &[0x89, b'P', b'N', b'G'], "app_icon.png must have valid PNG magic");
+    assert_eq!(
+        &png_bytes[0..4],
+        &[0x89, b'P', b'N', b'G'],
+        "app_icon.png must have valid PNG magic"
+    );
 
     // 2. Multi-resolution Windows ICO
     let ico_path = Path::new("assets/icons/app_icon.ico");
     assert!(ico_path.exists(), "app_icon.ico must exist");
     let ico_bytes = fs::read(ico_path).expect("Failed to read app_icon.ico");
-    assert!(ico_bytes.len() > 40_000, "app_icon.ico must be multi-res (> 40KB)");
-    assert_eq!(&ico_bytes[0..4], &[0, 0, 1, 0], "app_icon.ico must have valid ICO magic header");
+    assert!(
+        ico_bytes.len() > 40_000,
+        "app_icon.ico must be multi-res (> 40KB)"
+    );
+    assert_eq!(
+        &ico_bytes[0..4],
+        &[0, 0, 1, 0],
+        "app_icon.ico must have valid ICO magic header"
+    );
     let icon_count = u16::from_le_bytes([ico_bytes[4], ico_bytes[5]]);
-    assert!(icon_count >= 5, "app_icon.ico must provide at least 5 resolution tiers, found {}", icon_count);
+    assert!(
+        icon_count >= 5,
+        "app_icon.ico must provide at least 5 resolution tiers, found {}",
+        icon_count
+    );
 
     // 3. Resource Compiler Script and Compiled .res file
     let rc_path = Path::new("assets/icons/app_icon.rc");
@@ -305,13 +388,19 @@ fn test_architecture_executable_icon_and_metadata_integrity() {
     assert!(rc_content.contains("ICON \"app_icon.ico\""));
 
     let res_path = Path::new("assets/icons/app_icon.res");
-    assert!(res_path.exists(), "app_icon.res must exist for PE binary embedding");
+    assert!(
+        res_path.exists(),
+        "app_icon.res must exist for PE binary embedding"
+    );
 
     // 4. Build Script linking the icon into the executable
     let build_rs_path = Path::new("build.rs");
     assert!(build_rs_path.exists(), "build.rs must exist");
     let build_rs_content = fs::read_to_string(build_rs_path).expect("Failed to read build.rs");
-    assert!(build_rs_content.contains("cargo:rustc-link-arg="), "build.rs must link Windows PE resource file");
+    assert!(
+        build_rs_content.contains("cargo:rustc-link-arg="),
+        "build.rs must link Windows PE resource file"
+    );
 }
 
 #[test]
@@ -328,20 +417,33 @@ fn test_architecture_cavern_grotto_visual_richness() {
     );
 
     // Verify modular_kit.rs spawns waterfall, river, geysers and atmospheric lighting
-    let dungeon_code = fs::read_to_string("src/dungeon/modular_kit.rs").expect("Failed to read modular_kit.rs");
-    assert!(dungeon_code.contains("WaterMaterial"), "Grotto must use custom WaterMaterial");
-    assert!(dungeon_code.contains("ThermalGeyser"), "Grotto must have ThermalGeyser entities");
-    assert!(dungeon_code.contains("ParticleEmitter"), "Grotto must have ParticleEmitter entities");
-    assert!(dungeon_code.contains("AmbientLight"), "Grotto must configure AmbientLight");
-    assert!(dungeon_code.contains("DirectionalLight"), "Grotto must have sunlight shaft");
+    let dungeon_code =
+        fs::read_to_string("src/dungeon/modular_kit.rs").expect("Failed to read modular_kit.rs");
+    assert!(
+        dungeon_code.contains("WaterMaterial"),
+        "Grotto must use custom WaterMaterial"
+    );
+    assert!(
+        dungeon_code.contains("ThermalGeyser"),
+        "Grotto must have ThermalGeyser entities"
+    );
+    assert!(
+        dungeon_code.contains("ParticleEmitter"),
+        "Grotto must have ParticleEmitter entities"
+    );
+    assert!(
+        dungeon_code.contains("AmbientLight"),
+        "Grotto must configure AmbientLight"
+    );
+    assert!(
+        dungeon_code.contains("DirectionalLight"),
+        "Grotto must have sunlight shaft"
+    );
 }
 
 #[test]
 fn test_architecture_gatekeeping_definition_of_done_in_rules() {
-    let rule_files = [
-        "RULES.md",
-        ".gemini/rules/architecture.md",
-    ];
+    let rule_files = ["RULES.md", ".gemini/rules/architecture.md"];
 
     let required_gate_sections = [
         "PROTOCOLO ANTI-PLACEHOLDER E VALIDAÇÃO OBRIGATÓRIA (DEFINITION OF DONE)",
@@ -361,7 +463,8 @@ fn test_architecture_gatekeeping_definition_of_done_in_rules() {
             assert!(
                 content.contains(section),
                 "Rules file {} is missing mandatory section: '{}'",
-                file_path, section
+                file_path,
+                section
             );
         }
     }
@@ -369,119 +472,287 @@ fn test_architecture_gatekeeping_definition_of_done_in_rules() {
 
 #[test]
 fn test_architecture_gate2_locomotion_and_skeleton_integrity() {
-    let controller_code = fs::read_to_string("src/player/controller.rs").expect("Failed to read controller.rs");
-    assert!(controller_code.contains("LocomotionState"), "Controller must use LocomotionState");
-    assert!(controller_code.contains("is_sprinting"), "Controller must track sprinting");
-    assert!(controller_code.contains("is_crouching"), "Controller must track crouching");
-    assert!(controller_code.contains("is_grounded"), "Controller must track ground state");
-    assert!(controller_code.contains("player_camera_effects"), "Controller must have FOV kick and head bob system");
+    let controller_code =
+        fs::read_to_string("src/player/controller.rs").expect("Failed to read controller.rs");
+    assert!(
+        controller_code.contains("LocomotionState"),
+        "Controller must use LocomotionState"
+    );
+    assert!(
+        controller_code.contains("is_sprinting"),
+        "Controller must track sprinting"
+    );
+    assert!(
+        controller_code.contains("is_crouching"),
+        "Controller must track crouching"
+    );
+    assert!(
+        controller_code.contains("is_grounded"),
+        "Controller must track ground state"
+    );
+    assert!(
+        controller_code.contains("player_camera_effects"),
+        "Controller must have FOV kick and head bob system"
+    );
 
     let camera_code = fs::read_to_string("src/player/camera.rs").expect("Failed to read camera.rs");
-    assert!(camera_code.contains("BoneJoint"), "Camera/Player must define BoneJoint");
-    assert!(camera_code.contains("RagdollLimb"), "Camera/Player must define RagdollLimb");
-    assert!(camera_code.contains("HeadHatPart"), "Camera/Player must define HeadHatPart");
+    assert!(
+        camera_code.contains("BoneJoint"),
+        "Camera/Player must define BoneJoint"
+    );
+    assert!(
+        camera_code.contains("RagdollLimb"),
+        "Camera/Player must define RagdollLimb"
+    );
+    assert!(
+        camera_code.contains("HeadHatPart"),
+        "Camera/Player must define HeadHatPart"
+    );
 }
 
 #[test]
 fn test_architecture_gate3_concept_hud_and_5_slot_hotbar() {
     let hud_code = fs::read_to_string("src/ui/hud.rs").expect("Failed to read hud.rs");
-    assert!(hud_code.contains("HealthHeartFill"), "HUD must define HealthHeartFill for top-left hearts");
-    assert!(hud_code.contains("HotbarSlotUi"), "HUD must define HotbarSlotUi for bottom hotbar");
-    assert!(hud_code.contains("ActiveHotbarSlot"), "HUD must manage ActiveHotbarSlot resource");
-    assert!(hud_code.contains("COLOR_BORDER_GOLD"), "HUD must use ornate alchemical gold borders");
+    assert!(
+        hud_code.contains("HealthHeartFill"),
+        "HUD must define HealthHeartFill for top-left hearts"
+    );
+    assert!(
+        hud_code.contains("HotbarSlotUi"),
+        "HUD must define HotbarSlotUi for bottom hotbar"
+    );
+    assert!(
+        hud_code.contains("ActiveHotbarSlot"),
+        "HUD must manage ActiveHotbarSlot resource"
+    );
+    assert!(
+        hud_code.contains("COLOR_BORDER_GOLD"),
+        "HUD must use ornate alchemical gold borders"
+    );
 }
 
 #[test]
 fn test_architecture_gate4_screenshot_and_validator_script_integrity() {
     let main_code = fs::read_to_string("src/main.rs").expect("Failed to read main.rs");
-    assert!(main_code.contains("--screenshot-test"), "main.rs must handle --screenshot-test flag");
-    assert!(main_code.contains("Screenshot::primary_window()"), "main.rs must trigger primary window screenshot");
-    assert!(main_code.contains("debug_output/frame_check.png"), "main.rs must save to debug_output/frame_check.png");
+    assert!(
+        main_code.contains("--screenshot-test"),
+        "main.rs must handle --screenshot-test flag"
+    );
+    assert!(
+        main_code.contains("Screenshot::primary_window()"),
+        "main.rs must trigger primary window screenshot"
+    );
+    assert!(
+        main_code.contains("debug_output/frame_check.png"),
+        "main.rs must save to debug_output/frame_check.png"
+    );
 
     let validator_path = Path::new("scripts/validate_frame.py");
-    assert!(validator_path.exists(), "scripts/validate_frame.py must exist");
+    assert!(
+        validator_path.exists(),
+        "scripts/validate_frame.py must exist"
+    );
 
-    let validator_code = fs::read_to_string(validator_path).expect("Failed to read validate_frame.py");
-    assert!(validator_code.contains("Sobel"), "Validator must implement Sobel edge detection");
-    assert!(validator_code.contains("gray_percentage"), "Validator must check flat gray ratio");
-    assert!(validator_code.contains("vibrant_percentage"), "Validator must verify vibrant colors");
+    let validator_code =
+        fs::read_to_string(validator_path).expect("Failed to read validate_frame.py");
+    assert!(
+        validator_code.contains("Sobel"),
+        "Validator must implement Sobel edge detection"
+    );
+    assert!(
+        validator_code.contains("gray_percentage"),
+        "Validator must check flat gray ratio"
+    );
+    assert!(
+        validator_code.contains("vibrant_percentage"),
+        "Validator must verify vibrant colors"
+    );
 }
 
 #[test]
 fn test_architecture_cel_shaded_sobel_outline_pipeline_integrity() {
     let outline_shader_path = Path::new("assets/shaders/outline_post_process.wgsl");
-    assert!(outline_shader_path.exists(), "outline_post_process.wgsl must exist");
+    assert!(
+        outline_shader_path.exists(),
+        "outline_post_process.wgsl must exist"
+    );
 
-    let shader_code = fs::read_to_string(outline_shader_path).expect("Failed to read outline shader");
-    assert!(shader_code.contains("Sobel"), "Outline shader must implement Sobel kernel sampling");
-    assert!(shader_code.contains("settings.outline_threshold"), "Shader must use outline threshold");
+    let shader_code =
+        fs::read_to_string(outline_shader_path).expect("Failed to read outline shader");
+    assert!(
+        shader_code.contains("Sobel"),
+        "Outline shader must implement Sobel kernel sampling"
+    );
+    assert!(
+        shader_code.contains("settings.outline_threshold"),
+        "Shader must use outline threshold"
+    );
 
     let camera_code = fs::read_to_string("src/player/camera.rs").expect("Failed to read camera.rs");
-    assert!(camera_code.contains("DepthPrepass"), "Camera must have DepthPrepass");
-    assert!(camera_code.contains("NormalPrepass"), "Camera must have NormalPrepass");
-    assert!(camera_code.contains("OutlineSettings"), "Camera must have OutlineSettings");
+    assert!(
+        camera_code.contains("DepthPrepass"),
+        "Camera must have DepthPrepass"
+    );
+    assert!(
+        camera_code.contains("NormalPrepass"),
+        "Camera must have NormalPrepass"
+    );
+    assert!(
+        camera_code.contains("OutlineSettings"),
+        "Camera must have OutlineSettings"
+    );
 
-    let render_code = fs::read_to_string("src/render/mod.rs").expect("Failed to read render/mod.rs");
-    assert!(render_code.contains("OutlinePostProcessPlugin"), "Render plugin must include OutlinePostProcessPlugin");
+    let render_code =
+        fs::read_to_string("src/render/mod.rs").expect("Failed to read render/mod.rs");
+    assert!(
+        render_code.contains("OutlinePostProcessPlugin"),
+        "Render plugin must include OutlinePostProcessPlugin"
+    );
 }
 
 #[test]
 fn test_architecture_procedural_dungeon_wfc_dual_grid_integrity() {
-    let generator_code = fs::read_to_string("src/dungeon/generator.rs").expect("Failed to read generator.rs");
-    assert!(generator_code.contains("StartingGrotto"), "Generator must enforce permanent StartingGrotto anchor");
-    assert!(generator_code.contains("CanonicalPiece"), "Generator must implement Stålberg 6 Canonical Pieces");
-    assert!(generator_code.contains("compute_dual_grid"), "Generator must compute shifted Dual Grid");
-    assert!(generator_code.contains("apply_macro_pattern_matching"), "Generator must implement Multi-Tile Pattern Matching");
-    assert!(generator_code.contains("verify_reachability"), "Generator must verify reachability from Starting Grotto");
+    let generator_code =
+        fs::read_to_string("src/dungeon/generator.rs").expect("Failed to read generator.rs");
+    assert!(
+        generator_code.contains("StartingGrotto"),
+        "Generator must enforce permanent StartingGrotto anchor"
+    );
+    assert!(
+        generator_code.contains("CanonicalPiece"),
+        "Generator must implement Stålberg 6 Canonical Pieces"
+    );
+    assert!(
+        generator_code.contains("compute_dual_grid"),
+        "Generator must compute shifted Dual Grid"
+    );
+    assert!(
+        generator_code.contains("apply_macro_pattern_matching"),
+        "Generator must implement Multi-Tile Pattern Matching"
+    );
+    assert!(
+        generator_code.contains("verify_reachability"),
+        "Generator must verify reachability from Starting Grotto"
+    );
 
     let dungeon_kit_path = Path::new("assets/models/dungeon_kit.glb");
-    assert!(dungeon_kit_path.exists(), "assets/models/dungeon_kit.glb must exist");
+    assert!(
+        dungeon_kit_path.exists(),
+        "assets/models/dungeon_kit.glb must exist"
+    );
 }
 
 #[test]
 fn test_architecture_concept_art_fidelity_and_faceted_rocks_pipeline() {
     // 1. Technical Artist Skill definition
     let skill_path = Path::new(".agent/skills/concept-art-fidelity/SKILL.md");
-    assert!(skill_path.exists(), ".agent/skills/concept-art-fidelity/SKILL.md must exist");
-    let skill_content = fs::read_to_string(skill_path).expect("Failed to read concept-art-fidelity skill");
-    assert!(skill_content.contains("Visual Diff"), "Skill must define Visual Diff loop");
-    assert!(skill_content.contains("World-Space Normal"), "Skill must define World-Space Normal top moss blending");
-    assert!(skill_content.contains("Extração de Blueprint"), "Skill must define Blueprint Extraction step");
-    assert!(skill_content.contains("Definition of Done"), "Skill must define Definition of Done");
+    assert!(
+        skill_path.exists(),
+        ".agent/skills/concept-art-fidelity/SKILL.md must exist"
+    );
+    let skill_content =
+        fs::read_to_string(skill_path).expect("Failed to read concept-art-fidelity skill");
+    assert!(
+        skill_content.contains("Visual Diff"),
+        "Skill must define Visual Diff loop"
+    );
+    assert!(
+        skill_content.contains("World-Space Normal"),
+        "Skill must define World-Space Normal top moss blending"
+    );
+    assert!(
+        skill_content.contains("Extração de Blueprint"),
+        "Skill must define Blueprint Extraction step"
+    );
+    assert!(
+        skill_content.contains("Definition of Done"),
+        "Skill must define Definition of Done"
+    );
 
     // 2. Visual Diff & Blueprint Extractor script
     let blueprint_script = Path::new("scripts/visual_diff_blueprint.py");
-    assert!(blueprint_script.exists(), "scripts/visual_diff_blueprint.py must exist");
-    let script_code = fs::read_to_string(blueprint_script).expect("Failed to read visual_diff_blueprint.py");
-    assert!(script_code.contains("analyze_image_regions"), "Script must analyze depth layers");
-    assert!(script_code.contains("compute_sobel_density"), "Script must measure ink lines density");
+    assert!(
+        blueprint_script.exists(),
+        "scripts/visual_diff_blueprint.py must exist"
+    );
+    let script_code =
+        fs::read_to_string(blueprint_script).expect("Failed to read visual_diff_blueprint.py");
+    assert!(
+        script_code.contains("analyze_image_regions"),
+        "Script must analyze depth layers"
+    );
+    assert!(
+        script_code.contains("compute_sobel_density"),
+        "Script must measure ink lines density"
+    );
 
     // 3. World-Space Normal Top-Moss WGSL Shader & Render Material
     let moss_shader_path = Path::new("assets/shaders/cel_shaded_world_moss.wgsl");
-    assert!(moss_shader_path.exists(), "assets/shaders/cel_shaded_world_moss.wgsl must exist");
+    assert!(
+        moss_shader_path.exists(),
+        "assets/shaders/cel_shaded_world_moss.wgsl must exist"
+    );
     let shader_code = fs::read_to_string(moss_shader_path).expect("Failed to read moss shader");
-    assert!(shader_code.contains("ny_threshold"), "Shader must implement normal.y threshold");
-    assert!(shader_code.contains("smoothstep"), "Shader must blend moss smoothly");
-    assert!(shader_code.contains("toon_bands"), "Shader must implement stepped toon lighting");
+    assert!(
+        shader_code.contains("ny_threshold"),
+        "Shader must implement normal.y threshold"
+    );
+    assert!(
+        shader_code.contains("smoothstep"),
+        "Shader must blend moss smoothly"
+    );
+    assert!(
+        shader_code.contains("toon_bands"),
+        "Shader must implement stepped toon lighting"
+    );
 
-    let render_code = fs::read_to_string("src/render/mod.rs").expect("Failed to read render mod.rs");
-    assert!(render_code.contains("CelShadedMossMaterial"), "Render module must register CelShadedMossMaterial");
+    let render_code =
+        fs::read_to_string("src/render/mod.rs").expect("Failed to read render mod.rs");
+    assert!(
+        render_code.contains("CelShadedMossMaterial"),
+        "Render module must register CelShadedMossMaterial"
+    );
 
     // 4. Procedural Faceted Rocks Generator & GLB Kit
     let rock_gen_script = Path::new("scripts/generate_faceted_rocks.py");
-    assert!(rock_gen_script.exists(), "scripts/generate_faceted_rocks.py must exist");
-    let gen_code = fs::read_to_string(rock_gen_script).expect("Failed to read generate_faceted_rocks.py");
-    assert!(gen_code.contains("generate_angular_rock"), "Rock generator must define generate_angular_rock");
-    assert!(gen_code.contains("generate_rock_cluster"), "Rock generator must define generate_rock_cluster");
-    assert!(gen_code.contains("generate_transition_boulders"), "Rock generator must define generate_transition_boulders");
-    assert!(gen_code.contains("poly.normal.z > 0.60"), "Rock generator must assign top moss when normal.z > 0.60");
+    assert!(
+        rock_gen_script.exists(),
+        "scripts/generate_faceted_rocks.py must exist"
+    );
+    let gen_code =
+        fs::read_to_string(rock_gen_script).expect("Failed to read generate_faceted_rocks.py");
+    assert!(
+        gen_code.contains("generate_angular_rock"),
+        "Rock generator must define generate_angular_rock"
+    );
+    assert!(
+        gen_code.contains("generate_rock_cluster"),
+        "Rock generator must define generate_rock_cluster"
+    );
+    assert!(
+        gen_code.contains("generate_transition_boulders"),
+        "Rock generator must define generate_transition_boulders"
+    );
+    assert!(
+        gen_code.contains("poly.normal.z > 0.60"),
+        "Rock generator must assign top moss when normal.z > 0.60"
+    );
 
     let rock_glb_path = Path::new("assets/models/faceted_rocks_kit.glb");
-    assert!(rock_glb_path.exists(), "assets/models/faceted_rocks_kit.glb must exist");
+    assert!(
+        rock_glb_path.exists(),
+        "assets/models/faceted_rocks_kit.glb must exist"
+    );
     let glb_bytes = fs::read(rock_glb_path).expect("Failed to read faceted_rocks_kit.glb");
-    assert!(glb_bytes.len() > 20_000, "Rock kit GLB must be substantial (>20KB)");
+    assert!(
+        glb_bytes.len() > 20_000,
+        "Rock kit GLB must be substantial (>20KB)"
+    );
     let magic = u32::from_le_bytes([glb_bytes[0], glb_bytes[1], glb_bytes[2], glb_bytes[3]]);
-    assert_eq!(magic, 0x46546C67, "faceted_rocks_kit.glb must be valid glTF binary");
+    assert_eq!(
+        magic, 0x46546C67,
+        "faceted_rocks_kit.glb must be valid glTF binary"
+    );
 }
 
 #[test]
@@ -490,29 +761,58 @@ fn test_architecture_zero_vision_loop_and_telemetry_pipeline() {
     let spec_path = Path::new("assets/data/scene_spec.json");
     assert!(spec_path.exists(), "assets/data/scene_spec.json must exist");
     let spec_content = fs::read_to_string(spec_path).expect("Failed to read scene_spec.json");
-    assert!(spec_content.contains("starting_waterfall_grotto"), "Spec must define starting_waterfall_grotto");
-    assert!(spec_content.contains("unobstructed_central_waterfall_corridor_x"), "Spec must define central corridor");
+    assert!(
+        spec_content.contains("starting_waterfall_grotto"),
+        "Spec must define starting_waterfall_grotto"
+    );
+    assert!(
+        spec_content.contains("unobstructed_central_waterfall_corridor_x"),
+        "Spec must define central corridor"
+    );
 
     // 2. Vision Squeezer Middleware
     let squeezer_path = Path::new("scripts/vision_squeezer.py");
-    assert!(squeezer_path.exists(), "scripts/vision_squeezer.py must exist");
-    let squeezer_code = fs::read_to_string(squeezer_path).expect("Failed to read vision_squeezer.py");
-    assert!(squeezer_code.contains("squeeze_screenshot"), "Squeezer must define squeeze_screenshot");
-    assert!(squeezer_code.contains("generate_roi_crops"), "Squeezer must support ROI crops");
+    assert!(
+        squeezer_path.exists(),
+        "scripts/vision_squeezer.py must exist"
+    );
+    let squeezer_code =
+        fs::read_to_string(squeezer_path).expect("Failed to read vision_squeezer.py");
+    assert!(
+        squeezer_code.contains("squeeze_screenshot"),
+        "Squeezer must define squeeze_screenshot"
+    );
+    assert!(
+        squeezer_code.contains("generate_roi_crops"),
+        "Squeezer must support ROI crops"
+    );
 
     // 3. Engine Telemetry Dumper
     let telemetry_path = Path::new("src/dungeon/telemetry.rs");
-    assert!(telemetry_path.exists(), "src/dungeon/telemetry.rs must exist");
+    assert!(
+        telemetry_path.exists(),
+        "src/dungeon/telemetry.rs must exist"
+    );
     let tele_code = fs::read_to_string(telemetry_path).expect("Failed to read telemetry.rs");
-    assert!(tele_code.contains("dump_camera_frustum_telemetry"), "Telemetry must define dump_camera_frustum_telemetry");
+    assert!(
+        tele_code.contains("dump_camera_frustum_telemetry"),
+        "Telemetry must define dump_camera_frustum_telemetry"
+    );
 
     // 4. Frustum Dump JSON presence
     let dump_path = Path::new("debug_output/camera_frustum_dump.json");
-    assert!(dump_path.exists(), "debug_output/camera_frustum_dump.json must exist");
-    let dump_content = fs::read_to_string(dump_path).expect("Failed to read camera_frustum_dump.json");
-    assert!(dump_content.contains("camera"), "Dump must contain camera position");
-    assert!(dump_content.contains("entities"), "Dump must contain visible entities");
+    assert!(
+        dump_path.exists(),
+        "debug_output/camera_frustum_dump.json must exist"
+    );
+    let dump_content =
+        fs::read_to_string(dump_path).expect("Failed to read camera_frustum_dump.json");
+    assert!(
+        dump_content.contains("camera"),
+        "Dump must contain camera position"
+    );
+    assert!(
+        dump_content.contains("entities"),
+        "Dump must contain visible entities"
+    );
 }
-
-
-

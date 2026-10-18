@@ -1,10 +1,7 @@
-use bevy::prelude::*;
-use avian3d::prelude::*;
-use crate::{
-    alchemy::AlchemicalIngredient,
-    ui::menu::GameState,
-};
 use super::camera::PlayerCamera;
+use crate::{alchemy::AlchemicalIngredient, ui::menu::GameState};
+use avian3d::prelude::*;
+use bevy::prelude::*;
 
 #[derive(Component)]
 #[allow(dead_code)]
@@ -28,7 +25,10 @@ pub fn player_raycast_interaction(
     keys: Res<ButtonInput<KeyCode>>,
     spatial_query: SpatialQuery,
     camera_query: Query<(&GlobalTransform, &Camera), With<PlayerCamera>>,
-    mut interactables: Query<(Entity, &GlobalTransform, Option<&mut AlchemicalIngredient>), With<Interactable>>,
+    mut interactables: Query<
+        (Entity, &GlobalTransform, Option<&mut AlchemicalIngredient>),
+        With<Interactable>,
+    >,
     mut interaction_state: ResMut<InteractionState>,
     mut commands: Commands,
 ) {
@@ -119,7 +119,9 @@ pub fn player_physics_grab(
     if mouse_buttons.just_pressed(MouseButton::Right) {
         if let Some(target) = interaction_state.hovered_entity {
             commands.entity(target).insert((
-                GrabbedProp { target_distance: 2.2 },
+                GrabbedProp {
+                    target_distance: 2.2,
+                },
                 RigidBody::Kinematic, // Temporarily kinematic while held
             ));
         }
@@ -154,18 +156,15 @@ mod tests {
         world.insert_resource(mouse);
 
         let mut interaction_state = InteractionState::default();
-        let prop = world.spawn((
-            Transform::from_xyz(0.0, 0.0, -2.0),
-            RigidBody::Dynamic,
-        )).id();
+        let prop = world
+            .spawn((Transform::from_xyz(0.0, 0.0, -2.0), RigidBody::Dynamic))
+            .id();
         interaction_state.hovered_entity = Some(prop);
         world.insert_resource(interaction_state);
 
-        let _camera = world.spawn((
-            PlayerCamera,
-            Transform::IDENTITY,
-            GlobalTransform::IDENTITY,
-        )).id();
+        let _camera = world
+            .spawn((PlayerCamera, Transform::IDENTITY, GlobalTransform::IDENTITY))
+            .id();
 
         let mut schedule = Schedule::default();
         schedule.add_systems(player_physics_grab);
@@ -210,24 +209,35 @@ mod tests {
         ));
 
         // Interactable directly in front (Z = -2.0)
-        let target = app.world_mut().spawn((
-            Interactable { label: "Test Ingredient" },
-            AlchemicalIngredient {
-                id: "test_ing".to_string(),
-                name: "Test Herb".to_string(),
-                primary_effect: crate::alchemy::AlchemicalEffectKind::Vitality,
-                secondary_effect: crate::alchemy::AlchemicalEffectKind::Swiftness,
-                harvested: false,
-            },
-            Transform::from_xyz(0.0, 1.75, -2.0),
-            GlobalTransform::from_translation(Vec3::new(0.0, 1.75, -2.0)),
-        )).id();
+        let target = app
+            .world_mut()
+            .spawn((
+                Interactable {
+                    label: "Test Ingredient",
+                },
+                AlchemicalIngredient {
+                    id: "test_ing".to_string(),
+                    name: "Test Herb".to_string(),
+                    primary_effect: crate::alchemy::AlchemicalEffectKind::Vitality,
+                    secondary_effect: crate::alchemy::AlchemicalEffectKind::Swiftness,
+                    harvested: false,
+                },
+                Transform::from_xyz(0.0, 1.75, -2.0),
+                GlobalTransform::from_translation(Vec3::new(0.0, 1.75, -2.0)),
+            ))
+            .id();
 
-        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::KeyE);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyE);
 
         app.update();
 
         let state = app.world().resource::<InteractionState>();
-        assert_eq!(state.hovered_entity, Some(target), "Interactable must be detected in line of sight");
+        assert_eq!(
+            state.hovered_entity,
+            Some(target),
+            "Interactable must be detected in line of sight"
+        );
     }
 }

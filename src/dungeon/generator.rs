@@ -1,7 +1,7 @@
+use crate::dungeon::modular_kit::{CavernObstacle, ObstacleShape};
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use std::collections::{HashSet, VecDeque};
-use crate::dungeon::modular_kit::{CavernObstacle, ObstacleShape};
 
 /// Logical tile state in the primary dungeon grid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -122,7 +122,9 @@ impl DungeonGenerator {
         let mut rng_state = config.seed;
         let mut next_rand = || -> f32 {
             // Fast LCG deterministic PRNG
-            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            rng_state = rng_state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((rng_state >> 32) as u32 as f32) / (u32::MAX as f32)
         };
 
@@ -155,7 +157,11 @@ impl DungeonGenerator {
         ];
 
         for &exit_pos in &starting_exits {
-            if exit_pos.x >= 1 && exit_pos.x < (width as i32 - 1) && exit_pos.y >= 1 && exit_pos.y < (depth as i32 - 1) {
+            if exit_pos.x >= 1
+                && exit_pos.x < (width as i32 - 1)
+                && exit_pos.y >= 1
+                && exit_pos.y < (depth as i32 - 1)
+            {
                 exits.push(exit_pos);
                 grid[exit_pos.y as usize * width + exit_pos.x as usize] = PrimaryTile::Corridor;
             }
@@ -176,15 +182,27 @@ impl DungeonGenerator {
                 // Change direction occasionally with branch probability
                 if next_rand() < 0.28 {
                     dir = if dir.x != 0 {
-                        if next_rand() < 0.5 { IVec2::new(0, 1) } else { IVec2::new(0, -1) }
+                        if next_rand() < 0.5 {
+                            IVec2::new(0, 1)
+                        } else {
+                            IVec2::new(0, -1)
+                        }
                     } else {
-                        if next_rand() < 0.5 { IVec2::new(1, 0) } else { IVec2::new(-1, 0) }
+                        if next_rand() < 0.5 {
+                            IVec2::new(1, 0)
+                        } else {
+                            IVec2::new(-1, 0)
+                        }
                     };
                 }
 
                 let next_pos = curr + dir;
                 // Boundary check (keep at least 1 tile padding border)
-                if next_pos.x < 1 || next_pos.x >= (width as i32 - 1) || next_pos.y < 1 || next_pos.y >= (depth as i32 - 1) {
+                if next_pos.x < 1
+                    || next_pos.x >= (width as i32 - 1)
+                    || next_pos.y < 1
+                    || next_pos.y >= (depth as i32 - 1)
+                {
                     dir = -dir;
                     continue;
                 }
@@ -197,7 +215,14 @@ impl DungeonGenerator {
             }
 
             // Spawn a macro chamber at the terminal end of each main corridor
-            Self::carve_macro_chamber(&mut grid, width, depth, curr.x as usize, curr.y as usize, &mut next_rand);
+            Self::carve_macro_chamber(
+                &mut grid,
+                width,
+                depth,
+                curr.x as usize,
+                curr.y as usize,
+                &mut next_rand,
+            );
         }
 
         // 4. Pattern Matching Multi-Tile Pass: detect 2x2 or 3x3 open zones and promote to Macro Rooms
@@ -335,7 +360,12 @@ impl DungeonGenerator {
     }
 
     /// Resolve 4 corner states into one of the 6 Canonical Pieces with correct rotation.
-    pub fn resolve_canonical_piece(c00: bool, c10: bool, c11: bool, c01: bool) -> (CanonicalPiece, f32) {
+    pub fn resolve_canonical_piece(
+        c00: bool,
+        c10: bool,
+        c11: bool,
+        c01: bool,
+    ) -> (CanonicalPiece, f32) {
         let mask = (if c00 { 1 } else { 0 })
             | (if c10 { 2 } else { 0 })
             | (if c11 { 4 } else { 0 })
@@ -346,26 +376,26 @@ impl DungeonGenerator {
             0 => (CanonicalPiece::Empty, 0.0),
 
             // 1 solid corner: Outer Convex Corner (smooth rounded corner)
-            1 => (CanonicalPiece::OuterCorner, 0.0),    // Top-Left (c00: -X, -Z)
-            2 => (CanonicalPiece::OuterCorner, 270.0),  // Top-Right (c10: +X, -Z)
-            4 => (CanonicalPiece::OuterCorner, 180.0),  // Bottom-Right (c11: +X, +Z)
-            8 => (CanonicalPiece::OuterCorner, 90.0),   // Bottom-Left (c01: -X, +Z)
+            1 => (CanonicalPiece::OuterCorner, 0.0), // Top-Left (c00: -X, -Z)
+            2 => (CanonicalPiece::OuterCorner, 270.0), // Top-Right (c10: +X, -Z)
+            4 => (CanonicalPiece::OuterCorner, 180.0), // Bottom-Right (c11: +X, +Z)
+            8 => (CanonicalPiece::OuterCorner, 90.0), // Bottom-Left (c01: -X, +Z)
 
             // 2 adjacent solid corners: Straight Wall Edge
-            3 => (CanonicalPiece::StraightEdge, 0.0),   // Top edge (c00, c10: -Z)
+            3 => (CanonicalPiece::StraightEdge, 0.0), // Top edge (c00, c10: -Z)
             6 => (CanonicalPiece::StraightEdge, 270.0), // Right edge (c10, c11: +X)
             12 => (CanonicalPiece::StraightEdge, 180.0), // Bottom edge (c11, c01: +Z)
-            9 => (CanonicalPiece::StraightEdge, 90.0),  // Left edge (c01, c00: -X)
+            9 => (CanonicalPiece::StraightEdge, 90.0), // Left edge (c01, c00: -X)
 
             // 2 diagonal solid corners: Saddle Point (Crossing)
-            5 => (CanonicalPiece::SaddleCrossing, 0.0),  // (c00, c11)
+            5 => (CanonicalPiece::SaddleCrossing, 0.0), // (c00, c11)
             10 => (CanonicalPiece::SaddleCrossing, 90.0), // (c10, c01)
 
             // 3 solid corners: Inner Concave Corner
-            14 => (CanonicalPiece::InnerCorner, 0.0),   // c00 is open (-X, -Z)
+            14 => (CanonicalPiece::InnerCorner, 0.0), // c00 is open (-X, -Z)
             13 => (CanonicalPiece::InnerCorner, 270.0), // c10 is open (+X, -Z)
             11 => (CanonicalPiece::InnerCorner, 180.0), // c11 is open (+X, +Z)
-            7 => (CanonicalPiece::InnerCorner, 90.0),   // c01 is open (-X, +Z)
+            7 => (CanonicalPiece::InnerCorner, 90.0), // c01 is open (-X, +Z)
 
             // 4 solid corners: Solid Rock / Interior Pillar
             15 => (CanonicalPiece::SolidPillar, 0.0),
@@ -489,16 +519,29 @@ pub fn spawn_procedural_dungeon(
             CanonicalPiece::Empty => {
                 // Dual-tone Walkable Paved Floor (dark slate border + central warm flagstone)
                 commands.spawn((
-                    Mesh3d(meshes.add(Plane3d::default().mesh().size(config.tile_size, config.tile_size))),
+                    Mesh3d(
+                        meshes.add(
+                            Plane3d::default()
+                                .mesh()
+                                .size(config.tile_size, config.tile_size),
+                        ),
+                    ),
                     MeshMaterial3d(mat_floor_border.clone()),
                     Transform::from_translation(cell.world_pos).with_rotation(rot),
                     RigidBody::Static,
                     Collider::half_space(Vec3::Y),
                 ));
                 commands.spawn((
-                    Mesh3d(meshes.add(Plane3d::default().mesh().size(config.tile_size * 0.78, config.tile_size * 0.78))),
+                    Mesh3d(
+                        meshes.add(
+                            Plane3d::default()
+                                .mesh()
+                                .size(config.tile_size * 0.78, config.tile_size * 0.78),
+                        ),
+                    ),
                     MeshMaterial3d(mat_floor_path.clone()),
-                    Transform::from_translation(cell.world_pos + Vec3::new(0.0, 0.008, 0.0)).with_rotation(rot),
+                    Transform::from_translation(cell.world_pos + Vec3::new(0.0, 0.008, 0.0))
+                        .with_rotation(rot),
                 ));
 
                 // If this is a special macro chamber, spawn thematic centerpieces
@@ -509,7 +552,9 @@ pub fn spawn_procedural_dungeon(
                             commands.spawn((
                                 Mesh3d(meshes.add(Cone::new(0.48, 3.4).mesh())),
                                 MeshMaterial3d(mat_geode_glow.clone()),
-                                Transform::from_translation(cell.world_pos + Vec3::new(0.0, 1.7, 0.0)),
+                                Transform::from_translation(
+                                    cell.world_pos + Vec3::new(0.0, 1.7, 0.0),
+                                ),
                                 PointLight {
                                     color: Color::srgb(0.17, 0.91, 0.85), // #2be8d8
                                     intensity: 22000.0,
@@ -524,7 +569,9 @@ pub fn spawn_procedural_dungeon(
                             commands.spawn((
                                 Mesh3d(meshes.add(Cuboid::new(1.1, 1.2, 1.1).mesh())),
                                 MeshMaterial3d(mat_shrine_gold.clone()),
-                                Transform::from_translation(cell.world_pos + Vec3::new(0.0, 0.6, 0.0)),
+                                Transform::from_translation(
+                                    cell.world_pos + Vec3::new(0.0, 0.6, 0.0),
+                                ),
                                 PointLight {
                                     color: Color::srgb(1.0, 0.72, 0.28),
                                     intensity: 24000.0,
@@ -541,7 +588,13 @@ pub fn spawn_procedural_dungeon(
             CanonicalPiece::StraightEdge => {
                 // Dual-tone Paved Corridor Floor
                 commands.spawn((
-                    Mesh3d(meshes.add(Plane3d::default().mesh().size(config.tile_size, config.tile_size))),
+                    Mesh3d(
+                        meshes.add(
+                            Plane3d::default()
+                                .mesh()
+                                .size(config.tile_size, config.tile_size),
+                        ),
+                    ),
                     MeshMaterial3d(mat_floor_path.clone()),
                     Transform::from_translation(cell.world_pos),
                     RigidBody::Static,
@@ -552,7 +605,9 @@ pub fn spawn_procedural_dungeon(
                 let base_offset = rot * Vec3::new(0.0, 0.6, -half_tile + 0.45);
                 commands.spawn((
                     CavernObstacle,
-                    ObstacleShape::Cuboid { half_extents: Vec3::new(config.tile_size * 0.5, 0.6, 0.45) },
+                    ObstacleShape::Cuboid {
+                        half_extents: Vec3::new(config.tile_size * 0.5, 0.6, 0.45),
+                    },
                     Mesh3d(meshes.add(Cuboid::new(config.tile_size, 1.2, 0.9).mesh())),
                     MeshMaterial3d(mat_wall_moss.clone()),
                     Transform::from_translation(cell.world_pos + base_offset).with_rotation(rot),
@@ -564,7 +619,9 @@ pub fn spawn_procedural_dungeon(
                 let wall_offset = rot * Vec3::new(0.0, 2.4, -half_tile + 0.35);
                 commands.spawn((
                     CavernObstacle,
-                    ObstacleShape::Cuboid { half_extents: Vec3::new(config.tile_size * 0.5, 1.2, 0.375) },
+                    ObstacleShape::Cuboid {
+                        half_extents: Vec3::new(config.tile_size * 0.5, 1.2, 0.375),
+                    },
                     Mesh3d(meshes.add(Cuboid::new(config.tile_size, 2.4, 0.75).mesh())),
                     MeshMaterial3d(mat_wall_stone.clone()),
                     Transform::from_translation(cell.world_pos + wall_offset).with_rotation(rot),
@@ -598,7 +655,13 @@ pub fn spawn_procedural_dungeon(
             CanonicalPiece::OuterCorner | CanonicalPiece::InnerCorner => {
                 // Paved Turn Floor
                 commands.spawn((
-                    Mesh3d(meshes.add(Plane3d::default().mesh().size(config.tile_size, config.tile_size))),
+                    Mesh3d(
+                        meshes.add(
+                            Plane3d::default()
+                                .mesh()
+                                .size(config.tile_size, config.tile_size),
+                        ),
+                    ),
                     MeshMaterial3d(mat_floor_path.clone()),
                     Transform::from_translation(cell.world_pos),
                     RigidBody::Static,
@@ -609,10 +672,13 @@ pub fn spawn_procedural_dungeon(
                 let base_offset = rot * Vec3::new(-half_tile + 0.6, 0.6, -half_tile + 0.6);
                 commands.spawn((
                     CavernObstacle,
-                    ObstacleShape::Cuboid { half_extents: Vec3::new(0.9, 0.6, 0.9) },
+                    ObstacleShape::Cuboid {
+                        half_extents: Vec3::new(0.9, 0.6, 0.9),
+                    },
                     Mesh3d(meshes.add(Cuboid::new(1.8, 1.2, 1.8).mesh())),
                     MeshMaterial3d(mat_wall_moss.clone()),
-                    Transform::from_translation(cell.world_pos + base_offset).with_rotation(rot * Quat::from_rotation_y(0.38)),
+                    Transform::from_translation(cell.world_pos + base_offset)
+                        .with_rotation(rot * Quat::from_rotation_y(0.38)),
                     RigidBody::Static,
                     Collider::cuboid(1.8, 1.2, 1.8),
                 ));
@@ -621,10 +687,13 @@ pub fn spawn_procedural_dungeon(
                 let pillar_offset = rot * Vec3::new(-half_tile + 0.6, 2.6, -half_tile + 0.6);
                 commands.spawn((
                     CavernObstacle,
-                    ObstacleShape::Cuboid { half_extents: Vec3::new(0.7, 1.4, 0.7) },
+                    ObstacleShape::Cuboid {
+                        half_extents: Vec3::new(0.7, 1.4, 0.7),
+                    },
                     Mesh3d(meshes.add(Cuboid::new(1.4, 2.8, 1.4).mesh())),
                     MeshMaterial3d(mat_wall_stone.clone()),
-                    Transform::from_translation(cell.world_pos + pillar_offset).with_rotation(rot * Quat::from_rotation_y(-0.25)),
+                    Transform::from_translation(cell.world_pos + pillar_offset)
+                        .with_rotation(rot * Quat::from_rotation_y(-0.25)),
                     RigidBody::Static,
                     Collider::cuboid(1.4, 2.8, 1.4),
                 ));
@@ -649,7 +718,13 @@ pub fn spawn_procedural_dungeon(
                 let base_pos = cell.world_pos + Vec3::new(0.0, 0.8, 0.0);
                 commands.spawn((
                     CavernObstacle,
-                    ObstacleShape::Cuboid { half_extents: Vec3::new(config.tile_size * 0.5, 0.8, config.tile_size * 0.5) },
+                    ObstacleShape::Cuboid {
+                        half_extents: Vec3::new(
+                            config.tile_size * 0.5,
+                            0.8,
+                            config.tile_size * 0.5,
+                        ),
+                    },
                     Mesh3d(meshes.add(Cuboid::new(config.tile_size, 1.6, config.tile_size).mesh())),
                     MeshMaterial3d(mat_wall_moss.clone()),
                     Transform::from_translation(base_pos),
@@ -660,8 +735,16 @@ pub fn spawn_procedural_dungeon(
                 let upper_pos = cell.world_pos + Vec3::new(0.0, 3.2, 0.0);
                 commands.spawn((
                     CavernObstacle,
-                    ObstacleShape::Cuboid { half_extents: Vec3::new(config.tile_size * 0.46, 1.6, config.tile_size * 0.46) },
-                    Mesh3d(meshes.add(Cuboid::new(config.tile_size * 0.92, 3.2, config.tile_size * 0.92).mesh())),
+                    ObstacleShape::Cuboid {
+                        half_extents: Vec3::new(
+                            config.tile_size * 0.46,
+                            1.6,
+                            config.tile_size * 0.46,
+                        ),
+                    },
+                    Mesh3d(meshes.add(
+                        Cuboid::new(config.tile_size * 0.92, 3.2, config.tile_size * 0.92).mesh(),
+                    )),
                     MeshMaterial3d(mat_wall_stone.clone()),
                     Transform::from_translation(upper_pos),
                     RigidBody::Static,
@@ -671,7 +754,13 @@ pub fn spawn_procedural_dungeon(
             CanonicalPiece::SaddleCrossing => {
                 // Crossing floor
                 commands.spawn((
-                    Mesh3d(meshes.add(Plane3d::default().mesh().size(config.tile_size, config.tile_size))),
+                    Mesh3d(
+                        meshes.add(
+                            Plane3d::default()
+                                .mesh()
+                                .size(config.tile_size, config.tile_size),
+                        ),
+                    ),
                     MeshMaterial3d(mat_floor_path.clone()),
                     Transform::from_translation(cell.world_pos),
                     RigidBody::Static,
@@ -709,46 +798,106 @@ mod tests {
     #[test]
     fn test_canonical_pieces_mapping_all_16_combinations() {
         // 0 solid -> Empty
-        assert_eq!(DungeonGenerator::resolve_canonical_piece(false, false, false, false).0, CanonicalPiece::Empty);
+        assert_eq!(
+            DungeonGenerator::resolve_canonical_piece(false, false, false, false).0,
+            CanonicalPiece::Empty
+        );
 
         // 1 solid -> OuterCorner
-        assert_eq!(DungeonGenerator::resolve_canonical_piece(true, false, false, false).0, CanonicalPiece::OuterCorner);
-        assert_eq!(DungeonGenerator::resolve_canonical_piece(false, true, false, false).0, CanonicalPiece::OuterCorner);
-        assert_eq!(DungeonGenerator::resolve_canonical_piece(false, false, true, false).0, CanonicalPiece::OuterCorner);
-        assert_eq!(DungeonGenerator::resolve_canonical_piece(false, false, false, true).0, CanonicalPiece::OuterCorner);
+        assert_eq!(
+            DungeonGenerator::resolve_canonical_piece(true, false, false, false).0,
+            CanonicalPiece::OuterCorner
+        );
+        assert_eq!(
+            DungeonGenerator::resolve_canonical_piece(false, true, false, false).0,
+            CanonicalPiece::OuterCorner
+        );
+        assert_eq!(
+            DungeonGenerator::resolve_canonical_piece(false, false, true, false).0,
+            CanonicalPiece::OuterCorner
+        );
+        assert_eq!(
+            DungeonGenerator::resolve_canonical_piece(false, false, false, true).0,
+            CanonicalPiece::OuterCorner
+        );
 
         // 2 adjacent -> StraightEdge
-        assert_eq!(DungeonGenerator::resolve_canonical_piece(true, true, false, false).0, CanonicalPiece::StraightEdge);
-        assert_eq!(DungeonGenerator::resolve_canonical_piece(false, true, true, false).0, CanonicalPiece::StraightEdge);
-        assert_eq!(DungeonGenerator::resolve_canonical_piece(false, false, true, true).0, CanonicalPiece::StraightEdge);
-        assert_eq!(DungeonGenerator::resolve_canonical_piece(true, false, false, true).0, CanonicalPiece::StraightEdge);
+        assert_eq!(
+            DungeonGenerator::resolve_canonical_piece(true, true, false, false).0,
+            CanonicalPiece::StraightEdge
+        );
+        assert_eq!(
+            DungeonGenerator::resolve_canonical_piece(false, true, true, false).0,
+            CanonicalPiece::StraightEdge
+        );
+        assert_eq!(
+            DungeonGenerator::resolve_canonical_piece(false, false, true, true).0,
+            CanonicalPiece::StraightEdge
+        );
+        assert_eq!(
+            DungeonGenerator::resolve_canonical_piece(true, false, false, true).0,
+            CanonicalPiece::StraightEdge
+        );
 
         // 2 diagonal -> SaddleCrossing
-        assert_eq!(DungeonGenerator::resolve_canonical_piece(true, false, true, false).0, CanonicalPiece::SaddleCrossing);
-        assert_eq!(DungeonGenerator::resolve_canonical_piece(false, true, false, true).0, CanonicalPiece::SaddleCrossing);
+        assert_eq!(
+            DungeonGenerator::resolve_canonical_piece(true, false, true, false).0,
+            CanonicalPiece::SaddleCrossing
+        );
+        assert_eq!(
+            DungeonGenerator::resolve_canonical_piece(false, true, false, true).0,
+            CanonicalPiece::SaddleCrossing
+        );
 
         // 3 solid -> InnerCorner
-        assert_eq!(DungeonGenerator::resolve_canonical_piece(false, true, true, true).0, CanonicalPiece::InnerCorner);
-        assert_eq!(DungeonGenerator::resolve_canonical_piece(true, false, true, true).0, CanonicalPiece::InnerCorner);
-        assert_eq!(DungeonGenerator::resolve_canonical_piece(true, true, false, true).0, CanonicalPiece::InnerCorner);
-        assert_eq!(DungeonGenerator::resolve_canonical_piece(true, true, true, false).0, CanonicalPiece::InnerCorner);
+        assert_eq!(
+            DungeonGenerator::resolve_canonical_piece(false, true, true, true).0,
+            CanonicalPiece::InnerCorner
+        );
+        assert_eq!(
+            DungeonGenerator::resolve_canonical_piece(true, false, true, true).0,
+            CanonicalPiece::InnerCorner
+        );
+        assert_eq!(
+            DungeonGenerator::resolve_canonical_piece(true, true, false, true).0,
+            CanonicalPiece::InnerCorner
+        );
+        assert_eq!(
+            DungeonGenerator::resolve_canonical_piece(true, true, true, false).0,
+            CanonicalPiece::InnerCorner
+        );
 
         // 4 solid -> SolidPillar
-        assert_eq!(DungeonGenerator::resolve_canonical_piece(true, true, true, true).0, CanonicalPiece::SolidPillar);
+        assert_eq!(
+            DungeonGenerator::resolve_canonical_piece(true, true, true, true).0,
+            CanonicalPiece::SolidPillar
+        );
     }
 
     #[test]
     fn test_dungeon_connectivity_and_reachability_gate() {
         let config = DungeonConfig::default();
         let dungeon = DungeonGenerator::generate(config);
-        assert!(DungeonGenerator::verify_reachability(&dungeon), "All generated corridors and rooms MUST be reachable from Starting Grotto!");
+        assert!(
+            DungeonGenerator::verify_reachability(&dungeon),
+            "All generated corridors and rooms MUST be reachable from Starting Grotto!"
+        );
     }
 
     #[test]
     fn test_deterministic_seed_generation() {
-        let config1 = DungeonConfig { seed: 12345, ..default() };
-        let config2 = DungeonConfig { seed: 12345, ..default() };
-        let config3 = DungeonConfig { seed: 99999, ..default() };
+        let config1 = DungeonConfig {
+            seed: 12345,
+            ..default()
+        };
+        let config2 = DungeonConfig {
+            seed: 12345,
+            ..default()
+        };
+        let config3 = DungeonConfig {
+            seed: 99999,
+            ..default()
+        };
 
         let d1 = DungeonGenerator::generate(config1);
         let d2 = DungeonGenerator::generate(config2);
@@ -763,8 +912,14 @@ mod tests {
         let config = DungeonConfig::default();
         let dungeon = DungeonGenerator::generate(config);
         // At z = 4.0, x = 0.0 (directly outside grotto archway portal), the dual cell must be Empty (walkable corridor floor)
-        let exit_cell = dungeon.dual_cells.iter().find(|c| c.world_pos.x.abs() < 1.0 && (c.world_pos.z - 4.0).abs() < 1.0);
-        assert!(exit_cell.is_some(), "Dungeon must generate a dual-grid cell right at the grotto exit (z = 4.0, x = 0.0)");
+        let exit_cell = dungeon
+            .dual_cells
+            .iter()
+            .find(|c| c.world_pos.x.abs() < 1.0 && (c.world_pos.z - 4.0).abs() < 1.0);
+        assert!(
+            exit_cell.is_some(),
+            "Dungeon must generate a dual-grid cell right at the grotto exit (z = 4.0, x = 0.0)"
+        );
         assert_eq!(exit_cell.unwrap().piece, CanonicalPiece::Empty, "Grotto exit cell must be CanonicalPiece::Empty (paved walkable floor) to allow player passage!");
     }
 }

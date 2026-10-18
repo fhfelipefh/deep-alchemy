@@ -1,5 +1,5 @@
-use std::time::Instant;
 use bevy::prelude::*;
+use std::time::Instant;
 
 // Direct struct tests to measure engine performance and zero allocations
 #[derive(Component)]
@@ -150,8 +150,7 @@ fn test_spatial_raycast_math_throughput() {
     let per_op_ns = duration.as_nanos() as f64 / iterations as f64;
     println!(
         "[PERFORMANCE] 100,000 Raycast distance & dot operations: {:.2} ns/op (found: {})",
-        per_op_ns,
-        in_reach_count
+        per_op_ns, in_reach_count
     );
 
     assert!(

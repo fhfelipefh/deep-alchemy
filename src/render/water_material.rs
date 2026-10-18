@@ -53,7 +53,10 @@ mod tests {
         let mat = WaterMaterial::default();
         assert_eq!(mat.alpha_mode(), AlphaMode::Blend);
         match WaterMaterial::fragment_shader() {
-            ShaderRef::Path(path) => assert_eq!(path.path(), std::path::Path::new("shaders/water_material.wgsl")),
+            ShaderRef::Path(path) => assert_eq!(
+                path.path(),
+                std::path::Path::new("shaders/water_material.wgsl")
+            ),
             _ => panic!("Expected ShaderRef::Path"),
         }
     }

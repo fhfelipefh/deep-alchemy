@@ -1,9 +1,6 @@
-use bevy::{
-    prelude::*,
-    render::view::RenderLayers,
-};
-use avian3d::prelude::*;
 use super::camera::{HeadHatPart, Health, Player, PlayerBodyScene, PlayerCamera, PlayerState};
+use avian3d::prelude::*;
+use bevy::{prelude::*, render::view::RenderLayers};
 
 #[derive(Component)]
 pub struct DeathCamera {
@@ -86,22 +83,28 @@ mod tests {
         let mut app = App::new();
         app.add_systems(Update, check_player_death);
 
-        let head = app.world_mut().spawn((
-            HeadHatPart,
-            RenderLayers::layer(1),
-        )).id();
+        let head = app
+            .world_mut()
+            .spawn((HeadHatPart, RenderLayers::layer(1)))
+            .id();
 
-        let camera = app.world_mut().spawn((
-            PlayerCamera,
-            Transform::IDENTITY,
-        )).id();
+        let camera = app
+            .world_mut()
+            .spawn((PlayerCamera, Transform::IDENTITY))
+            .id();
 
-        let player = app.world_mut().spawn((
-            Player,
-            PlayerState::Active,
-            Health { current: 0.0, max: 100.0 }, // 0 HP = dead
-            Transform::from_xyz(0.0, 1.0, 0.0),
-        )).id();
+        let player = app
+            .world_mut()
+            .spawn((
+                Player,
+                PlayerState::Active,
+                Health {
+                    current: 0.0,
+                    max: 100.0,
+                }, // 0 HP = dead
+                Transform::from_xyz(0.0, 1.0, 0.0),
+            ))
+            .id();
 
         app.update();
 
@@ -127,19 +130,20 @@ mod tests {
         let mut app = App::new();
         app.add_systems(Update, update_death_camera);
 
-        app.world_mut().spawn((
-            Player,
-            Transform::from_xyz(0.0, 0.0, 0.0),
-        ));
+        app.world_mut()
+            .spawn((Player, Transform::from_xyz(0.0, 0.0, 0.0)));
 
-        let camera = app.world_mut().spawn((
-            DeathCamera {
-                target_point: Vec3::ZERO,
-                orbit_angle: 0.0,
-                distance: 4.0,
-            },
-            Transform::IDENTITY,
-        )).id();
+        let camera = app
+            .world_mut()
+            .spawn((
+                DeathCamera {
+                    target_point: Vec3::ZERO,
+                    orbit_angle: 0.0,
+                    distance: 4.0,
+                },
+                Transform::IDENTITY,
+            ))
+            .id();
 
         let mut time = Time::<()>::default();
         time.advance_by(std::time::Duration::from_millis(100));
@@ -148,6 +152,9 @@ mod tests {
         app.update();
 
         let death_cam = app.world().get::<DeathCamera>(camera).unwrap();
-        assert!(death_cam.orbit_angle > 0.0, "Orbit angle should have advanced");
+        assert!(
+            death_cam.orbit_angle > 0.0,
+            "Orbit angle should have advanced"
+        );
     }
 }

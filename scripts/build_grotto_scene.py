@@ -92,6 +92,13 @@ mat_glowing_tip = create_pbr_material("M_Glowing_Tip", (0.20, 0.95, 0.92), rough
 mat_shroom_vibrant_cap = create_pbr_material("M_Shroom_Vibrant_Cap", (0.04, 0.88, 0.90), roughness=0.18, emission=(0.06, 0.96, 0.94), emission_strength=2.6)
 mat_tall_grass = create_pbr_material("M_Tall_Grass", (0.16, 0.50, 0.22), roughness=0.72)
 mat_glow_bulb = create_pbr_material("M_Glow_Bulb", (0.15, 0.95, 0.90), roughness=0.15, emission=(0.15, 0.98, 0.92), emission_strength=3.0)
+mat_dandelion_stem = create_pbr_material("M_Dandelion_Stem", (0.18, 0.42, 0.10), roughness=0.78)
+mat_dandelion_leaf = create_pbr_material("M_Dandelion_Leaf", (0.24, 0.58, 0.12), roughness=0.72)
+mat_dandelion_flower = create_pbr_material("M_Dandelion_Flower", (0.95, 0.72, 0.08), roughness=0.38, emission=(0.80, 0.42, 0.03), emission_strength=0.55)
+mat_dandelion_seed = create_pbr_material("M_Dandelion_Seed", (0.92, 0.98, 0.94), roughness=0.48)
+mat_moss_wet = create_pbr_material("M_Wet_Moss", (0.06, 0.30, 0.12), roughness=0.92)
+mat_moss_lime = create_pbr_material("M_Lime_Moss", (0.22, 0.62, 0.18), roughness=0.84)
+mat_moss_fringes = create_pbr_material("M_Moss_Fringes", (0.11, 0.40, 0.16), roughness=0.88)
 
 # Waterfall Foam Billows & Water Ripples
 mat_water_foam_billow = create_pbr_material("M_Water_Foam_Billow", (0.92, 0.98, 1.0), roughness=0.20, emission=(0.60, 0.90, 1.0), emission_strength=1.5)
@@ -805,6 +812,29 @@ fern_rosette_locations = [
 for idx, (fx, fy, fz, fs) in enumerate(fern_rosette_locations):
     spawn_rock_fern_rosette(fx, fy, fz, scale=fs, name=f"Rock_Fern_{idx}")
 
+# Wet moss behind the waterfall: varied lobes and hanging fronds instead of a
+# single flat green patch. Each patch uses a deterministic colour variation.
+def spawn_moss_patch(x, y, z, scale=1.0, variant=0, name="WetMossPatch"):
+    mats = [mat_moss_wet, mat_cavern_moss, mat_moss_lime]
+    rng = random.Random(variant * 97 + int(abs(x*y*z) * 10))
+    for i in range(7):
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=0.22*scale,
+            location=(x+(i-3)*0.18*scale+rng.uniform(-.08,.08), y, z+rng.uniform(-.10,.12)*scale))
+        lobe=bpy.context.object; lobe.name=f"{name}_Lobe_{i}"; lobe.scale=(1.6,.55,rng.uniform(.55,1.1))
+        lobe.data.materials.append(mats[(variant+i)%len(mats)])
+        for poly in lobe.data.polygons: poly.use_smooth=True
+    for i in range(4):
+        bpy.ops.mesh.primitive_cylinder_add(vertices=10, radius=.028*scale,
+            depth=rng.uniform(.45,.90)*scale, location=(x+(i-1.5)*.28*scale,y,z-.35*scale))
+        frond=bpy.context.object; frond.name=f"{name}_Frond_{i}"; frond.rotation_euler[1]=rng.uniform(-.35,.35)
+        frond.data.materials.append(mat_moss_fringes)
+        for poly in frond.data.polygons: poly.use_smooth=True
+
+for idx, args in enumerate([
+    (-4.65,10.9,5.3,1.25,0), (-3.75,11.2,6.1,.90,1), (4.55,10.8,5.0,1.30,2),
+    (3.70,11.1,6.2,.82,0), (-5.2,9.8,3.8,.72,2), (5.15,9.7,3.9,.78,1)]):
+    spawn_moss_patch(*args, name=f"Waterfall_Back_Moss_{idx}")
+
 # Bioluminescent Cyan Wall Spores / Miniature bracket fungi on shaded rock faces
 def spawn_wall_cyan_spores(x, y, z, num_shrooms=5, name="WallCyanSpores"):
     bm = bmesh.new()
@@ -1239,9 +1269,62 @@ def spawn_glowing_stalk(x, y, z, h=0.75, name="GlowingStalk"):
     for p in tip.data.polygons:
         p.use_smooth = True
 
-for idx, (gx, gy) in enumerate([(-3.4, 1.9), (-4.2, 2.0), (-2.8, 2.9), (-4.0, 3.5)]):
-    gz = get_terrain_surface_z(gx, gy)
-    spawn_glowing_stalk(gx, gy, gz, h=0.65 + idx * 0.12, name=f"Left_GlowingStalk_{idx}")
+def spawn_dandelion(x, y, z, height=0.82, bloom=True, seed_head=False, name="Dandelion"):
+    # A continuous tapered tube keeps the stem physically connected to the head.
+    bm = bmesh.new(); rings = []
+    for i in range(13):
+        t = i / 12.0
+        center = Vector((x + 0.07 * math.sin(t * math.pi), y, z + height * t))
+        radius = 0.028 * (1.0 - 0.25 * t)
+        rings.append([bm.verts.new((center.x + math.cos(math.tau*j/10)*radius,
+                                    center.y + math.sin(math.tau*j/10)*radius, center.z)) for j in range(10)])
+    for i in range(12):
+        for j in range(10):
+            bm.faces.new((rings[i][j], rings[i][(j+1)%10], rings[i+1][(j+1)%10], rings[i+1][j]))
+    mesh = bpy.data.meshes.new(f"{name}_StemMesh")
+    stem = bpy.data.objects.new(f"{name}_Stem", mesh); bpy.context.collection.objects.link(stem)
+    bm.to_mesh(mesh); bm.free(); mesh.materials.append(mat_dandelion_stem)
+    for poly in mesh.polygons: poly.use_smooth = True
+
+    # Five low serrated leaf blades identify the rosette at the base.
+    for li in range(5):
+        a = li * math.tau / 5.0
+        lb = bmesh.new(); left=[]; right=[]
+        for k in range(7):
+            t = k / 6.0; length = 0.42 * t; width = math.sin(t * math.pi) * 0.055
+            cx, cy, cz = x + math.cos(a)*length, y + math.sin(a)*length, z + 0.02
+            px, py = -math.sin(a)*width, math.cos(a)*width
+            left.append(lb.verts.new((cx-px, cy-py, cz))); right.append(lb.verts.new((cx+px, cy+py, cz)))
+        for k in range(6): lb.faces.new((left[k], right[k], right[k+1], left[k+1]))
+        lm = bpy.data.meshes.new(f"{name}_LeafMesh_{li}"); lo = bpy.data.objects.new(f"{name}_Leaf_{li}", lm)
+        bpy.context.collection.objects.link(lo); lb.to_mesh(lm); lb.free(); lm.materials.append(mat_dandelion_leaf); lo.parent = stem
+
+    head = Vector((x + 0.07, y, z + height))
+    if bloom:
+        bpy.ops.mesh.primitive_uv_sphere_add(segments=12, ring_count=8, radius=0.07, location=head)
+        center = bpy.context.object; center.name=f"{name}_FlowerCenter"; center.data.materials.append(mat_dandelion_flower); center.parent=stem
+        for i in range(24):
+            a = math.tau * i / 24.0
+            bpy.ops.mesh.primitive_uv_sphere_add(segments=8, ring_count=5, radius=1.0,
+                location=head + Vector((math.cos(a)*0.10, math.sin(a)*0.10, 0.018)))
+            petal=bpy.context.object; petal.name=f"{name}_RayFloret_{i}"; petal.scale=(0.025,0.10,0.016)
+            petal.rotation_euler[2]=a-math.pi/2; petal.data.materials.append(mat_dandelion_flower); petal.parent=stem
+    if seed_head:
+        bpy.ops.mesh.primitive_uv_sphere_add(segments=12, ring_count=8, radius=0.095, location=head)
+        c=bpy.context.object; c.name=f"{name}_SeedHead"; c.data.materials.append(mat_dandelion_seed); c.parent=stem
+        for i in range(30):
+            a=math.tau*i/30.0; length=0.30 + (i%4)*0.055
+            tip=head+Vector((math.cos(a)*length, math.sin(a)*length, 0.10+(i%3)*0.045))
+            bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.005, depth=(tip-head).length, location=(head+tip)*0.5)
+            filament=bpy.context.object; filament.name=f"{name}_SeedFilament_{i}"
+            filament.rotation_euler=Vector((0,0,1)).rotation_difference(tip-head).to_euler(); filament.data.materials.append(mat_dandelion_seed); filament.parent=stem
+            bpy.ops.mesh.primitive_uv_sphere_add(segments=6, ring_count=4, radius=0.018, location=tip)
+            tuft=bpy.context.object; tuft.name=f"{name}_SeedTuft_{i}"; tuft.data.materials.append(mat_dandelion_seed); tuft.parent=stem
+
+for idx, (dx, dy, dh, bloom, seed_head) in enumerate([
+    (-3.4,1.9,0.72,True,False), (-4.2,2.0,0.88,True,False), (-2.8,2.9,0.66,True,False),
+    (-4.0,3.5,0.80,False,True), (2.7,1.7,0.68,True,False), (3.25,2.55,0.84,False,True)]):
+    spawn_dandelion(dx, dy, get_terrain_surface_z(dx, dy), dh, bloom, seed_head, f"Dandelion_{idx}")
 
 # ==============================================================================
 # 6. RIGHT SIDE FLORA: REVOLUTION LATHE MUSHROOMS WITH SMOOTH CONCAVE CAPS
@@ -1379,8 +1462,49 @@ build_stylized_lathe_mushroom(4.20, 3.40, scale=0.78, lean_angle=-0.12, name="Ri
 build_stylized_lathe_mushroom(3.60, 2.70, scale=0.60, lean_angle=-0.08, name="Right_Dome_Mushroom_2")
 build_stylized_lathe_mushroom(4.75, 3.90, scale=0.45, lean_angle=-0.14, name="Right_Dome_Mushroom_3")
 
+# Tall grass must never intersect a taller authored element.  This policy is
+# deliberately shared by every clump, rather than encoding bench-specific
+# coordinates, so new props only need to register one footprint below.
+TALL_GRASS_CLEARANCE = 0.42
+TALL_GRASS_MAX_RELOCATION = 2.4
+tall_grass_exclusion_zones = []
+
+def register_tall_grass_exclusion(name, x, y, radius):
+    """Reserve a horizontal footprint for any rock, prop, or tall flora."""
+    tall_grass_exclusion_zones.append((name, x, y, radius + TALL_GRASS_CLEARANCE))
+
+def resolve_tall_grass_position(x, y):
+    """Return the nearest deterministic spiral candidate outside all blockers."""
+    def is_clear(cx, cy):
+        return all(math.hypot(cx - bx, cy - by) >= radius
+                   for _, bx, by, radius in tall_grass_exclusion_zones)
+
+    if is_clear(x, y):
+        return x, y
+
+    # Fixed angular phases keep exports deterministic and avoid visual clumps.
+    for ring in range(1, 14):
+        distance = ring * 0.18
+        if distance > TALL_GRASS_MAX_RELOCATION:
+            break
+        for spoke in range(16):
+            angle = spoke * math.tau / 16.0 + ring * 0.41
+            candidate_x = x + math.cos(angle) * distance
+            candidate_y = y + math.sin(angle) * distance
+            if is_clear(candidate_x, candidate_y):
+                return candidate_x, candidate_y
+
+    raise RuntimeError(f"No clear terrain location for tall grass at ({x}, {y})")
+
+# The bench is exported separately, but its reserved footprint belongs to the
+# scene-placement policy. Future high props must call this same registrar.
+register_tall_grass_exclusion("Rustic_Mossy_Bench", 2.90, 1.05, 1.15)
+register_tall_grass_exclusion("Right_Dome_Mushroom_1", 4.20, 3.40, 0.82)
+register_tall_grass_exclusion("Right_Dome_Mushroom_2", 3.60, 2.70, 0.66)
+register_tall_grass_exclusion("Right_Dome_Mushroom_3", 4.75, 3.90, 0.52)
+
 # Tall Grass Clumps behind/around the right mushrooms
-def spawn_tall_grass_clump(x, y, z, scale=1.0, num_blades=14, name="TallGrass"):
+def spawn_tall_grass_clump(x, y, z, scale=1.0, num_blades=14, name="TallGrass"): 
     bm = bmesh.new()
     for ib in range(num_blades):
         ang = (ib / float(num_blades)) * math.pi * 2.0 + (ib * 0.2)
@@ -1414,6 +1538,7 @@ tall_grass_coords = [
     (2.8, -1.0), (3.1, -0.2), (2.8, 0.8),
 ]
 for idx, (tx, ty) in enumerate(tall_grass_coords):
+    tx, ty = resolve_tall_grass_position(tx, ty)
     tz = get_terrain_surface_z(tx, ty)
     spawn_tall_grass_clump(tx, ty, tz, scale=0.85, name=f"Right_TallGrass_{idx}")
 

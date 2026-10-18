@@ -124,8 +124,14 @@ fn test_unit_thermal_geyser_state_and_proximity() {
 
 #[test]
 fn test_unit_player_health_and_stamina_invariants() {
-    let mut health = Health { current: 100.0, max: 100.0 };
-    let mut stamina = Stamina { current: 100.0, max: 100.0 };
+    let mut health = Health {
+        current: 100.0,
+        max: 100.0,
+    };
+    let mut stamina = Stamina {
+        current: 100.0,
+        max: 100.0,
+    };
 
     // Damage
     health.current = (health.current - 45.0).max(0.0);
@@ -166,7 +172,10 @@ fn test_unit_player_look_pitch_clamping() {
 #[test]
 fn test_unit_player_death_state_and_camera_orbit() {
     let mut state = PlayerState::Active;
-    let health = Health { current: 0.0, max: 100.0 };
+    let health = Health {
+        current: 0.0,
+        max: 100.0,
+    };
 
     if health.current <= 0.0 {
         state = PlayerState::Dead;
@@ -190,8 +199,12 @@ fn test_unit_player_death_state_and_camera_orbit() {
 
     let _cam_pos = Vec3::new(x, y, z);
     assert_eq!(y, 3.0); // 1.0 + 2.0
-    let horizontal_dist = ((x - death_cam.target_point.x).powi(2) + (z - death_cam.target_point.z).powi(2)).sqrt();
-    assert!((horizontal_dist - 3.8).abs() < 0.001, "Camera distance must remain 3.8m during orbit");
+    let horizontal_dist =
+        ((x - death_cam.target_point.x).powi(2) + (z - death_cam.target_point.z).powi(2)).sqrt();
+    assert!(
+        (horizontal_dist - 3.8).abs() < 0.001,
+        "Camera distance must remain 3.8m during orbit"
+    );
 }
 
 // ==========================================
@@ -207,8 +220,14 @@ fn test_unit_water_material_defaults_and_time_update() {
     let elapsed = 14.5;
     water.params.x = elapsed;
     assert_eq!(water.params.x, 14.5);
-    assert!(water.base_color.to_vec4().w > 0.0, "Water base alpha must be > 0");
-    assert!(water.deep_color.to_vec4().w > 0.0, "Water deep alpha must be > 0");
+    assert!(
+        water.base_color.to_vec4().w > 0.0,
+        "Water base alpha must be > 0"
+    );
+    assert!(
+        water.deep_color.to_vec4().w > 0.0,
+        "Water deep alpha must be > 0"
+    );
 }
 
 #[test]
@@ -224,12 +243,18 @@ fn test_unit_particles_simulation_and_expiration() {
     particle.lifetime += dt;
     particle.velocity.y -= 9.8 * dt; // Gravity
     assert_eq!(particle.lifetime, 0.5);
-    assert!((particle.velocity.y - 0.1).abs() < 0.001, "Velocity y must be ~0.1");
+    assert!(
+        (particle.velocity.y - 0.1).abs() < 0.001,
+        "Velocity y must be ~0.1"
+    );
 
     // Check expiration
     particle.lifetime += 0.6;
     let expired = particle.lifetime >= particle.max_lifetime;
-    assert!(expired, "Particle should expire when lifetime >= max_lifetime");
+    assert!(
+        expired,
+        "Particle should expire when lifetime >= max_lifetime"
+    );
 }
 
 // ==========================================
@@ -238,8 +263,14 @@ fn test_unit_particles_simulation_and_expiration() {
 
 #[test]
 fn test_unit_hud_bar_percentages() {
-    let health = Health { current: 75.0, max: 100.0 };
-    let stamina = Stamina { current: 30.0, max: 100.0 };
+    let health = Health {
+        current: 75.0,
+        max: 100.0,
+    };
+    let stamina = Stamina {
+        current: 30.0,
+        max: 100.0,
+    };
 
     let hp_pct = (health.current / health.max).clamp(0.0, 1.0) * 100.0;
     let st_pct = (stamina.current / stamina.max).clamp(0.0, 1.0) * 100.0;
@@ -248,7 +279,10 @@ fn test_unit_hud_bar_percentages() {
     assert!((st_pct - 30.0).abs() < 0.001);
 
     // Negative edge case
-    let dead_health = Health { current: -15.0, max: 100.0 };
+    let dead_health = Health {
+        current: -15.0,
+        max: 100.0,
+    };
     let clamped_hp = (dead_health.current / dead_health.max).clamp(0.0, 1.0) * 100.0;
     assert_eq!(clamped_hp, 0.0);
 }

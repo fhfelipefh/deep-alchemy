@@ -18,7 +18,10 @@ impl Plugin for RenderPipelinePlugin {
             MaterialPlugin::<CelShadedMossMaterial>::default(),
             OutlinePostProcessPlugin,
         ))
-        .add_systems(Update, (update_water_time, spawn_particles, update_particles));
+        .add_systems(
+            Update,
+            (update_water_time, spawn_particles, update_particles),
+        );
     }
 }
 

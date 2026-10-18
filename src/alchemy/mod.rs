@@ -1,3 +1,8 @@
+use crate::{
+    player::camera::{PlayerCamera, PlayerState},
+    ui::{hud::ActiveHotbarSlot, menu::GameState},
+};
+use avian3d::prelude::*;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -57,6 +62,13 @@ pub struct AlchemicalIngredient {
 }
 
 #[derive(Component, Debug)]
+pub struct PotionProjectile {
+    pub velocity: Vec3,
+    pub effects: Vec<ActiveEffect>,
+    pub lifetime: f32,
+}
+
+#[derive(Component, Debug)]
 #[allow(dead_code)]
 pub struct PotionFlask {
     pub id: String,
@@ -77,14 +89,135 @@ pub struct AlchemyPlugin;
 
 impl Plugin for AlchemyPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (update_active_effects, update_thermal_geysers));
+        app.add_systems(
+            Update,
+            (
+                update_active_effects,
+                update_thermal_geysers,
+                spawn_potion_projectile.run_if(resource_exists::<ButtonInput<MouseButton>>),
+                update_potion_projectiles.run_if(resource_exists::<SpatialQueryPipeline>),
+            ),
+        );
     }
 }
 
-fn update_active_effects(
-    time: Res<Time>,
-    mut receivers: Query<&mut EffectReceiverComponent>,
+fn selected_potion_effects(slot: usize) -> (Color, Vec<ActiveEffect>) {
+    let (color, kind, magnitude) = match slot {
+        2 => (
+            Color::srgb(0.95, 0.12, 0.16),
+            AlchemicalEffectKind::ThermalHeat,
+            25.0,
+        ),
+        3 => (
+            Color::srgb(0.95, 0.72, 0.12),
+            AlchemicalEffectKind::Vitality,
+            30.0,
+        ),
+        4 => (
+            Color::srgb(0.12, 0.42, 0.95),
+            AlchemicalEffectKind::Frost,
+            20.0,
+        ),
+        5 => (
+            Color::srgb(0.92, 0.95, 1.0),
+            AlchemicalEffectKind::Luminescence,
+            18.0,
+        ),
+        _ => (
+            Color::srgb(0.12, 0.92, 0.42),
+            AlchemicalEffectKind::Swiftness,
+            20.0,
+        ),
+    };
+    (
+        color,
+        vec![ActiveEffect {
+            kind,
+            duration: 5.0,
+            elapsed: 0.0,
+            magnitude,
+        }],
+    )
+}
+
+fn spawn_potion_projectile(
+    game_state: Option<Res<State<GameState>>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    slot: Option<Res<ActiveHotbarSlot>>,
+    camera: Query<&GlobalTransform, With<PlayerCamera>>,
+    player: Query<&PlayerState>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut commands: Commands,
 ) {
+    if let Some(state) = game_state {
+        if *state.get() != GameState::InGame {
+            return;
+        }
+    }
+    if !mouse.just_pressed(MouseButton::Left) || player.iter().any(|s| *s != PlayerState::Active) {
+        return;
+    }
+    let Ok(camera) = camera.get_single() else {
+        return;
+    };
+    let slot_index = slot.as_deref().map(|s| s.0).unwrap_or(1);
+    let (color, effects) = selected_potion_effects(slot_index);
+    let direction = *camera.forward();
+    let origin = camera.translation() + direction * 0.55;
+    commands.spawn((
+        Mesh3d(meshes.add(Sphere::new(0.10).mesh().uv(12, 8))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: color,
+            emissive: color.to_linear(),
+            perceptual_roughness: 0.18,
+            ..default()
+        })),
+        Transform::from_translation(origin),
+        PotionProjectile {
+            velocity: direction * 15.0,
+            effects,
+            lifetime: 4.0,
+        },
+    ));
+}
+
+fn update_potion_projectiles(
+    time: Res<Time>,
+    spatial_query: SpatialQuery,
+    mut projectiles: Query<(Entity, &mut Transform, &mut PotionProjectile)>,
+    mut receivers: Query<&mut EffectReceiverComponent>,
+    mut commands: Commands,
+) {
+    let dt = time.delta_secs();
+    for (entity, mut transform, mut projectile) in &mut projectiles {
+        let distance = projectile.velocity.length() * dt;
+        let direction = projectile.velocity.normalize_or_zero();
+        let hit = spatial_query.cast_ray(
+            transform.translation,
+            Dir3::new(direction).unwrap_or(Dir3::NEG_Z),
+            distance,
+            true,
+            &SpatialQueryFilter::default(),
+        );
+        if let Some(hit) = hit {
+            if let Ok(mut receiver) = receivers.get_mut(hit.entity) {
+                for effect in &projectile.effects {
+                    receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
+                }
+            }
+            commands.entity(entity).despawn();
+            continue;
+        }
+        transform.translation += projectile.velocity * dt;
+        projectile.lifetime -= dt;
+        if projectile.lifetime <= 0.0 {
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
+fn update_active_effects(time: Res<Time>, mut receivers: Query<&mut EffectReceiverComponent>) {
     let dt = time.delta_secs();
     for mut receiver in receivers.iter_mut() {
         receiver.active_effects.retain_mut(|effect| {
@@ -155,23 +288,26 @@ mod tests {
         time.advance_by(std::time::Duration::from_millis(200));
         world.insert_resource(time);
 
-        let entity = world.spawn(EffectReceiverComponent {
-            active_effects: vec![
-                ActiveEffect {
+        let entity = world
+            .spawn(EffectReceiverComponent {
+                active_effects: vec![ActiveEffect {
                     kind: AlchemicalEffectKind::Vitality,
                     duration: 0.1,
                     elapsed: 0.0,
                     magnitude: 20.0,
-                },
-            ],
-        }).id();
+                }],
+            })
+            .id();
 
         let mut schedule = Schedule::default();
         schedule.add_systems(update_active_effects);
         schedule.run(&mut world);
 
         let receiver = world.get::<EffectReceiverComponent>(entity).unwrap();
-        assert!(!receiver.has_effect(AlchemicalEffectKind::Vitality), "Effect must have expired and been retained out");
+        assert!(
+            !receiver.has_effect(AlchemicalEffectKind::Vitality),
+            "Effect must have expired and been retained out"
+        );
     }
 
     #[test]
@@ -192,16 +328,22 @@ mod tests {
         ));
 
         // Spawn close receiver
-        let close_entity = app.world_mut().spawn((
-            EffectReceiverComponent::default(),
-            Transform::from_xyz(2.0, 0.0, 2.0),
-        )).id();
+        let close_entity = app
+            .world_mut()
+            .spawn((
+                EffectReceiverComponent::default(),
+                Transform::from_xyz(2.0, 0.0, 2.0),
+            ))
+            .id();
 
         // Spawn far receiver
-        let far_entity = app.world_mut().spawn((
-            EffectReceiverComponent::default(),
-            Transform::from_xyz(20.0, 0.0, 20.0),
-        )).id();
+        let far_entity = app
+            .world_mut()
+            .spawn((
+                EffectReceiverComponent::default(),
+                Transform::from_xyz(20.0, 0.0, 20.0),
+            ))
+            .id();
 
         let mut time = Time::<()>::default();
         time.advance_by(std::time::Duration::from_millis(16));
@@ -209,11 +351,17 @@ mod tests {
 
         app.update();
 
-        let close_recv = app.world().get::<EffectReceiverComponent>(close_entity).unwrap();
+        let close_recv = app
+            .world()
+            .get::<EffectReceiverComponent>(close_entity)
+            .unwrap();
         assert!(close_recv.has_effect(AlchemicalEffectKind::ThermalHeat));
         assert!(close_recv.has_effect(AlchemicalEffectKind::Vaporize));
 
-        let far_recv = app.world().get::<EffectReceiverComponent>(far_entity).unwrap();
+        let far_recv = app
+            .world()
+            .get::<EffectReceiverComponent>(far_entity)
+            .unwrap();
         assert!(!far_recv.has_effect(AlchemicalEffectKind::ThermalHeat));
     }
 }
