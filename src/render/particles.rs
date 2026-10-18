@@ -135,7 +135,7 @@ pub fn update_particles(
                 let progress = p.lifetime / p.max_lifetime;
                 let scale = 1.0 + progress * 2.2;
                 tf.scale = Vec3::splat(scale);
-                p.velocity.y += 0.2 * dt; // Billowing gentle upward expansion
+                p.velocity.y += 0.2 * dt;
             }
             ParticleType::GlowSpore => {
                 let wave = (p.lifetime * 3.0).sin() * 0.1;
@@ -145,7 +145,6 @@ pub fn update_particles(
     }
 }
 
-// Simple fast pseudo-random generator
 mod fastrand {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEED: AtomicU64 = AtomicU64::new(88172645463325252);
@@ -172,11 +171,10 @@ mod tests {
         world.insert_resource(Assets::<Mesh>::default());
         world.insert_resource(Assets::<StandardMaterial>::default());
 
-        // Spawn emitter for each particle type
         world.spawn((
             ParticleEmitter {
                 spawn_timer: 1.0,
-                spawn_rate: 0.1, // will trigger spawn on first tick
+                spawn_rate: 0.1,
                 particle_type: ParticleType::Steam,
             },
             Transform::from_xyz(0.0, 0.0, 0.0),
@@ -204,11 +202,9 @@ mod tests {
         schedule.add_systems((spawn_particles, update_particles));
         schedule.run(&mut world);
 
-        // Check that particles were spawned
         let count = world.query::<&Particle>().iter(&world).count();
         assert_eq!(count, 3, "All 3 emitters must have spawned a particle");
 
-        // Advance time beyond max_lifetime to test despawning (run update_particles directly)
         world
             .resource_mut::<Time<()>>()
             .advance_by(std::time::Duration::from_secs(10));

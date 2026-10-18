@@ -5,7 +5,6 @@ use bevy::{
     window::{CursorGrabMode, MonitorSelection, PrimaryWindow, WindowMode},
 };
 
-/// Global application lifecycle states.
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum GameState {
     #[default]
@@ -13,7 +12,6 @@ pub enum GameState {
     InGame,
 }
 
-/// Navigation subviews inside the menu screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MenuView {
     #[default]
@@ -22,7 +20,6 @@ pub enum MenuView {
     Controls,
 }
 
-/// Navigation state resource tracking active view and whether the player has entered gameplay.
 #[derive(Resource, Debug, Clone)]
 pub struct MenuNavigation {
     pub current_view: MenuView,
@@ -38,7 +35,6 @@ impl Default for MenuNavigation {
     }
 }
 
-/// RTX Quality presets targeting different hardware tiers and framerates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RtxQuality {
     #[default]
@@ -72,7 +68,6 @@ impl RtxQuality {
     }
 }
 
-/// User configurable game settings for display, controls, and audio.
 #[derive(Resource, Debug, Clone)]
 pub struct GameSettings {
     pub fullscreen: bool,
@@ -96,7 +91,6 @@ impl Default for GameSettings {
     }
 }
 
-// Markers for UI entities
 #[derive(Component)]
 pub struct MenuRoot;
 
@@ -153,22 +147,19 @@ pub enum MenuButtonAction {
     Quit,
 }
 
-// Visual Palette: Cel-Shaded Alchemical Fantasy & Bioluminescent Cyan
-pub const COLOR_TITLE_MAJESTIC: Color = Color::srgba(0.92, 0.98, 1.00, 1.00); // Majestic white with cyan reflection
-pub const COLOR_TITLE_GLOW: Color = Color::srgba(0.25, 0.92, 1.00, 0.90); // Bioluminescent cyan #40e0ff
-pub const COLOR_DIVIDER_GLOW: Color = Color::srgba(0.20, 0.88, 1.00, 0.85); // Glowing ornamental line
-pub const COLOR_DIVIDER_ACCENT: Color = Color::srgba(0.85, 0.72, 0.35, 0.90); // Alchemical gold accent
+pub const COLOR_TITLE_MAJESTIC: Color = Color::srgba(0.92, 0.98, 1.00, 1.00);
+pub const COLOR_TITLE_GLOW: Color = Color::srgba(0.25, 0.92, 1.00, 0.90);
+pub const COLOR_DIVIDER_GLOW: Color = Color::srgba(0.20, 0.88, 1.00, 0.85);
+pub const COLOR_DIVIDER_ACCENT: Color = Color::srgba(0.85, 0.72, 0.35, 0.90);
 
-// Floating mystical plate buttons
 pub const COLOR_BTN_NORMAL: Color = Color::srgba(0.04, 0.08, 0.15, 0.78);
-pub const COLOR_BTN_HOVER: Color = Color::srgba(0.00, 0.88, 1.00, 0.40); // Translucent vibrant cyan #00f2fe @ 40%
+pub const COLOR_BTN_HOVER: Color = Color::srgba(0.00, 0.88, 1.00, 0.40);
 pub const COLOR_BTN_PRESSED: Color = Color::srgba(0.08, 0.45, 0.62, 0.85);
 
-pub const COLOR_BTN_BORDER_NORMAL: Color = Color::srgba(0.18, 0.35, 0.48, 0.85); // Ink contour with soft cyan rim
-pub const COLOR_BTN_BORDER_HOVER: Color = Color::srgba(0.28, 0.96, 1.00, 1.00); // Radiant cyan border
+pub const COLOR_BTN_BORDER_NORMAL: Color = Color::srgba(0.18, 0.35, 0.48, 0.85);
+pub const COLOR_BTN_BORDER_HOVER: Color = Color::srgba(0.28, 0.96, 1.00, 1.00);
 pub const COLOR_BTN_BORDER_PRESSED: Color = Color::srgba(0.48, 1.00, 1.00, 1.00);
 
-// Legacy palette aliases preserved for test compatibility
 pub const COLOR_BG_PANEL: Color = Color::srgba(0.02, 0.04, 0.08, 0.60);
 pub const COLOR_BORDER_GOLD: Color = Color::srgba(0.28, 0.96, 1.00, 0.90);
 pub const COLOR_BORDER_MUTED: Color = Color::srgba(0.18, 0.35, 0.48, 0.85);
@@ -250,7 +241,6 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
         .map(|s| s.load("fonts/DejaVuSans.ttf"))
         .unwrap_or_default();
 
-    // Menu Root overlay covering entire viewport with smooth atmospheric dimming
     commands
         .spawn((
             MenuRoot,
@@ -268,9 +258,7 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
             ZIndex(100),
         ))
         .with_children(|root| {
-            // -------------------------------------------------------------
-            // Floating Spore Particles (42 bioluminescent drifting spores)
-            // -------------------------------------------------------------
+
             for i in 0..42 {
                 let seed = ((i as f32 * 19.7).sin() * 43758.5453).fract().abs();
                 let seed2 = ((i as f32 * 31.3).cos() * 23421.6312).fract().abs();
@@ -285,11 +273,11 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                     2.4
                 };
                 let color = if i % 3 == 0 {
-                    Color::srgba(0.18, 0.95, 0.90, 0.65) // Bioluminescent cyan
+                    Color::srgba(0.18, 0.95, 0.90, 0.65)
                 } else if i % 4 == 0 {
-                    Color::srgba(0.96, 0.82, 0.35, 0.50) // Alchemical golden spore
+                    Color::srgba(0.96, 0.82, 0.35, 0.50)
                 } else {
-                    Color::srgba(0.35, 0.88, 1.0, 0.45) // Soft crystalline cyan
+                    Color::srgba(0.35, 0.88, 1.0, 0.45)
                 };
 
                 root.spawn((
@@ -313,9 +301,6 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                 ));
             }
 
-            // -------------------------------------------------------------
-            // Central Cel-Shaded Menu Panel (Translucent plate - NO solid yellow box)
-            // -------------------------------------------------------------
             root.spawn((
                 Node {
                     width: Val::Px(540.0),
@@ -332,7 +317,7 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                 BorderColor(Color::srgba(0.18, 0.38, 0.48, 0.75)),
             ))
             .with_children(|card| {
-                // Majestic Title: "ALQUIMIA PROFUNDA" (PT-BR)
+
                 card.spawn((
                     Text::new("ALQUIMIA PROFUNDA"),
                     TextFont {
@@ -344,7 +329,6 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                     Node::default(),
                 ));
 
-                // Ornamental Divider Line with Glowing Accent (No Subtitle)
                 card.spawn((
                     Node {
                         width: Val::Px(400.0),
@@ -372,9 +356,6 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                     ));
                 });
 
-                // -------------------------------------------------------------
-                // Subview 1: MAIN MENU
-                // -------------------------------------------------------------
                 card.spawn((
                     MainViewNode,
                     Node {
@@ -387,7 +368,7 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                     },
                 ))
                 .with_children(|main_view| {
-                    // Play / Resume Button
+
                     spawn_menu_button(
                         main_view,
                         font_handle.clone(),
@@ -396,7 +377,6 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                         Some(StartResumeButtonText),
                     );
 
-                    // Settings Button
                     spawn_menu_button(
                         main_view,
                         font_handle.clone(),
@@ -405,7 +385,6 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                         None::<StartResumeButtonText>,
                     );
 
-                    // Controls Guide Button
                     spawn_menu_button(
                         main_view,
                         font_handle.clone(),
@@ -414,7 +393,6 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                         None::<StartResumeButtonText>,
                     );
 
-                    // Quit Button
                     spawn_menu_button(
                         main_view,
                         font_handle.clone(),
@@ -424,9 +402,6 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                     );
                 });
 
-                // -------------------------------------------------------------
-                // Subview 2: SETTINGS MENU
-                // -------------------------------------------------------------
                 card.spawn((
                     SettingsViewNode,
                     Node {
@@ -450,7 +425,6 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                         Node::default(),
                     ));
 
-                    // Row: Fullscreen
                     spawn_settings_row(
                         settings_view,
                         font_handle.clone(),
@@ -486,7 +460,6 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                         },
                     );
 
-                    // Row: RTX / Ray Tracing
                     spawn_settings_row(
                         settings_view,
                         font_handle.clone(),
@@ -522,7 +495,6 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                         },
                     );
 
-                    // Row: Sensitivity
                     spawn_stepper_row(
                         settings_view,
                         font_handle.clone(),
@@ -533,7 +505,6 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                         SensitivityValueText,
                     );
 
-                    // Row: FOV
                     spawn_stepper_row(
                         settings_view,
                         font_handle.clone(),
@@ -544,7 +515,6 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                         FovValueText,
                     );
 
-                    // Row: Volume
                     spawn_stepper_row(
                         settings_view,
                         font_handle.clone(),
@@ -555,7 +525,6 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                         VolumeValueText,
                     );
 
-                    // Back to Main Menu Button
                     spawn_menu_button(
                         settings_view,
                         font_handle.clone(),
@@ -565,9 +534,6 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                     );
                 });
 
-                // -------------------------------------------------------------
-                // Subview 3: CONTROLS GUIDE
-                // -------------------------------------------------------------
                 card.spawn((
                     ControlsViewNode,
                     Node {
@@ -634,7 +600,6 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                             });
                     }
 
-                    // Back Button
                     spawn_menu_button(
                         controls_view,
                         font_handle.clone(),
@@ -741,7 +706,7 @@ fn spawn_stepper_row<T: Component>(
             ..default()
         },))
             .with_children(|controls| {
-                // Decrement Button
+
                 controls
                     .spawn((
                         Button,
@@ -771,7 +736,6 @@ fn spawn_stepper_row<T: Component>(
                         ));
                     });
 
-                // Value Display Box
                 controls
                     .spawn((
                         Node {
@@ -800,7 +764,6 @@ fn spawn_stepper_row<T: Component>(
                         ));
                     });
 
-                // Increment Button
                 controls
                     .spawn((
                         Button,
@@ -833,10 +796,6 @@ fn spawn_stepper_row<T: Component>(
     });
 }
 
-// -----------------------------------------------------------------------------
-// Systems: Navigation, Shortcuts & Interaction
-// -----------------------------------------------------------------------------
-
 pub fn handle_global_shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
     current_state: Res<State<GameState>>,
@@ -844,12 +803,11 @@ pub fn handle_global_shortcuts(
     mut nav: ResMut<MenuNavigation>,
     mut settings: ResMut<GameSettings>,
 ) {
-    // F11: Universal Fullscreen Toggle
+
     if keys.just_pressed(KeyCode::F11) {
         settings.fullscreen = !settings.fullscreen;
     }
 
-    // Escape: Pause / Resume or Subview back
     if keys.just_pressed(KeyCode::Escape) {
         match current_state.get() {
             GameState::InGame => {
@@ -1059,7 +1017,6 @@ pub fn update_menu_subview_visibility(
         };
     }
 
-    // Update button text to reflect whether the game is being started or resumed
     for mut txt in start_btn_query.iter_mut() {
         txt.0 = if nav.has_started {
             "CONTINUAR EXPLORAÇÃO".to_string()
@@ -1174,7 +1131,6 @@ pub fn apply_rtx_settings(
         return;
     }
 
-    // 1. Ambient Light Fill (eliminates pitch-black voids, gives rich twilight blue tone)
     if let Some(ref mut ambient) = ambient_light {
         match settings.rtx_quality {
             RtxQuality::Off => {
@@ -1196,7 +1152,6 @@ pub fn apply_rtx_settings(
         }
     }
 
-    // 2. Directional Skylight Shadows (fast cascaded shadow map for all active RTX modes)
     for mut light in dir_lights.iter_mut() {
         light.shadows_enabled = settings.rtx_quality.is_enabled();
         if settings.rtx_quality.is_enabled() {
@@ -1205,7 +1160,6 @@ pub fn apply_rtx_settings(
         }
     }
 
-    // 3. Point Lights (Only KeyShadowLights cast shadow in Medium/Ultra; never in Off or Low)
     let enable_key_point_shadows =
         matches!(settings.rtx_quality, RtxQuality::Medium | RtxQuality::Ultra);
     for mut light in key_point_lights.iter_mut() {
@@ -1215,12 +1169,11 @@ pub fn apply_rtx_settings(
             light.shadow_normal_bias = 0.6;
         }
     }
-    // All other fill point lights never cast shadows to maintain high framerate
+
     for mut light in all_point_lights.iter_mut() {
         light.shadows_enabled = false;
     }
 
-    // 4. Camera SSAO and Shadow Filtering
     match settings.rtx_quality {
         RtxQuality::Off => {
             for cam_entity in ssao_query.iter() {
@@ -1231,7 +1184,7 @@ pub fn apply_rtx_settings(
             }
         }
         RtxQuality::Low => {
-            // Low: fast 2x2 hardware shadow filtering + SSAO for smooth 30-45+ FPS
+
             for cam_entity in camera_query.iter() {
                 commands.entity(cam_entity).insert((
                     bevy::pbr::ScreenSpaceAmbientOcclusion::default(),
@@ -1240,7 +1193,7 @@ pub fn apply_rtx_settings(
             }
         }
         RtxQuality::Medium | RtxQuality::Ultra => {
-            // Medium/Ultra: Gaussian soft shadow filtering + SSAO
+
             for cam_entity in camera_query.iter() {
                 commands.entity(cam_entity).insert((
                     bevy::pbr::ScreenSpaceAmbientOcclusion::default(),
@@ -1331,7 +1284,6 @@ mod tests {
         assert_eq!(settings.mouse_sensitivity, 0.0022);
         assert_eq!(settings.master_volume, 0.8);
 
-        // Test clamping logic
         settings.mouse_sensitivity = (settings.mouse_sensitivity + 0.1).clamp(0.0006, 0.0080);
         assert_eq!(settings.mouse_sensitivity, 0.0080);
 
@@ -1438,7 +1390,6 @@ mod tests {
         app.init_resource::<ButtonInput<KeyCode>>();
         app.add_systems(Update, handle_global_shortcuts);
 
-        // Test F11 toggles fullscreen
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::F11);
@@ -1448,7 +1399,6 @@ mod tests {
             .resource_mut::<ButtonInput<KeyCode>>()
             .reset_all();
 
-        // Switch to InGame and test Escape pauses to MainMenu
         app.world_mut()
             .resource_mut::<NextState<GameState>>()
             .set(GameState::InGame);
@@ -1465,7 +1415,6 @@ mod tests {
         let state = app.world().resource::<State<GameState>>();
         assert_eq!(*state.get(), GameState::MainMenu);
 
-        // In Subview Settings, Escape returns to Main view
         app.world_mut()
             .resource_mut::<MenuNavigation>()
             .current_view = MenuView::Settings;
@@ -1489,7 +1438,6 @@ mod tests {
         app.add_event::<AppExit>();
         app.add_systems(Update, handle_menu_button_interactions);
 
-        // Test StartOrResume
         let start_btn = app
             .world_mut()
             .spawn((
@@ -1504,7 +1452,6 @@ mod tests {
 
         assert_eq!(app.world().resource::<MenuNavigation>().has_started, true);
 
-        // Test OpenSettings
         app.world_mut().entity_mut(start_btn).despawn();
         app.world_mut().spawn((
             Button,
@@ -1519,7 +1466,6 @@ mod tests {
             MenuView::Settings
         );
 
-        // Test AdjustSensitivity, AdjustFov, AdjustVolume, ToggleFullscreen, ToggleRtx
         app.world_mut().spawn((
             Button,
             MenuButtonAction::AdjustSensitivity(0.0010),
@@ -1607,7 +1553,6 @@ mod tests {
             .spawn((StartResumeButtonText, Text::new("INICIAR JORNADA")))
             .id();
 
-        // When in Main view
         app.world_mut()
             .resource_mut::<MenuNavigation>()
             .current_view = MenuView::Main;
@@ -1631,7 +1576,6 @@ mod tests {
             "CONTINUAR EXPLORAÇÃO"
         );
 
-        // When in Settings view
         app.world_mut()
             .resource_mut::<MenuNavigation>()
             .current_view = MenuView::Settings;
@@ -1723,7 +1667,6 @@ mod tests {
             })
             .id();
 
-        // 1. Test Low RTX (Target 30 FPS): directional shadow ON, point light cubemaps OFF, SSAO ON
         app.world_mut().resource_mut::<GameSettings>().rtx_quality = RtxQuality::Low;
         app.update();
 
@@ -1757,7 +1700,6 @@ mod tests {
         );
         assert_eq!(app.world().resource::<AmbientLight>().brightness, 740.0);
 
-        // 2. Test Medium RTX: directional ON, key point lights ON, fill lights OFF
         app.world_mut().resource_mut::<GameSettings>().rtx_quality = RtxQuality::Medium;
         app.update();
 
@@ -1787,7 +1729,6 @@ mod tests {
         );
         assert_eq!(app.world().resource::<AmbientLight>().brightness, 780.0);
 
-        // 3. Test Off: all shadows OFF, SSAO removed, ambient reduced
         app.world_mut().resource_mut::<GameSettings>().rtx_quality = RtxQuality::Off;
         app.update();
 
@@ -1893,7 +1834,6 @@ mod tests {
             ))
             .id();
 
-        // Run on_enter_menu_state
         app.add_systems(Update, on_enter_menu_state);
         app.update();
 

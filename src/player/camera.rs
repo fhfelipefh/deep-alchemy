@@ -75,7 +75,7 @@ pub fn grab_mouse(mut windows: Query<&mut Window, With<PrimaryWindow>>) {
 }
 
 pub fn setup_player(mut commands: Commands, asset_server: Res<AssetServer>) {
-    // Spawn Player Root with Avian3D physics controller
+
     let player_id = commands
         .spawn((
             Player,
@@ -98,8 +98,7 @@ pub fn setup_player(mut commands: Commands, asset_server: Res<AssetServer>) {
             parent.spawn((
                 PlayerCamera,
                 Camera3d::default(),
-                // SSAO is per-camera in Bevy 0.15 and requires MSAA disabled.
-                // The toon outline pass supplies the silhouette smoothing instead.
+
                 Msaa::Off,
                 bevy::core_pipeline::prepass::DepthPrepass,
                 bevy::core_pipeline::prepass::NormalPrepass,
@@ -114,7 +113,6 @@ pub fn setup_player(mut commands: Commands, asset_server: Res<AssetServer>) {
                 },
             ));
 
-            // Load Player Model (Full Body) - hidden in 1P to eliminate floating limbs and isolated on layer 1
             parent.spawn((
                 PlayerBodyScene,
                 SceneRoot(asset_server.load("models/player.glb#Scene0")),
@@ -123,7 +121,6 @@ pub fn setup_player(mut commands: Commands, asset_server: Res<AssetServer>) {
                 RenderLayers::layer(1),
             ));
 
-            // True First-Person & Ragdoll Bone Joint Hierarchy
             let joints = [
                 ("Spine", Vec3::new(0.0, 0.0, 0.0)),
                 ("Chest", Vec3::new(0.0, 0.35, 0.0)),
@@ -149,7 +146,7 @@ pub fn setup_player(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ));
 
                 if joint_name == "Head" {
-                    // Head & Hat is specifically placed on layer 1 for 1P shadow/reflection only
+
                     joint_cmd.insert((HeadHatPart, RenderLayers::layer(1)));
                 }
             }
@@ -162,7 +159,6 @@ pub fn setup_player(mut commands: Commands, asset_server: Res<AssetServer>) {
 #[derive(Component)]
 pub struct PlayerBodyScene;
 
-// Ensure Head_Hat and distorted body parts get RenderLayers::layer(1) and Visibility::Hidden to avoid 1P clipping
 pub fn configure_player_model_layers(
     mut commands: Commands,
     player_query: Query<&PlayerState, With<Player>>,
@@ -193,7 +189,7 @@ pub fn configure_player_model_layers(
         if n.contains("Head_Hat") || n.contains("Hat_") {
             commands.entity(entity).insert((
                 HeadHatPart,
-                RenderLayers::layer(1), // Invisible to 1P camera (layer 0)
+                RenderLayers::layer(1),
             ));
         } else if n.contains("Arm")
             || n.contains("Hand")
@@ -207,7 +203,7 @@ pub fn configure_player_model_layers(
             || n.contains("Shin")
         {
             commands.entity(entity).insert((
-                RenderLayers::layer(1), // Invisible to 1P camera (layer 0)
+                RenderLayers::layer(1),
             ));
         }
     }
@@ -227,13 +223,11 @@ mod tests {
 
         app.update();
 
-        // Hat must have received HeadHatPart and RenderLayers::layer(1)
         assert!(app.world().get::<HeadHatPart>(hat_entity).is_some());
         let hat_layer = app.world().get::<RenderLayers>(hat_entity).unwrap();
         assert!(!hat_layer.intersects(&RenderLayers::layer(0)));
         assert!(hat_layer.intersects(&RenderLayers::layer(1)));
 
-        // Coat must NOT have HeadHatPart
         assert!(app.world().get::<HeadHatPart>(coat_entity).is_none());
     }
 

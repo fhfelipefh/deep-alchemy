@@ -2,8 +2,6 @@ use crate::dungeon::modular_kit::{CavernObstacle, WaterfallMarker};
 use bevy::prelude::*;
 use std::fs;
 
-/// Zero-Vision Telemetry dumper: exports camera viewpoint and scene graph in text/JSON
-/// consuming <100 tokens instead of thousands of tokens per vision prompt.
 pub fn dump_camera_frustum_telemetry(
     camera_q: Query<(&Transform, &Camera), With<Camera3d>>,
     obstacles_q: Query<(&Name, &Transform), With<CavernObstacle>>,
@@ -19,7 +17,6 @@ pub fn dump_camera_frustum_telemetry(
     let mut visible_items = Vec::new();
     let mut diagnostics = Vec::new();
 
-    // Check waterfall alignment
     for wf_tf in waterfall_q.iter() {
         let to_obj = wf_tf.translation - cam_pos;
         let dist = to_obj.length();
@@ -31,7 +28,6 @@ pub fn dump_camera_frustum_telemetry(
         ));
     }
 
-    // Check all cavern obstacles (mushrooms, bench, rock terraces)
     for (name, ob_tf) in obstacles_q.iter() {
         let to_obj = ob_tf.translation - cam_pos;
         let dist = to_obj.length();
@@ -97,7 +93,7 @@ mod tests {
     fn test_telemetry_json_output() {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
-        // Ensure function compiles and runs in minimal ECS environment
+
         app.add_systems(Update, dump_camera_frustum_telemetry);
         app.update();
     }

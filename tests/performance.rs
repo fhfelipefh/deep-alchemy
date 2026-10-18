@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 use std::time::Instant;
 
-// Direct struct tests to measure engine performance and zero allocations
 #[derive(Component)]
 struct TestEffectReceiver {
     effects: Vec<(u8, f32, f32)>,
@@ -18,7 +17,6 @@ struct TestParticle {
 fn test_alchemy_systemic_effects_throughput() {
     let mut world = World::new();
 
-    // Spawn 10,000 entities with effect receivers
     for _i in 0..10_000 {
         world.spawn(TestEffectReceiver {
             effects: vec![(1, 10.0, 5.0), (2, 5.0, 2.0)],
@@ -47,7 +45,6 @@ fn test_alchemy_systemic_effects_throughput() {
         per_tick_us / 1000.0
     );
 
-    // Assert that 10,000 entities take reasonable time under debug/profiler instrumentation
     assert!(
         per_tick_us < 15000.0,
         "Alchemy tick took too long: {} µs",
@@ -59,7 +56,6 @@ fn test_alchemy_systemic_effects_throughput() {
 fn test_particle_system_simulation_throughput() {
     let mut world = World::new();
 
-    // Spawn 10,000 active particles
     for _i in 0..10_000 {
         world.spawn(TestParticle {
             pos: Vec3::ZERO,
@@ -162,7 +158,7 @@ fn test_spatial_raycast_math_throughput() {
 
 #[test]
 fn test_zero_allocation_tick_verification() {
-    // Verifies that ticking active effects preserves capacity and does not allocate on heap
+
     let mut effects: Vec<(u8, f32, f32)> = Vec::with_capacity(8);
     effects.push((1, 5.0, 0.0));
     effects.push((2, 10.0, 0.0));

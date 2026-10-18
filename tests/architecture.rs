@@ -98,13 +98,13 @@ fn test_architecture_static_alchemy_recipes_ron_integrity() {
 #[test]
 fn test_architecture_gltf_models_binary_integrity() {
     let models = [
-        ("assets/models/player.glb", 30_000),        // > 30KB
-        ("assets/models/cavern_kit.glb", 25_000),    // > 25KB
-        ("assets/models/alchemy_props.glb", 25_000), // > 25KB
-        ("assets/models/dungeon_kit.glb", 20_000),   // > 20KB
+        ("assets/models/player.glb", 30_000),
+        ("assets/models/cavern_kit.glb", 25_000),
+        ("assets/models/alchemy_props.glb", 25_000),
+        ("assets/models/dungeon_kit.glb", 20_000),
     ];
 
-    let gltf_magic: u32 = 0x46546C67; // "glTF" in little-endian
+    let gltf_magic: u32 = 0x46546C67;
 
     for (model_path, min_bytes) in models {
         let path = Path::new(model_path);
@@ -119,7 +119,6 @@ fn test_architecture_gltf_models_binary_integrity() {
             min_bytes
         );
 
-        // Check glTF binary header
         let magic = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
         assert_eq!(
             magic, gltf_magic,
@@ -172,13 +171,11 @@ fn test_architecture_true_first_person_layer_separation() {
     let main_camera_layer = RenderLayers::layer(0);
     let head_hat_layer = RenderLayers::layer(1);
 
-    // Layer 0 and Layer 1 must be strictly mutually exclusive for direct 1P camera
     assert!(
         !main_camera_layer.intersects(&head_hat_layer),
         "Main camera layer (0) must not intersect Head/Hat layer (1) in 1P"
     );
 
-    // After death, head/hat transitions to Layer 0
     let revealed_head_layer = RenderLayers::layer(0);
     assert!(
         main_camera_layer.intersects(&revealed_head_layer),
@@ -210,7 +207,6 @@ fn test_architecture_ptbr_font_file_integrity_and_cmap_coverage() {
         font_bytes.len()
     );
 
-    // Parse TrueType Table Directory to find 'cmap'
     let num_tables = u16::from_be_bytes([font_bytes[4], font_bytes[5]]) as usize;
     let mut cmap_offset: Option<usize> = None;
 
@@ -233,7 +229,6 @@ fn test_architecture_ptbr_font_file_integrity_and_cmap_coverage() {
     let num_subtables =
         u16::from_be_bytes([font_bytes[cmap_off + 2], font_bytes[cmap_off + 3]]) as usize;
 
-    // Locate Format 4 subtable (Unicode BMP: platform 3, encoding 1 or platform 0)
     let mut format4_offset: Option<usize> = None;
     for i in 0..num_subtables {
         let rec = cmap_off + 4 + i * 8;
@@ -265,7 +260,7 @@ fn test_architecture_ptbr_font_file_integrity_and_cmap_coverage() {
         (u16::from_be_bytes([font_bytes[f4_off + 6], font_bytes[f4_off + 7]]) / 2) as usize;
 
     let end_codes_start = f4_off + 14;
-    let start_codes_start = end_codes_start + seg_count * 2 + 2; // +2 for reservedPad
+    let start_codes_start = end_codes_start + seg_count * 2 + 2;
 
     let mut segments = Vec::with_capacity(seg_count);
     for i in 0..seg_count {
@@ -280,7 +275,6 @@ fn test_architecture_ptbr_font_file_integrity_and_cmap_coverage() {
         segments.push((start_code, end_code));
     }
 
-    // All mandatory Portuguese glyphs that previously broke or were missing
     let required_chars = [
         'á', 'é', 'í', 'ó', 'ú', 'â', 'ê', 'ô', 'ã', 'õ', 'ç', 'Á', 'É', 'Í', 'Ó', 'Ú', 'Â', 'Ê',
         'Ô', 'Ã', 'Õ', 'Ç', 'ª', 'º',
@@ -340,7 +334,6 @@ fn test_architecture_ui_utf8_strings_no_mojibake() {
         }
     }
 
-    // Verify key UI strings in menu.rs are properly written with Portuguese accents
     let menu_content = fs::read_to_string("src/ui/menu.rs").unwrap();
     assert!(menu_content.contains("CONFIGURAÇÕES"));
     assert!(menu_content.contains("EXPLORAÇÃO"));
@@ -350,7 +343,7 @@ fn test_architecture_ui_utf8_strings_no_mojibake() {
 
 #[test]
 fn test_architecture_executable_icon_and_metadata_integrity() {
-    // 1. High-resolution PNG icon
+
     let png_path = Path::new("assets/icons/app_icon.png");
     assert!(png_path.exists(), "app_icon.png must exist");
     let png_bytes = fs::read(png_path).expect("Failed to read app_icon.png");
@@ -361,7 +354,6 @@ fn test_architecture_executable_icon_and_metadata_integrity() {
         "app_icon.png must have valid PNG magic"
     );
 
-    // 2. Multi-resolution Windows ICO
     let ico_path = Path::new("assets/icons/app_icon.ico");
     assert!(ico_path.exists(), "app_icon.ico must exist");
     let ico_bytes = fs::read(ico_path).expect("Failed to read app_icon.ico");
@@ -381,7 +373,6 @@ fn test_architecture_executable_icon_and_metadata_integrity() {
         icon_count
     );
 
-    // 3. Resource Compiler Script and Compiled .res file
     let rc_path = Path::new("assets/icons/app_icon.rc");
     assert!(rc_path.exists(), "app_icon.rc must exist");
     let rc_content = fs::read_to_string(rc_path).expect("Failed to read rc script");
@@ -393,7 +384,6 @@ fn test_architecture_executable_icon_and_metadata_integrity() {
         "app_icon.res must exist for PE binary embedding"
     );
 
-    // 4. Build Script linking the icon into the executable
     let build_rs_path = Path::new("build.rs");
     assert!(build_rs_path.exists(), "build.rs must exist");
     let build_rs_content = fs::read_to_string(build_rs_path).expect("Failed to read build.rs");
@@ -409,14 +399,13 @@ fn test_architecture_cavern_grotto_visual_richness() {
     assert!(cavern_model_path.exists(), "cavern_kit.glb must exist");
 
     let model_bytes = fs::read(cavern_model_path).expect("Failed to read cavern_kit.glb");
-    // Rich detailed model with cavern dome, waterfall cliff, stepped travertine pools, stalactites, mushrooms
+
     assert!(
         model_bytes.len() > 100_000,
         "cavern_kit.glb must be a rich multi-asset environment (> 100KB), found {} bytes",
         model_bytes.len()
     );
 
-    // Verify modular_kit.rs spawns waterfall, river, geysers and atmospheric lighting
     let dungeon_code =
         fs::read_to_string("src/dungeon/modular_kit.rs").expect("Failed to read modular_kit.rs");
     assert!(
@@ -644,7 +633,7 @@ fn test_architecture_procedural_dungeon_wfc_dual_grid_integrity() {
 
 #[test]
 fn test_architecture_concept_art_fidelity_and_faceted_rocks_pipeline() {
-    // 1. Technical Artist Skill definition
+
     let skill_path = Path::new(".agent/skills/concept-art-fidelity/SKILL.md");
     assert!(
         skill_path.exists(),
@@ -669,7 +658,6 @@ fn test_architecture_concept_art_fidelity_and_faceted_rocks_pipeline() {
         "Skill must define Definition of Done"
     );
 
-    // 2. Visual Diff & Blueprint Extractor script
     let blueprint_script = Path::new("scripts/visual_diff_blueprint.py");
     assert!(
         blueprint_script.exists(),
@@ -686,7 +674,6 @@ fn test_architecture_concept_art_fidelity_and_faceted_rocks_pipeline() {
         "Script must measure ink lines density"
     );
 
-    // 3. World-Space Normal Top-Moss WGSL Shader & Render Material
     let moss_shader_path = Path::new("assets/shaders/cel_shaded_world_moss.wgsl");
     assert!(
         moss_shader_path.exists(),
@@ -713,7 +700,6 @@ fn test_architecture_concept_art_fidelity_and_faceted_rocks_pipeline() {
         "Render module must register CelShadedMossMaterial"
     );
 
-    // 4. Procedural Faceted Rocks Generator & GLB Kit
     let rock_gen_script = Path::new("scripts/generate_faceted_rocks.py");
     assert!(
         rock_gen_script.exists(),
@@ -757,7 +743,7 @@ fn test_architecture_concept_art_fidelity_and_faceted_rocks_pipeline() {
 
 #[test]
 fn test_architecture_zero_vision_loop_and_telemetry_pipeline() {
-    // 1. Scene Spec JSON (Cached prompt token saver)
+
     let spec_path = Path::new("assets/data/scene_spec.json");
     assert!(spec_path.exists(), "assets/data/scene_spec.json must exist");
     let spec_content = fs::read_to_string(spec_path).expect("Failed to read scene_spec.json");
@@ -770,7 +756,6 @@ fn test_architecture_zero_vision_loop_and_telemetry_pipeline() {
         "Spec must define central corridor"
     );
 
-    // 2. Vision Squeezer Middleware
     let squeezer_path = Path::new("scripts/vision_squeezer.py");
     assert!(
         squeezer_path.exists(),
@@ -787,7 +772,6 @@ fn test_architecture_zero_vision_loop_and_telemetry_pipeline() {
         "Squeezer must support ROI crops"
     );
 
-    // 3. Engine Telemetry Dumper
     let telemetry_path = Path::new("src/dungeon/telemetry.rs");
     assert!(
         telemetry_path.exists(),
@@ -799,7 +783,6 @@ fn test_architecture_zero_vision_loop_and_telemetry_pipeline() {
         "Telemetry must define dump_camera_frustum_telemetry"
     );
 
-    // 4. Frustum Dump JSON presence
     let dump_path = Path::new("debug_output/camera_frustum_dump.json");
     assert!(
         dump_path.exists(),
@@ -814,5 +797,97 @@ fn test_architecture_zero_vision_loop_and_telemetry_pipeline() {
     assert!(
         dump_content.contains("entities"),
         "Dump must contain visible entities"
+    );
+}
+
+#[test]
+fn test_architecture_zero_comments_policy() {
+    let mut files_to_check = Vec::new();
+    fn collect_rust_files(dir: &Path, files: &mut Vec<std::path::PathBuf>) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    collect_rust_files(&path, files);
+                } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+                    files.push(path);
+                }
+            }
+        }
+    }
+
+    collect_rust_files(Path::new("src"), &mut files_to_check);
+
+    let mut violations = Vec::new();
+
+    for file_path in files_to_check {
+        let content = fs::read_to_string(&file_path)
+            .unwrap_or_else(|_| panic!("Failed to read file: {:?}", file_path));
+        let chars: Vec<char> = content.chars().collect();
+        let mut i = 0;
+        let n = chars.len();
+        let mut in_string = false;
+        let mut line_number = 1;
+
+        while i < n {
+            if chars[i] == '\n' {
+                line_number += 1;
+            }
+
+            if in_string {
+                if chars[i] == '\\' && i + 1 < n {
+                    i += 2;
+                    continue;
+                }
+                if chars[i] == '"' {
+                    in_string = false;
+                }
+                i += 1;
+                continue;
+            }
+
+            if chars[i] == '"' {
+                in_string = true;
+                i += 1;
+                continue;
+            }
+
+            if chars[i] == '\'' && i + 2 < n && chars[i + 2] == '\'' {
+                i += 3;
+                continue;
+            }
+
+            if i + 1 < n && chars[i] == '/' && chars[i + 1] == '/' {
+                violations.push(format!("{}:{}: Line comment detected", file_path.display(), line_number));
+                while i < n && chars[i] != '\n' {
+                    i += 1;
+                }
+                continue;
+            }
+
+            if i + 1 < n && chars[i] == '/' && chars[i + 1] == '*' {
+                violations.push(format!("{}:{}: Block comment detected", file_path.display(), line_number));
+                i += 2;
+                while i + 1 < n && !(chars[i] == '*' && chars[i + 1] == '/') {
+                    if chars[i] == '\n' {
+                        line_number += 1;
+                    }
+                    i += 1;
+                }
+                if i + 1 < n {
+                    i += 2;
+                }
+                continue;
+            }
+
+            i += 1;
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Code must speak for itself! Found {} comments in codebase:\n{}",
+        violations.len(),
+        violations.join("\n")
     );
 }

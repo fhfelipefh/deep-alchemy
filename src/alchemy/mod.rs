@@ -74,7 +74,7 @@ pub struct PotionFlask {
     pub id: String,
     pub effects: Vec<ActiveEffect>,
     pub liquid_color: Color,
-    pub volume: f32, // 1.0 = full, 0.0 = empty
+    pub volume: f32,
 }
 
 #[derive(Component, Debug)]
@@ -274,7 +274,6 @@ mod tests {
         assert!(receiver.has_effect(AlchemicalEffectKind::Frost));
         assert_eq!(receiver.active_effects.len(), 1);
 
-        // Refresh with longer duration
         receiver.apply_effect(AlchemicalEffectKind::Frost, 5.0, 25.0);
         assert_eq!(receiver.active_effects.len(), 1);
         assert_eq!(receiver.active_effects[0].duration, 5.0);
@@ -316,7 +315,6 @@ mod tests {
         app.add_plugins(MinimalPlugins);
         app.add_plugins(AlchemyPlugin);
 
-        // Spawn geyser that is erupting
         app.world_mut().spawn((
             ThermalGeyser {
                 eruption_timer: 0.0,
@@ -327,7 +325,6 @@ mod tests {
             Transform::from_xyz(0.0, 0.0, 0.0),
         ));
 
-        // Spawn close receiver
         let close_entity = app
             .world_mut()
             .spawn((
@@ -336,7 +333,6 @@ mod tests {
             ))
             .id();
 
-        // Spawn far receiver
         let far_entity = app
             .world_mut()
             .spawn((

@@ -13,7 +13,7 @@ pub struct WaterMaterial {
     #[uniform(2)]
     pub foam_color: LinearRgba,
     #[uniform(3)]
-    pub params: Vec4, // x: time, y: speed, z: foam_threshold, w: clarity
+    pub params: Vec4,
 }
 
 impl Default for WaterMaterial {

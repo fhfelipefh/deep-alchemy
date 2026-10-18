@@ -47,7 +47,6 @@ pub fn player_raycast_interaction(
     let ray_dir = cam_gtf.forward();
     let max_distance = 3.5;
 
-    // Check hit against physical colliders
     let hit = spatial_query.cast_ray(
         ray_pos,
         Dir3::new(*ray_dir).unwrap_or(Dir3::NEG_Z),
@@ -64,7 +63,6 @@ pub fn player_raycast_interaction(
         }
     }
 
-    // Also check proximity if collider not hit
     if found_target.is_none() {
         for (entity, gtf, _) in interactables.iter() {
             let to_target = gtf.translation() - ray_pos;
@@ -81,7 +79,6 @@ pub fn player_raycast_interaction(
 
     interaction_state.hovered_entity = found_target;
 
-    // Press 'E' to interact
     if keys.just_pressed(KeyCode::KeyE) {
         if let Some(target) = found_target {
             if let Ok((_, _, maybe_ingredient)) = interactables.get_mut(target) {
@@ -115,19 +112,17 @@ pub fn player_physics_grab(
         return;
     };
 
-    // Right click initiates grab
     if mouse_buttons.just_pressed(MouseButton::Right) {
         if let Some(target) = interaction_state.hovered_entity {
             commands.entity(target).insert((
                 GrabbedProp {
                     target_distance: 2.2,
                 },
-                RigidBody::Kinematic, // Temporarily kinematic while held
+                RigidBody::Kinematic,
             ));
         }
     }
 
-    // While holding, update position in front of camera
     if mouse_buttons.pressed(MouseButton::Right) {
         let hold_point = cam_gtf.translation() + *cam_gtf.forward() * 2.2;
         for (_, mut tf, _) in grabbed_query.iter_mut() {
@@ -135,7 +130,6 @@ pub fn player_physics_grab(
         }
     }
 
-    // Release grab
     if mouse_buttons.just_released(MouseButton::Right) {
         for (entity, _, _) in grabbed_query.iter() {
             commands.entity(entity).remove::<GrabbedProp>();
@@ -170,11 +164,9 @@ mod tests {
         schedule.add_systems(player_physics_grab);
         schedule.run(&mut world);
 
-        // Prop should now have GrabbedProp component and be Kinematic
         assert!(world.get::<GrabbedProp>(prop).is_some());
         assert_eq!(*world.get::<RigidBody>(prop).unwrap(), RigidBody::Kinematic);
 
-        // Now release grab
         let mut mouse_released = ButtonInput::<MouseButton>::default();
         mouse_released.press(MouseButton::Right);
         mouse_released.release(MouseButton::Right);
@@ -200,7 +192,6 @@ mod tests {
         app.init_resource::<InteractionState>();
         app.add_systems(Update, player_raycast_interaction);
 
-        // Camera looking forward along -Z
         app.world_mut().spawn((
             PlayerCamera,
             Camera::default(),
@@ -208,7 +199,6 @@ mod tests {
             GlobalTransform::from_translation(Vec3::new(0.0, 1.75, 0.0)),
         ));
 
-        // Interactable directly in front (Z = -2.0)
         let target = app
             .world_mut()
             .spawn((

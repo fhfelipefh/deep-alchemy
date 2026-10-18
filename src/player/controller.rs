@@ -13,14 +13,13 @@ pub fn resolve_player_collision_sliding(
     let attempted_move = Vec2::new(desired_pos.x - prev_pos.x, desired_pos.z - prev_pos.z);
     let is_moving = attempted_move.length_squared() > 1e-6;
 
-    // Relaxation passes for multi-obstacle and corner resolution
     for _ in 0..3 {
         for (tf, shape) in obstacles {
             match shape {
                 ObstacleShape::Cylinder { radius, height } => {
                     let obs_y = tf.translation.y;
                     let half_h = height * 0.5;
-                    // Check height bounds
+
                     if resolved.y < obs_y - half_h - 1.2 || resolved.y > obs_y + half_h + 0.5 {
                         continue;
                     }
@@ -44,7 +43,7 @@ pub fn resolve_player_collision_sliding(
                         if is_moving {
                             let dot = attempted_move.dot(normal);
                             if dot < 0.0 {
-                                // Tangential sliding: subtract inward normal component
+
                                 let slide = attempted_move - normal * dot;
                                 let slid_target = Vec2::new(prev_pos.x, prev_pos.z) + slide;
                                 let re_diff = slid_target - center;
@@ -136,11 +135,10 @@ pub fn resolve_player_collision_sliding(
             }
         }
 
-        // Perimeter boundary limits (Starting Grotto, Portal Archway, and Procedural Dungeon)
         let portal_x_limit = 2.2 - player_radius;
 
         if resolved.z < 3.2 {
-            // Inside starting grotto amphitheater
+
             let x_limit = 6.8 - player_radius;
             resolved.x = resolved.x.clamp(-x_limit, x_limit);
 
@@ -149,20 +147,19 @@ pub fn resolve_player_collision_sliding(
                 resolved.z = z_min;
             }
 
-            // Flanking rear rock wall (outside portal opening)
             if resolved.x.abs() > portal_x_limit && resolved.z > 3.2 - player_radius {
                 resolved.z = 3.2 - player_radius;
             }
         } else if resolved.z <= 5.0 {
-            // Archway portal passage connecting grotto to procedural dungeon
+
             if resolved.x.abs() > portal_x_limit {
                 if prev_pos.z <= 3.2 {
-                    // Blocked by solid rear grotto wall flanking the portal opening
+
                     resolved.z = 3.2 - player_radius;
                     let x_limit = 6.8 - player_radius;
                     resolved.x = resolved.x.clamp(-x_limit, x_limit);
                 } else if prev_pos.z > 5.0 {
-                    // Blocked by dungeon exterior wall returning outside the portal opening
+
                     resolved.z = 5.0 + player_radius;
                 } else {
                     resolved.x = resolved.x.clamp(-portal_x_limit, portal_x_limit);
@@ -171,7 +168,7 @@ pub fn resolve_player_collision_sliding(
                 resolved.x = resolved.x.clamp(-portal_x_limit, portal_x_limit);
             }
         } else {
-            // Inside procedural dungeon macro layout
+
             let dungeon_limit = 46.0 - player_radius;
             resolved.x = resolved.x.clamp(-dungeon_limit, dungeon_limit);
             if resolved.z > dungeon_limit {
@@ -215,14 +212,12 @@ pub fn player_look(
             continue;
         }
 
-        // Yaw rotates the player root body around Y axis
         player_tf.rotate_y(-mouse_delta.x * sensitivity);
 
-        // Pitch rotates the camera entity around local X axis
         for mut cam_tf in camera_query.iter_mut() {
             let (yaw, mut pitch, roll) = cam_tf.rotation.to_euler(EulerRot::YXZ);
             pitch -= mouse_delta.y * sensitivity;
-            pitch = pitch.clamp(-1.52, 1.52); // ~87 degrees up and down
+            pitch = pitch.clamp(-1.52, 1.52);
             cam_tf.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll);
         }
     }
@@ -254,7 +249,6 @@ pub fn player_movement(
 
     let dt = time.delta_secs();
 
-    // Query scene obstacles once per frame
     let obstacle_list: Vec<(&Transform, ObstacleShape)> = obstacles_query
         .iter()
         .map(|(obs_tf, shape_opt)| {
@@ -291,25 +285,22 @@ pub fn player_movement(
         move_dir.y = 0.0;
         let is_moving = move_dir.length_squared() > 0.0001;
 
-        // Crouch (Left Ctrl)
         locomotion.is_crouching = keys.pressed(KeyCode::ControlLeft);
 
-        // Jump (Space)
         if keys.just_pressed(KeyCode::Space) && locomotion.is_grounded && !locomotion.is_crouching {
             locomotion.vertical_velocity = 5.2;
             locomotion.is_grounded = false;
         }
 
-        // Sprinting (Left Shift)
         let can_sprint = !locomotion.is_crouching && stamina.current > 5.0 && is_moving;
         let is_sprinting = keys.pressed(KeyCode::ShiftLeft) && can_sprint;
         locomotion.is_sprinting = is_sprinting;
 
         if is_sprinting {
-            // Speed: 7.0 m/s (1.66x base speed 4.2 -> > 1.5x)
+
             locomotion.current_speed = 7.0;
             stamina.current = (stamina.current - 20.0 * dt).max(0.0);
-            locomotion.stamina_regen_delay_timer = 1.0; // Reset regen delay
+            locomotion.stamina_regen_delay_timer = 1.0;
         } else if locomotion.is_crouching {
             locomotion.current_speed = 2.2;
             locomotion.stamina_regen_delay_timer =
@@ -320,12 +311,10 @@ pub fn player_movement(
                 (locomotion.stamina_regen_delay_timer - dt).max(0.0);
         }
 
-        // Stamina Regeneration after delay
         if !is_sprinting && locomotion.stamina_regen_delay_timer <= 0.0 {
             stamina.current = (stamina.current + 15.0 * dt).min(stamina.max);
         }
 
-        // Gravity & Vertical Simulation
         if !locomotion.is_grounded {
             locomotion.vertical_velocity -= 18.0 * dt;
             tf.translation.y += locomotion.vertical_velocity * dt;
@@ -336,7 +325,6 @@ pub fn player_movement(
             }
         }
 
-        // Horizontal Movement with Sliding Collision Resolution
         if is_moving {
             let vel = move_dir.normalize() * locomotion.current_speed * dt;
             let desired_pos = tf.translation + vel;
@@ -348,7 +336,6 @@ pub fn player_movement(
                 &obstacle_list,
             );
 
-            // Head-Bob oscillation step
             let bob_freq = if is_sprinting { 14.0 } else { 8.0 };
             locomotion.head_bob_timer += dt * bob_freq;
         } else {
@@ -368,7 +355,7 @@ pub fn player_camera_effects(
     };
 
     for (mut cam_tf, mut projection) in camera_query.iter_mut() {
-        // 1. Dynamic FOV Kick (+7 degrees when sprinting)
+
         if let Projection::Perspective(ref mut persp) = *projection {
             let base_fov: f32 = 75.0_f32.to_radians();
             let target_fov = if locomotion.is_sprinting {
@@ -379,7 +366,6 @@ pub fn player_camera_effects(
             persp.fov = persp.fov.lerp(target_fov, (10.0 * dt).min(1.0));
         }
 
-        // 2. Head-Bob (vertical and subtle lateral sway)
         let base_eye_height = if locomotion.is_crouching { 0.25 } else { 0.55 };
         if locomotion.head_bob_timer > 0.0 {
             let bob_amp = if locomotion.is_sprinting { 0.065 } else { 0.03 };
@@ -404,10 +390,7 @@ mod tests {
 
     #[test]
     fn test_locomotion_sprint_velocity_and_stamina_drain_gate() {
-        // GATE 2 MANDATORY TEST:
-        // Simulates 60 frames walking (W) and measures Delta Z1.
-        // Simulates 60 frames sprinting (W + Shift) and measures Delta Z2 and stamina.
-        // Asserts: delta_z2 > delta_z1 * 1.4 AND stamina_final < stamina_initial.
+
         let mut app_walk = App::new();
         app_walk.add_systems(Update, player_movement);
         app_walk.init_resource::<Time>();
@@ -430,7 +413,6 @@ mod tests {
         walk_keys.press(KeyCode::KeyW);
         app_walk.world_mut().insert_resource(walk_keys);
 
-        // Run 60 frames of walking at fixed dt = 16ms
         for _ in 0..60 {
             app_walk
                 .world_mut()
@@ -447,7 +429,6 @@ mod tests {
             .z;
         let delta_z1 = z_walk_end.abs();
 
-        // Now run Sprint simulation
         let mut app_sprint = App::new();
         app_sprint.add_systems(Update, player_movement);
         app_sprint.init_resource::<Time>();
@@ -493,7 +474,6 @@ mod tests {
             .unwrap()
             .current;
 
-        // GATE 2 ASSERTIONS:
         assert!(
             delta_z2 > delta_z1 * 1.4,
             "Sprinting must be at least 40% faster than walking: delta_z2={:.3}, delta_z1={:.3}",
@@ -530,7 +510,6 @@ mod tests {
         let mut keys = ButtonInput::<KeyCode>::default();
         app.world_mut().insert_resource(keys.clone());
 
-        // Test Crouch reduces speed
         keys.press(KeyCode::ControlLeft);
         keys.press(KeyCode::KeyW);
         *app.world_mut().resource_mut::<ButtonInput<KeyCode>>() = keys.clone();
@@ -543,7 +522,6 @@ mod tests {
         assert!(locomotion.is_crouching, "Crouch must be active");
         assert_eq!(locomotion.current_speed, 2.2, "Crouch speed must be 2.2");
 
-        // Test Jump applies vertical velocity
         keys.release(KeyCode::ControlLeft);
         keys.press(KeyCode::Space);
         *app.world_mut().resource_mut::<ButtonInput<KeyCode>>() = keys.clone();
@@ -622,7 +600,6 @@ mod tests {
             .spawn((PlayerCamera, Transform::IDENTITY))
             .id();
 
-        // Send mouse motion event
         app.world_mut().send_event(MouseMotion {
             delta: Vec2::new(100.0, 50.0),
         });
@@ -664,7 +641,6 @@ mod tests {
             ))
             .id();
 
-        // Spawn Mushroom obstacle 1.0m ahead
         app.world_mut().spawn((
             CavernObstacle,
             ObstacleShape::Cylinder {
@@ -678,7 +654,6 @@ mod tests {
         keys.press(KeyCode::KeyW);
         app.world_mut().insert_resource(keys);
 
-        // Run 40 frames walking towards obstacle
         for _ in 0..40 {
             app.world_mut()
                 .resource_mut::<Time>()
@@ -687,7 +662,7 @@ mod tests {
         }
 
         let player_z = app.world().get::<Transform>(player).unwrap().translation.z;
-        // Obstacle at -1.0 with radius 0.5 + player radius 0.35 => player cannot pass z = -0.15
+
         assert!(
             player_z >= -0.16,
             "Player must be blocked before mushroom obstacle: z={:.3} must be >= -0.16",
@@ -715,7 +690,6 @@ mod tests {
             ))
             .id();
 
-        // Spawn Mushroom obstacle directly ahead
         app.world_mut().spawn((
             CavernObstacle,
             ObstacleShape::Cylinder {
@@ -725,13 +699,11 @@ mod tests {
             Transform::from_xyz(0.0, 1.0, -1.0),
         ));
 
-        // Press W + D (attempting to walk diagonally forward-right)
         let mut keys = ButtonInput::<KeyCode>::default();
         keys.press(KeyCode::KeyW);
         keys.press(KeyCode::KeyD);
         app.world_mut().insert_resource(keys);
 
-        // Run 10 frames: player contacts the obstacle, forward motion arrested, deflected along +X
         for _ in 0..10 {
             app.world_mut()
                 .resource_mut::<Time>()
@@ -754,7 +726,6 @@ mod tests {
             contact_tf.translation.x
         );
 
-        // Run 30 more frames: player completes sliding around the obstacle
         for _ in 0..30 {
             app.world_mut()
                 .resource_mut::<Time>()
@@ -776,7 +747,6 @@ mod tests {
         app.add_systems(Update, player_movement);
         app.init_resource::<Time>();
 
-        // Player starting just in front of bench
         let player = app
             .world_mut()
             .spawn((
@@ -791,7 +761,6 @@ mod tests {
             ))
             .id();
 
-        // Bench cuboid at z = -1.75, half_extents = (0.8, 0.45, 0.35)
         app.world_mut().spawn((
             CavernObstacle,
             ObstacleShape::Cuboid {
@@ -801,7 +770,7 @@ mod tests {
         ));
 
         let mut keys = ButtonInput::<KeyCode>::default();
-        keys.press(KeyCode::KeyW); // Walk forward towards bench
+        keys.press(KeyCode::KeyW);
         app.world_mut().insert_resource(keys);
 
         for _ in 0..40 {
@@ -812,7 +781,7 @@ mod tests {
         }
 
         let player_z = app.world().get::<Transform>(player).unwrap().translation.z;
-        // Bench front edge is at -1.75 + 0.35 = -1.40. With player radius 0.35, player cannot pass z = -1.05
+
         assert!(
             player_z >= -1.06,
             "Player must be blocked before bench cuboid: z={:.3} must be >= -1.06",
@@ -826,7 +795,6 @@ mod tests {
         app.add_systems(Update, player_movement);
         app.init_resource::<Time>();
 
-        // Player starting near left canyon wall boundary
         let player = app
             .world_mut()
             .spawn((
@@ -842,7 +810,7 @@ mod tests {
             .id();
 
         let mut keys = ButtonInput::<KeyCode>::default();
-        keys.press(KeyCode::KeyA); // Walk left into canyon wall
+        keys.press(KeyCode::KeyA);
         app.world_mut().insert_resource(keys);
 
         for _ in 0..40 {
@@ -853,7 +821,7 @@ mod tests {
         }
 
         let player_x = app.world().get::<Transform>(player).unwrap().translation.x;
-        // Canyon wall limit is at -6.8 + player radius 0.35 = -6.45
+
         assert!(
             player_x >= -6.46,
             "Player must be blocked by canyon wall: x={:.3} must be >= -6.46",
@@ -867,7 +835,6 @@ mod tests {
         app.add_systems(Update, player_movement);
         app.init_resource::<Time>();
 
-        // Player starting near portal opening at x = 0.0, facing south (+Z) towards dungeon
         let player = app
             .world_mut()
             .spawn((
@@ -884,7 +851,7 @@ mod tests {
             .id();
 
         let mut keys = ButtonInput::<KeyCode>::default();
-        keys.press(KeyCode::KeyW); // Walk forward through the portal archway (+Z)
+        keys.press(KeyCode::KeyW);
         app.world_mut().insert_resource(keys);
 
         for _ in 0..60 {
@@ -908,7 +875,6 @@ mod tests {
         app.add_systems(Update, player_movement);
         app.init_resource::<Time>();
 
-        // Player starting at x = 4.0 (outside portal width 2.2), facing south (+Z) into solid rear wall
         let player = app
             .world_mut()
             .spawn((
@@ -925,7 +891,7 @@ mod tests {
             .id();
 
         let mut keys = ButtonInput::<KeyCode>::default();
-        keys.press(KeyCode::KeyW); // Attempt to walk through solid rock wall (+Z)
+        keys.press(KeyCode::KeyW);
         app.world_mut().insert_resource(keys);
 
         for _ in 0..60 {

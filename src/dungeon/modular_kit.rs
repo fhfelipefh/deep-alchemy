@@ -27,9 +27,6 @@ pub struct WaterfallBaseMesh {
 #[derive(Component)]
 pub struct CavernObstacle;
 
-/// Marks imported tall-grass clumps that must remain clear of solid scenery.
-/// The marker is assigned from the authored mesh name so old and newly exported
-/// grotto kits obey the same placement rule.
 #[derive(Component)]
 pub struct TallGrassClump;
 
@@ -61,9 +58,6 @@ impl Plugin for DungeonPlugin {
     }
 }
 
-/// Identifies grass clumps from the imported authoring scene. Keeping this at
-/// the scene boundary avoids fragile, one-off coordinate edits for individual
-/// blades or benches.
 pub fn mark_imported_tall_grass(
     mut commands: Commands,
     named_entities: Query<(Entity, &Name), Added<Name>>,
@@ -75,9 +69,6 @@ pub fn mark_imported_tall_grass(
     }
 }
 
-/// Repositions a clump by the minimum horizontal distance needed to clear every
-/// tall obstacle. This is an invariant, not a bench-specific workaround:
-/// any newly registered `CavernObstacle` automatically becomes vegetation-free.
 pub fn keep_tall_grass_clear_of_obstacles(
     mut grass_query: Query<(&mut Transform, &GlobalTransform), With<TallGrassClump>>,
     obstacles: Query<
@@ -92,8 +83,6 @@ pub fn keep_tall_grass_clear_of_obstacles(
         let grass_pos = grass_global.translation();
         let mut corrected = Vec2::new(grass_pos.x, grass_pos.z);
 
-        // A few passes resolve compound props such as the bench without placing
-        // the grass into another leg, rock, or mushroom immediately afterward.
         for _ in 0..6 {
             let mut moved = false;
             for (obstacle_global, shape) in &obstacles {
@@ -107,8 +96,6 @@ pub fn keep_tall_grass_clear_of_obstacles(
                     }
                 };
 
-                // Low pebbles can coexist with grass; props that rise into the
-                // clump reserve their entire horizontal footprint.
                 if top <= grass_pos.y + 0.12 {
                     continue;
                 }
@@ -168,8 +155,7 @@ pub fn keep_tall_grass_clear_of_obstacles(
 
         let correction = corrected - Vec2::new(grass_pos.x, grass_pos.z);
         if correction.length_squared() > 0.000001 {
-            // The imported grotto root is untransformed, so its child local
-            // space matches world X/Z. This preserves authored blade geometry.
+
             grass_transform.translation.x += correction.x;
             grass_transform.translation.z += correction.y;
         }
@@ -183,15 +169,12 @@ pub fn setup_cavern_world(
     mut water_materials: ResMut<Assets<WaterMaterial>>,
     mut moss_materials: ResMut<Assets<CelShadedMossMaterial>>,
 ) {
-    // -------------------------------------------------------------
-    // 1. ATMOSPHERE & LIGHTING (RICH NIGHT BLUE - NO PITCH BLACK #000000)
-    // -------------------------------------------------------------
+
     commands.insert_resource(AmbientLight {
-        color: Color::srgb(0.10, 0.20, 0.32), // Deep fantasy night blue
+        color: Color::srgb(0.10, 0.20, 0.32),
         brightness: 480.0,
     });
 
-    // Soft skylight beam descending from the upper fissure over the waterfall
     commands.spawn((
         DirectionalLight {
             color: Color::srgb(0.75, 0.92, 1.0),
@@ -202,10 +185,9 @@ pub fn setup_cavern_world(
         Transform::from_xyz(1.5, 22.0, -4.5).looking_at(Vec3::new(0.0, 1.2, -8.5), Vec3::Y),
     ));
 
-    // Pathway entrance ambient lantern/crystal light (X = 0.0, Y = 1.8, Z = 0.8) - warms the path and bench!
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.96, 0.84, 0.48), // Warm alchemical golden glow
+            color: Color::srgb(0.96, 0.84, 0.48),
             intensity: 36000.0,
             range: 15.0,
             shadows_enabled: false,
@@ -214,10 +196,9 @@ pub fn setup_cavern_world(
         Transform::from_xyz(0.0, 1.8, 0.8),
     ));
 
-    // Foreground Bench & Grass Accent Light (X = 2.8, Y = 1.3, Z = -0.5)
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.20, 0.94, 0.88), // Bioluminescent turquoise rim light
+            color: Color::srgb(0.20, 0.94, 0.88),
             intensity: 26000.0,
             range: 11.0,
             shadows_enabled: false,
@@ -226,10 +207,9 @@ pub fn setup_cavern_world(
         Transform::from_xyz(2.8, 1.3, -0.5),
     ));
 
-    // Back cliff illuminator directly behind waterfall (X = 0.0, Y = 5.5, Z = -11.2) - shines through the water!
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.25, 0.70, 0.98), // Radiant azure backlight
+            color: Color::srgb(0.25, 0.70, 0.98),
             intensity: 85000.0,
             range: 28.0,
             shadows_enabled: false,
@@ -238,11 +218,9 @@ pub fn setup_cavern_world(
         Transform::from_xyz(0.0, 5.5, -11.2),
     ));
 
-    // --- Bioluminescent PointLights (Lateral Margins, Stalactites, Waterfall & Amphitheater) ---
-    // Left Mushroom cluster light (X = -3.4, Y = 2.4, Z = -2.8) - Key Shadow Light
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.12, 0.96, 0.88), // Electric turquoise #2be8d8
+            color: Color::srgb(0.12, 0.96, 0.88),
             intensity: 46000.0,
             range: 16.0,
             shadows_enabled: false,
@@ -252,7 +230,6 @@ pub fn setup_cavern_world(
         KeyShadowLight,
     ));
 
-    // Right Mushroom cluster light (X = 4.1, Y = 2.4, Z = -3.3)
     commands.spawn((
         PointLight {
             color: Color::srgb(0.12, 0.96, 0.88),
@@ -264,7 +241,6 @@ pub fn setup_cavern_world(
         Transform::from_xyz(4.1, 2.4, -3.3),
     ));
 
-    // Waterfall luminous foam and spray bounce light - Key Shadow Light
     commands.spawn((
         PointLight {
             color: Color::srgb(0.35, 0.90, 1.0),
@@ -277,7 +253,6 @@ pub fn setup_cavern_world(
         KeyShadowLight,
     ));
 
-    // Upper waterfall cleft / skylight glow
     commands.spawn((
         PointLight {
             color: Color::srgb(0.40, 0.95, 1.0),
@@ -289,7 +264,6 @@ pub fn setup_cavern_world(
         Transform::from_xyz(0.0, 13.5, -11.2),
     ));
 
-    // Back cliff amphitheater fill light (blue slate - eliminates pitch black void)
     commands.spawn((
         PointLight {
             color: Color::srgb(0.24, 0.38, 0.55),
@@ -301,7 +275,6 @@ pub fn setup_cavern_world(
         Transform::from_xyz(0.0, 8.0, -11.5),
     ));
 
-    // Overhead ceiling arch rim lights (accentuates sharp hanging stalactites)
     commands.spawn((
         PointLight {
             color: Color::srgb(0.25, 0.45, 0.65),
@@ -323,7 +296,6 @@ pub fn setup_cavern_world(
         Transform::from_xyz(3.8, 4.2, -4.2),
     ));
 
-    // Bioluminescent pool cyan glow from crystalline waters
     commands.spawn((
         PointLight {
             color: Color::srgb(0.18, 0.92, 0.98),
@@ -335,7 +307,6 @@ pub fn setup_cavern_world(
         Transform::from_xyz(0.0, 1.8, -8.5),
     ));
 
-    // High vaulted cavern ceiling fill light (illuminates dome & upper stalactites)
     commands.spawn((
         PointLight {
             color: Color::srgb(0.20, 0.45, 0.65),
@@ -347,7 +318,6 @@ pub fn setup_cavern_world(
         Transform::from_xyz(0.0, 18.0, -5.5),
     ));
 
-    // Left high vault bioluminescent lichen node glow
     commands.spawn((
         PointLight {
             color: Color::srgb(0.17, 0.95, 0.88),
@@ -359,7 +329,6 @@ pub fn setup_cavern_world(
         Transform::from_xyz(-4.5, 17.0, -7.0),
     ));
 
-    // Right high vault bioluminescent lichen node glow
     commands.spawn((
         PointLight {
             color: Color::srgb(0.17, 0.95, 0.88),
@@ -371,7 +340,6 @@ pub fn setup_cavern_world(
         Transform::from_xyz(4.5, 17.0, -7.0),
     ));
 
-    // High ceiling apex cleft skylight glow
     commands.spawn((
         PointLight {
             color: Color::srgb(0.55, 0.95, 1.0),
@@ -383,17 +351,11 @@ pub fn setup_cavern_world(
         Transform::from_xyz(0.0, 21.0, -9.5),
     ));
 
-    // -------------------------------------------------------------
-    // 2. MASTERWORK CAVERN KIT SCENE (.glb)
-    // -------------------------------------------------------------
     commands.spawn((
         SceneRoot(asset_server.load("models/cavern_kit.glb#Scene0")),
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));
 
-    // Hand-built faceted cliff faces sit in front of the broad kit walls. The
-    // displaced cells create horizontal strata, recessed ruts, and diagonal
-    // fractures that keep the waterfall amphitheater from reading as a flat slab.
     let cliff_material = moss_materials.add(CelShadedMossMaterial {
         base_color: LinearRgba::new(0.13, 0.21, 0.25, 1.0),
         moss_color: LinearRgba::new(0.15, 0.50, 0.27, 1.0),
@@ -411,9 +373,6 @@ pub fn setup_cavern_world(
             Transform::from_xyz(x, 0.25, -11.32),
         ));
 
-        // The render mesh is deeply displaced, but a slightly inset compound
-        // blocker keeps the player from walking through the visible cliff.
-        // The pair intentionally leaves the central waterfall corridor open.
         commands.spawn((
             Name::new(format!("Collider_{name}")),
             CavernObstacle,
@@ -426,14 +385,12 @@ pub fn setup_cavern_world(
         ));
     }
 
-    // Static physics ground plane for collision
     commands.spawn((
         Transform::from_xyz(0.0, 0.0, 0.0),
         RigidBody::Static,
         Collider::half_space(Vec3::Y),
     ));
 
-    // Static physical obstacle colliders for rooted mushrooms (Left cluster: Large, Medium, Small)
     commands.spawn((
         Name::new("Collider_Mushroom_Left_Large"),
         CavernObstacle,
@@ -468,7 +425,6 @@ pub fn setup_cavern_world(
         Collider::cylinder(0.38, 1.25),
     ));
 
-    // Static physical obstacle colliders for rooted mushrooms (Right cluster: 3 vibrant lathe dome mushrooms)
     commands.spawn((
         Name::new("Collider_Mushroom_Right_1"),
         CavernObstacle,
@@ -503,7 +459,6 @@ pub fn setup_cavern_world(
         Collider::cylinder(0.32, 1.05),
     ));
 
-    // Static physical obstacle colliders for organic rock terraces flanking the waterfall
     commands.spawn((
         Name::new("Collider_Rock_Terrace_Left"),
         CavernObstacle,
@@ -525,9 +480,6 @@ pub fn setup_cavern_world(
         Collider::cuboid(3.5, 2.5, 3.5),
     ));
 
-    // Every authored transition boulder receives a matching simplified collider.
-    // These are the rocks that frame the dirt path and bench in cavern_kit.glb;
-    // registering them fixes both player clipping and tall-grass placement.
     for (name, x, z, radius, height) in [
         ("Collider_Transition_Rock_Left_01", -2.4, -1.1, 0.58, 0.60),
         ("Collider_Transition_Rock_Left_02", -2.5, -2.3, 0.64, 0.68),
@@ -574,9 +526,6 @@ pub fn setup_cavern_world(
         ));
     }
 
-    // Individual compound blockers for the large rocks that flank the waterfall.
-    // The render mesh is irregular, so these overlapping capsules/cylinders keep
-    // the whole visible stone bank solid instead of leaving walk-through gaps.
     for (name, x, z, radius, height) in [
         ("Collider_Side_Rock_Left_Front", -5.15, -4.8, 0.95, 1.8),
         ("Collider_Side_Rock_Left_Back", -5.70, -7.2, 1.15, 2.4),
@@ -593,7 +542,6 @@ pub fn setup_cavern_world(
         ));
     }
 
-    // Static physical obstacle colliders for canyon side walls and rear grotto enclosure
     commands.spawn((
         Name::new("Collider_Canyon_Wall_Left"),
         CavernObstacle,
@@ -614,7 +562,7 @@ pub fn setup_cavern_world(
         RigidBody::Static,
         Collider::cuboid(2.0, 8.0, 18.0),
     ));
-    // Static physical obstacle colliders for rear grotto enclosure flanking portal archway
+
     commands.spawn((
         Name::new("Collider_Cavern_Wall_Rear_Left"),
         CavernObstacle,
@@ -636,18 +584,14 @@ pub fn setup_cavern_world(
         Collider::cuboid(6.3, 8.0, 2.0),
     ));
 
-    // -------------------------------------------------------------
-    // 3. CEL-SHADED DYNAMIC WATERFALL CURTAIN & LAKE POOL
-    // -------------------------------------------------------------
-    // Volumetric curved convex waterfall curtain (flattened half-pipe 48x32 with vertex wave undulation)
     let (waterfall_mesh, waterfall_base) = create_waterfall_mesh(32, 48);
     commands.spawn((
         Mesh3d(meshes.add(waterfall_mesh)),
         MeshMaterial3d(water_materials.add(WaterMaterial {
-            base_color: LinearRgba::new(0.12, 0.82, 0.92, 0.35), // Radiant crystalline turquoise
-            deep_color: LinearRgba::new(0.03, 0.28, 0.45, 0.48), // Deep azure
-            foam_color: LinearRgba::new(0.92, 0.97, 1.0, 0.65),  // Soft aerated froth
-            params: Vec4::new(0.0, 1.4, 1.0, 0.45), // z = 1.0 (waterfall mode), w = 0.45 (calibrated bloom)
+            base_color: LinearRgba::new(0.12, 0.82, 0.92, 0.35),
+            deep_color: LinearRgba::new(0.03, 0.28, 0.45, 0.48),
+            foam_color: LinearRgba::new(0.92, 0.97, 1.0, 0.65),
+            params: Vec4::new(0.0, 1.4, 1.0, 0.45),
         })),
         WaterfallMarker,
         waterfall_base,
@@ -656,24 +600,19 @@ pub fn setup_cavern_world(
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));
 
-    // Wide circular lake water disk (radius = 5.85m to seamlessly enclose waterfall plunge basin & travertine rim)
     commands.spawn((
         Mesh3d(meshes.add(create_water_disk_mesh(5.85, 64))),
         MeshMaterial3d(water_materials.add(WaterMaterial {
-            base_color: LinearRgba::new(0.08, 0.72, 0.85, 0.28), // Crystalline clear water
-            deep_color: LinearRgba::new(0.02, 0.20, 0.30, 0.45), // Deep turquoise
-            foam_color: LinearRgba::new(0.92, 0.98, 1.0, 0.65),  // Soft white foam
-            params: Vec4::new(0.0, 1.0, 0.0, 0.45), // z = 0.0 (lake mode), w = 0.45 (calibrated bloom)
+            base_color: LinearRgba::new(0.08, 0.72, 0.85, 0.28),
+            deep_color: LinearRgba::new(0.02, 0.20, 0.30, 0.45),
+            foam_color: LinearRgba::new(0.92, 0.98, 1.0, 0.65),
+            params: Vec4::new(0.0, 1.0, 0.0, 0.45),
         })),
         bevy::pbr::NotShadowCaster,
         bevy::pbr::NotShadowReceiver,
         Transform::from_xyz(0.0, 0.18, -8.5),
     ));
 
-    // -------------------------------------------------------------
-    // 4. WATERFALL IMPACT SPRAY & AMBIENT STEAM/FOAM VAPOR
-    // -------------------------------------------------------------
-    // Wide impact mist / foam emitters where wide waterfall hits lake (spanning X in [-3.6, 3.6])
     for x_off in [-3.6, -2.4, -1.2, 0.0, 1.2, 2.4, 3.6] {
         commands.spawn((
             Transform::from_xyz(x_off, 0.28, -8.5),
@@ -693,7 +632,6 @@ pub fn setup_cavern_world(
         ));
     }
 
-    // Lateral mushroom spore emitters
     commands.spawn((
         Transform::from_xyz(-3.6, 2.2, -3.2),
         ParticleEmitter {
@@ -711,10 +649,6 @@ pub fn setup_cavern_world(
         },
     ));
 
-    // -------------------------------------------------------------
-    // 5. INTERACTIVE ALCHEMY INGREDIENTS & THERMAL GEYSERS
-    // -------------------------------------------------------------
-    // Harvestable Cyan Glow Mushroom (Left cluster)
     commands.spawn((
         Interactable {
             label: "Cyan Parasol Mushroom",
@@ -731,7 +665,6 @@ pub fn setup_cavern_world(
         Collider::cylinder(0.4, 0.8),
     ));
 
-    // Thermal Geyser at travertine terrace
     commands.spawn((
         Transform::from_xyz(-5.8, 0.5, -5.8),
         ThermalGeyser {
@@ -747,9 +680,6 @@ pub fn setup_cavern_world(
         },
     ));
 
-    // Rustic mossy bench: placed on clear grass beyond the pool rim and mushroom
-    // cluster. Its collision follows the actual construction rather than using
-    // one oversized invisible box that intersects surrounding props.
     let bench_position = Vec3::new(2.90, 0.03, -1.05);
     let bench_rotation = Quat::from_rotation_y(-0.45);
     commands.spawn((
@@ -807,10 +737,6 @@ pub fn setup_cavern_world(
     info!("Masterwork Cel-Shaded Cavern Grotto initialized with Volumetric Waterfall, Organic Mushrooms, and Sobel Outlines!");
 }
 
-/// Creates a deliberately uneven cliff panel with individually faceted cells.
-/// The depth displacement combines sedimentary shelves, narrow water-cut ruts,
-/// and irregular fractures, so its silhouette and normal buffer both contribute
-/// to the existing Sobel outline pass.
 pub fn create_striated_cliff_mesh(
     width: f32,
     height: f32,
@@ -866,7 +792,6 @@ pub fn create_water_disk_mesh(radius: f32, segments: usize) -> Mesh {
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(segments + 2);
     let mut indices: Vec<u32> = Vec::with_capacity(segments * 3);
 
-    // Center vertex
     positions.push([0.0, 0.0, 0.0]);
     normals.push([0.0, 1.0, 0.0]);
     uvs.push([0.5, 0.5]);
@@ -914,18 +839,17 @@ pub fn create_waterfall_mesh(u_segs: usize, v_segs: usize) -> (Mesh, WaterfallBa
     for iv in 0..=v_segs {
         let v_frac = iv as f32 / v_segs as f32;
         let y_calc = h_bottom + (1.0 - v_frac) * (h_top - h_bottom);
-        // Arcs forward into the lake center at z = -8.5
+
         let curr_z_center = z_top + v_frac.powf(1.4) * (z_bottom - z_top);
         let curr_width = width_top + v_frac * (width_bottom - width_top);
 
         for iu in 0..=u_segs {
             let u_frac = iu as f32 / u_segs as f32;
-            let u_norm = (u_frac - 0.5) * 2.0; // [-1.0, 1.0]
+            let u_norm = (u_frac - 0.5) * 2.0;
             let x = u_norm * (curr_width * 0.5);
 
-            // Convex forward curvature: half-pipe bulging toward +Z (viewer)
             let convex_arc = (1.0 - u_norm * u_norm) * 0.52;
-            // Fluted vertical cascading ridges
+
             let fluting = (u_norm * std::f32::consts::PI * 8.0).sin() * 0.08;
             let z = curr_z_center + convex_arc + fluting;
 
@@ -938,7 +862,6 @@ pub fn create_waterfall_mesh(u_segs: usize, v_segs: usize) -> (Mesh, WaterfallBa
 
             positions.push([x, y, z]);
 
-            // Smooth outward facing normal
             let nx = -u_norm * 0.45;
             let ny = 0.15;
             let nz = 1.0;
@@ -957,7 +880,6 @@ pub fn create_waterfall_mesh(u_segs: usize, v_segs: usize) -> (Mesh, WaterfallBa
             let v3 = (iv + 1) * row_stride + iu + 1;
             let v4 = (iv + 1) * row_stride + iu;
 
-            // Front face (facing +Z)
             indices.push(v1);
             indices.push(v4);
             indices.push(v2);
@@ -966,7 +888,6 @@ pub fn create_waterfall_mesh(u_segs: usize, v_segs: usize) -> (Mesh, WaterfallBa
             indices.push(v4);
             indices.push(v3);
 
-            // Back face (double-sided visibility)
             indices.push(v1);
             indices.push(v2);
             indices.push(v4);
@@ -1046,19 +967,16 @@ pub mod tests {
         app.add_systems(Startup, setup_cavern_world);
         app.update();
 
-        // Check PointLights spawned (at least 9 including high ceiling vault lights)
         let mut light_query = app.world_mut().query::<&PointLight>();
         let light_count = light_query.iter(app.world()).count();
         assert!(light_count >= 9, "Must spawn at least 9 point lights for bioluminescence, waterfall and high ceiling vault");
 
-        // Check CavernObstacle colliders spawned (6 mushroom stems + 2 rock terraces + 1 rustic mossy bench + canyon walls)
         let mut obstacle_query = app
             .world_mut()
             .query::<(&CavernObstacle, &Collider, &RigidBody)>();
         let obstacle_count = obstacle_query.iter(app.world()).count();
         assert!(obstacle_count >= 9, "Must spawn at least 9 static colliders for mushroom stems, rock terraces and rustic mossy bench");
 
-        // Check ParticleEmitter spawned
         let mut emitter_query = app.world_mut().query::<&ParticleEmitter>();
         let emitter_count = emitter_query.iter(app.world()).count();
         assert!(
@@ -1066,7 +984,6 @@ pub mod tests {
             "Must spawn particle emitters for waterfall foam and mushroom spores"
         );
 
-        // Check SceneRoot spawned for cavern kit and alchemy props
         let mut scene_query = app.world_mut().query::<&SceneRoot>();
         let scene_count = scene_query.iter(app.world()).count();
         assert!(
@@ -1074,7 +991,6 @@ pub mod tests {
             "Must spawn cavern_kit and alchemy_props scenes"
         );
 
-        // Check Waterfall spawned with WaterfallMarker
         let mut waterfall_query = app.world_mut().query::<&WaterfallMarker>();
         let waterfall_count = waterfall_query.iter(app.world()).count();
         assert_eq!(waterfall_count, 1, "Must spawn dynamic waterfall entity");

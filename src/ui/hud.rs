@@ -27,7 +27,7 @@ impl Plugin for HudPlugin {
 }
 
 #[derive(Resource, Debug, Clone, PartialEq, Eq)]
-pub struct ActiveHotbarSlot(pub usize); // 1..=5
+pub struct ActiveHotbarSlot(pub usize);
 
 impl Default for ActiveHotbarSlot {
     fn default() -> Self {
@@ -43,7 +43,7 @@ pub struct CrosshairDot;
 
 #[derive(Component)]
 pub struct HealthHeartFill {
-    pub index: usize, // 0..4
+    pub index: usize,
 }
 
 #[derive(Component)]
@@ -51,16 +51,16 @@ pub struct StaminaBarFill;
 
 #[derive(Component)]
 pub struct HotbarSlotUi {
-    pub slot_index: usize, // 1..=5
+    pub slot_index: usize,
 }
 
 #[derive(Component)]
 pub struct PotionSlotIcon {
-    pub slot_index: usize, // 1..=5
+    pub slot_index: usize,
 }
 
-pub const COLOR_BORDER_GOLD: Color = Color::srgb(0.83, 0.69, 0.22); // #d4af37
-pub const COLOR_BORDER_ACTIVE: Color = Color::srgb(1.0, 0.88, 0.40); // Bright Gold
+pub const COLOR_BORDER_GOLD: Color = Color::srgb(0.83, 0.69, 0.22);
+pub const COLOR_BORDER_ACTIVE: Color = Color::srgb(1.0, 0.88, 0.40);
 pub const COLOR_BG_DARK: Color = Color::srgba(0.04, 0.06, 0.09, 0.88);
 pub const COLOR_HEART_FULL: Color = Color::srgb(0.92, 0.14, 0.22);
 pub const COLOR_HEART_EMPTY: Color = Color::srgba(0.20, 0.15, 0.18, 0.7);
@@ -69,7 +69,6 @@ pub const COLOR_STAMINA_FILL: Color = Color::srgb(0.15, 0.88, 0.48);
 fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font_handle: Handle<Font> = asset_server.load("fonts/DejaVuSans.ttf");
 
-    // Root UI container
     commands
         .spawn((
             HudRoot,
@@ -82,9 +81,7 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
             Visibility::Hidden,
         ))
         .with_children(|root| {
-            // -------------------------------------------------------------
-            // 1. TOP-LEFT: STYLIZED HEARTS ROW & EMERALD STAMINA GAUGE
-            // -------------------------------------------------------------
+
             root.spawn((Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(24.0),
@@ -94,7 +91,7 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ..default()
             },))
                 .with_children(|vitality_col| {
-                    // Row of Stylized Alchemical Hearts (PNG icons with black ink outline and gloss)
+
                     vitality_col
                         .spawn((Node {
                             flex_direction: FlexDirection::Row,
@@ -116,7 +113,6 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                             }
                         });
 
-                    // Sleek Emerald Stamina Gauge underneath
                     vitality_col
                         .spawn((
                             Node {
@@ -142,9 +138,6 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                         });
                 });
 
-            // -------------------------------------------------------------
-            // 2. CENTER: RETICLE / CROSSHAIR
-            // -------------------------------------------------------------
             root.spawn((
                 Node {
                     position_type: PositionType::Absolute,
@@ -165,16 +158,13 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                 BorderColor(Color::srgba(0.0, 0.0, 0.0, 0.9)),
             ));
 
-            // -------------------------------------------------------------
-            // 3. BOTTOM-CENTER: 5-SLOT ALCHEMICAL FLASKS HOTBAR
-            // -------------------------------------------------------------
             root.spawn((
                 Node {
                     position_type: PositionType::Absolute,
                     left: Val::Percent(50.0),
                     bottom: Val::Px(22.0),
                     margin: UiRect {
-                        left: Val::Px(-160.0), // Center 5x 56px + gaps
+                        left: Val::Px(-160.0),
                         ..default()
                     },
                     flex_direction: FlexDirection::Row,
@@ -223,7 +213,7 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                             }),
                         ))
                         .with_children(|slot| {
-                            // Slot number tag (top-left aligned tag)
+
                             slot.spawn((
                                 Text::new(format!("{slot_num}")),
                                 TextFont {
@@ -244,7 +234,6 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 },
                             ));
 
-                            // Alchemical Potion Flask Icon (unique shape, color, and stopper per slot)
                             slot.spawn((
                                 PotionSlotIcon {
                                     slot_index: slot_num,
@@ -272,7 +261,7 @@ fn update_crosshair_target(
 ) {
     for mut bg in dot_query.iter_mut() {
         if interaction.hovered_entity.is_some() {
-            // Highlight crosshair cyan when hovering over an interactable prop
+
             *bg = BackgroundColor(Color::srgb(0.1, 0.95, 1.0));
         } else {
             *bg = BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.75));
@@ -290,7 +279,6 @@ fn update_hud_bars(
         return;
     };
 
-    // Calculate active heart threshold (20 HP per heart)
     let active_hearts = (health.current / 20.0).ceil() as usize;
 
     for (heart, mut img) in hearts_query.iter_mut() {
@@ -370,17 +358,14 @@ pub mod tests {
         app.add_systems(Startup, setup_hud);
         app.update();
 
-        // 1. Verify 5 stylized health hearts spawned
         let mut hearts_query = app.world_mut().query::<&HealthHeartFill>();
         let heart_count = hearts_query.iter(app.world()).count();
         assert_eq!(heart_count, 5, "HUD must spawn exactly 5 health heart orbs");
 
-        // 2. Verify stamina bar fill spawned
         let mut stamina_query = app.world_mut().query::<&StaminaBarFill>();
         let stamina_count = stamina_query.iter(app.world()).count();
         assert_eq!(stamina_count, 1, "HUD must spawn stamina bar fill element");
 
-        // 3. Verify exactly 5 hotbar slots spawned (slots 1..=5)
         let mut hotbar_query = app.world_mut().query::<&HotbarSlotUi>();
         let mut found_slots: Vec<usize> = hotbar_query
             .iter(app.world())
@@ -393,7 +378,6 @@ pub mod tests {
             "Hotbar must contain slots 1 through 5"
         );
 
-        // 4. Verify crosshair dot exists
         let mut crosshair_query = app.world_mut().query::<&CrosshairDot>();
         assert_eq!(
             crosshair_query.iter(app.world()).count(),
@@ -401,7 +385,6 @@ pub mod tests {
             "Crosshair reticle must exist"
         );
 
-        // 5. Verify all 5 stylized alchemical potion icons spawned (slots 1..=5)
         let mut potion_query = app.world_mut().query::<&PotionSlotIcon>();
         let mut found_potions: Vec<usize> = potion_query
             .iter(app.world())
@@ -423,7 +406,6 @@ pub mod tests {
         app.init_resource::<ButtonInput<KeyCode>>();
         app.add_systems(Update, handle_hotbar_input);
 
-        // Press Digit3
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::Digit3);
@@ -434,7 +416,6 @@ pub mod tests {
             "Pressing 3 must select slot 3"
         );
 
-        // Clear and press Digit5
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .clear();
@@ -460,7 +441,6 @@ pub mod tests {
         app.add_systems(Update, update_hud_bars);
         app.update();
 
-        // Spawn player with 60 HP (3 hearts active out of 5) and 40 Stamina
         app.world_mut().spawn((
             Player,
             Health {
@@ -497,13 +477,11 @@ pub mod tests {
         app.add_systems(Update, update_crosshair_target);
         app.update();
 
-        // Default: not hovering
         let mut dot_query = app.world_mut().query::<(&CrosshairDot, &BackgroundColor)>();
         for (_, bg) in dot_query.iter(app.world()) {
             assert_eq!(bg.0, Color::srgba(1.0, 1.0, 1.0, 0.75));
         }
 
-        // Set hovered entity
         let dummy = app.world_mut().spawn_empty().id();
         app.world_mut()
             .resource_mut::<InteractionState>()
@@ -536,13 +514,11 @@ pub mod tests {
         app.add_systems(Update, update_hud_visibility);
         app.update();
 
-        // Initial state is MainMenu -> hidden
         let mut hud_query = app.world_mut().query::<(&HudRoot, &Visibility)>();
         for (_, vis) in hud_query.iter(app.world()) {
             assert_eq!(*vis, Visibility::Hidden, "HUD should be hidden on MainMenu");
         }
 
-        // Switch to InGame -> visible
         *app.world_mut().resource_mut::<State<GameState>>() = State::new(GameState::InGame);
         app.update();
 

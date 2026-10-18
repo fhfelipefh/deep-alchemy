@@ -21,7 +21,6 @@ pub fn check_player_death(
             *state = PlayerState::Dead;
             info!("Player has died! Activating Ragdoll & 3rd-Person Death Camera");
 
-            // 1. Make Head, Body and Fedora visible to death camera
             for head_entity in head_parts.iter() {
                 commands.entity(head_entity).insert(RenderLayers::layer(0));
             }
@@ -30,14 +29,12 @@ pub fn check_player_death(
                 commands.entity(body_entity).insert(RenderLayers::layer(0));
             }
 
-            // 2. Enable Dynamic Ragdoll physics on Player
             commands.entity(player_entity).insert((
                 RigidBody::Dynamic,
-                LinearVelocity(Vec3::new(0.0, 1.5, -2.0)), // stumble backward impulse
+                LinearVelocity(Vec3::new(0.0, 1.5, -2.0)),
                 AngularVelocity(Vec3::new(1.0, 0.2, 0.5)),
             ));
 
-            // 3. Detach Camera and activate 3rd-Person Orbit Death Camera
             if let Ok(cam_entity) = camera_query.get_single() {
                 commands.entity(cam_entity).remove_parent();
                 commands.entity(cam_entity).insert(DeathCamera {
@@ -101,27 +98,23 @@ mod tests {
                 Health {
                     current: 0.0,
                     max: 100.0,
-                }, // 0 HP = dead
+                },
                 Transform::from_xyz(0.0, 1.0, 0.0),
             ))
             .id();
 
         app.update();
 
-        // 1. Player state should be dead
         let state = app.world().get::<PlayerState>(player).unwrap();
         assert_eq!(*state, PlayerState::Dead);
 
-        // 2. Head layer should have transitioned back to layer 0
         let head_layers = app.world().get::<RenderLayers>(head).unwrap();
         assert!(head_layers.intersects(&RenderLayers::layer(0)));
 
-        // 3. Player should now have RigidBody::Dynamic with impulse
         assert!(app.world().get::<RigidBody>(player).is_some());
         let vel = app.world().get::<LinearVelocity>(player).unwrap();
         assert_eq!(vel.0, Vec3::new(0.0, 1.5, -2.0));
 
-        // 4. Camera should have DeathCamera component
         assert!(app.world().get::<DeathCamera>(camera).is_some());
     }
 
