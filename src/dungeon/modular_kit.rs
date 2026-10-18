@@ -337,9 +337,9 @@ pub fn setup_cavern_world(
     commands.spawn((
         Mesh3d(meshes.add(waterfall_mesh)),
         MeshMaterial3d(water_materials.add(WaterMaterial {
-            base_color: LinearRgba::new(0.12, 0.78, 0.90, 0.72), // Radiant translucent cyan
-            deep_color: LinearRgba::new(0.03, 0.26, 0.42, 0.85), // Deep azure
-            foam_color: LinearRgba::new(0.92, 0.97, 1.0, 0.90), // Soft aerated froth
+            base_color: LinearRgba::new(0.12, 0.82, 0.92, 0.45), // Radiant crystalline turquoise
+            deep_color: LinearRgba::new(0.03, 0.28, 0.45, 0.60), // Deep azure
+            foam_color: LinearRgba::new(0.92, 0.97, 1.0, 0.88), // Soft aerated froth
             params: Vec4::new(0.0, 1.4, 1.0, 1.0), // z = 1.0 (waterfall mode), w = 1.0 (natural bloom)
         })),
         WaterfallMarker,
@@ -351,8 +351,8 @@ pub fn setup_cavern_world(
     commands.spawn((
         Mesh3d(meshes.add(create_water_disk_mesh(5.85, 64))),
         MeshMaterial3d(water_materials.add(WaterMaterial {
-            base_color: LinearRgba::new(0.08, 0.68, 0.80, 0.76), // Crystalline clear water
-            deep_color: LinearRgba::new(0.02, 0.18, 0.28, 0.88), // Deep turquoise
+            base_color: LinearRgba::new(0.08, 0.72, 0.85, 0.40), // Crystalline clear water
+            deep_color: LinearRgba::new(0.02, 0.20, 0.30, 0.60), // Deep turquoise
             foam_color: LinearRgba::new(0.92, 0.98, 1.0, 0.85), // Soft white foam
             params: Vec4::new(0.0, 1.0, 0.0, 0.9), // z = 0.0 (lake mode), w = 0.9 (natural bloom)
         })),

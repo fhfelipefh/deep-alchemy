@@ -106,11 +106,11 @@ fn fragment(
         let ambient_froth_glow = aerated_white * (total_froth * bloom_boost * 0.28);
 
         // Translucency & Realistic Alpha:
-        // Real falling water is translucent (alpha ~ 0.55 to 0.78), showing the cavern wall behind it.
-        // Froth and aeration increase opacity locally.
-        let base_alpha = mix(0.55, 0.78, aeration_depth * 0.6 + fresnel * 0.4);
+        // Real falling water is translucent (alpha ~ 0.35 to 0.58), showing the cliff and rocks behind it.
+        // Aerated froth ribbons add localized opacity.
+        let base_alpha = mix(0.38, 0.55, aeration_depth * 0.5 + fresnel * 0.35);
         let entry_dissolve = smoothstep(0.02, 0.25, in.world_position.y);
-        let final_alpha = clamp((base_alpha + total_froth * 0.28) * entry_dissolve, 0.0, 1.0);
+        let final_alpha = clamp((base_alpha + total_froth * 0.42) * entry_dissolve, 0.12, 0.88);
 
         return vec4<f32>(surface_color + specular_highlight + ambient_froth_glow, final_alpha);
     } else {
@@ -163,8 +163,9 @@ fn fragment(
         // Soft calibrated glow on froth and ripple crests
         let lake_glow = froth_white * (lake_froth * bloom_boost * 0.22);
 
-        // Translucent lake body (depth is readable through water)
-        let lake_alpha = clamp(mix(0.85, 0.70, depth_metric) + lake_froth * 0.25, 0.0, 1.0);
+        // Crystal-clear translucent lake body (rocks and floor clearly visible through water!)
+        let clear_water_alpha = mix(0.40, 0.25, depth_metric);
+        let lake_alpha = clamp(clear_water_alpha + lake_froth * 0.55 + lake_fresnel * 0.22, 0.18, 0.88);
 
         return vec4<f32>(col_rgb + lake_specular + lake_glow, lake_alpha);
     }

@@ -336,34 +336,41 @@ def spawn_organic_stalactite(x, y, z_top, height=2.8, radius=0.42, tilt=(0.0, 0.
     obj.data.materials.append(mat_cavern_moss)
     return obj
 
-# Framing stalactites positioned laterally (|X| >= 3.4), keeping waterfall axis open.
+# Framing stalactites with varied lengths, radii, and natural asymmetrical clustering.
+# Ranging from colossal ancient columns (r=0.75m, deep drop) to slender soda-straw needles (r=0.15m).
 # Anchored dynamically in the ceiling vault (z_top = ceiling_z + 0.5) descending into view.
 visible_stalactite_targets = [
-    # Top-Left framing stalactites: (x, y, target_tip_z, radius, tilt)
-    (-6.5, 3.8, 4.30, 0.42, (0.06, -0.04)),
-    (-5.5, 3.4, 4.50, 0.38, (0.04, 0.03)),
-    (-6.0, 5.2, 4.20, 0.44, (0.07, -0.05)),
-    (-4.8, 4.8, 4.60, 0.36, (-0.03, 0.04)),
-    (-4.5, 6.2, 4.80, 0.38, (-0.04, 0.03)),
-    (-5.6, 0.8, 4.20, 0.40, (0.05, -0.04)),
-    (-5.2, -0.8, 4.20, 0.38, (0.04, 0.03)),
-    (-4.8, 2.0, 4.30, 0.36, (-0.03, 0.04)),
+    # Left Fissure Cluster: Massive anchor, flanking daggers and fine needles
+    (-6.2, 4.2, 2.65, 0.74, (0.09, -0.07)),  # Colossal ancient stalactite (deep drop to z=2.65)
+    (-5.4, 3.2, 3.85, 0.46, (0.05, 0.04)),   # Medium fluted body
+    (-6.6, 5.1, 5.60, 0.16, (0.02, -0.02)),  # Slender needle (soda straw)
+    (-5.8, 2.1, 4.40, 0.38, (0.04, -0.03)),  # Intermediate column
+    (-4.9, 4.6, 4.90, 0.28, (-0.03, 0.05)),  # Slender satellite
+    (-4.4, 6.4, 3.30, 0.58, (-0.06, 0.08)),  # Long dagger flanking waterfall margin
+    (-4.1, 7.1, 5.75, 0.18, (0.03, -0.02)),  # Delicate straw spike
+    (-5.7, 0.6, 4.10, 0.44, (0.06, -0.04)),  # Mid canyon flank
+    (-6.3, 1.4, 5.40, 0.20, (-0.02, 0.03)),  # Fine straw spike
+    (-5.1, -1.0, 3.50, 0.52, (0.05, 0.03)),  # Foreground overhang stalactite
+    (-4.4, -1.6, 5.25, 0.17, (-0.03, 0.02)), # Foreground needle
 
-    # Top-Right framing stalactites: (x, y, target_tip_z, radius, tilt)
-    (6.5, 3.8, 4.30, 0.42, (-0.06, -0.04)),
-    (5.5, 3.4, 4.50, 0.38, (-0.04, 0.03)),
-    (6.0, 5.2, 4.20, 0.44, (-0.07, -0.05)),
-    (4.8, 4.8, 4.60, 0.36, (0.03, 0.04)),
-    (4.5, 6.2, 4.80, 0.38, (0.04, 0.03)),
-    (5.6, 0.8, 4.20, 0.40, (-0.05, -0.04)),
-    (5.2, -0.8, 4.20, 0.38, (-0.04, 0.03)),
-    (4.8, 2.0, 4.30, 0.36, (0.03, 0.04)),
+    # Right Fissure Cluster: Asymmetrical, unique heights and widths
+    (6.8, 2.2, 2.80, 0.70, (-0.08, 0.06)),   # Dominant colossal column on right
+    (5.9, 3.5, 4.20, 0.42, (-0.04, -0.05)),  # Fluted mid body
+    (6.4, 4.1, 5.80, 0.15, (0.02, 0.01)),    # Slender needle (soda straw)
+    (5.3, 4.9, 3.60, 0.50, (0.04, -0.07)),   # Heavy mineral spike
+    (4.7, 5.8, 5.50, 0.22, (-0.02, 0.04)),   # High delicate needle
+    (4.2, 7.4, 3.40, 0.55, (-0.07, 0.06)),   # Long dagger framing right waterfall
+    (3.8, 8.2, 5.65, 0.18, (0.01, -0.03)),   # Waterfall margin needle
+    (5.8, 0.9, 4.50, 0.36, (-0.04, 0.03)),   # Canyon mid flank
+    (6.5, 0.2, 5.35, 0.20, (0.03, -0.02)),   # Flank needle
+    (5.4, -0.9, 3.35, 0.56, (-0.05, 0.04)),  # Foreground overhang pillar
+    (4.6, -1.5, 5.15, 0.19, (0.02, -0.03)),  # Foreground needle
 ]
 
 for idx, (sx, sy, target_tip_z, sr, stilt) in enumerate(visible_stalactite_targets):
     ceiling_z = get_cavern_ceiling_z(sx, sy)
     z_top = ceiling_z + 0.50  # 0.5m embedded inside rock vault!
-    sh = max(2.5, z_top - target_tip_z)
+    sh = max(1.8, z_top - target_tip_z)
     spawn_organic_stalactite(sx, sy, z_top, height=sh, radius=sr, tilt=stilt, name=f"VisibleStalactite_{idx}")
 
 # ==============================================================================
@@ -614,6 +621,28 @@ organic_terraces = [
 
 for (tname, tx, ty, tz, tscale, trot, tseed) in organic_terraces:
     spawn_organic_boulder(tname, tx, ty, tz, scale=tscale, rot_z=trot, seed=tseed)
+
+# Submerged river boulders and stones resting at the bottom of the clear lake basin under the waterfall
+submerged_lake_boulders = [
+    # Directly under the waterfall plunge impact zone:
+    ("Submerged_Boulder_Plunge_Center", 0.0, 9.2, -0.38, (1.20, 0.85, 0.45), 0.2, 501),
+    ("Submerged_Boulder_Plunge_Left", -1.4, 9.0, -0.40, (0.95, 1.05, 0.42), -0.4, 502),
+    ("Submerged_Boulder_Plunge_Right", 1.5, 9.1, -0.39, (1.05, 0.80, 0.44), 0.3, 503),
+    ("Submerged_Boulder_Plunge_FarL", -2.4, 8.6, -0.32, (0.80, 0.75, 0.38), 0.5, 504),
+    ("Submerged_Boulder_Plunge_FarR", 2.3, 8.7, -0.34, (0.85, 0.70, 0.40), -0.3, 505),
+    # Across the middle lake bed:
+    ("Submerged_Boulder_Mid_1", -0.7, 7.8, -0.45, (0.80, 0.70, 0.36), 0.6, 510),
+    ("Submerged_Boulder_Mid_2", 0.8, 7.6, -0.44, (0.75, 0.65, 0.35), -0.5, 511),
+    ("Submerged_Boulder_Mid_3", -1.8, 7.3, -0.38, (0.65, 0.75, 0.32), 0.4, 512),
+    ("Submerged_Boulder_Mid_4", 1.7, 7.4, -0.36, (0.70, 0.60, 0.34), -0.2, 513),
+    # Shallows near the travertine rim:
+    ("Submerged_Boulder_Fore_1", 0.2, 6.5, -0.30, (0.60, 0.55, 0.28), 0.3, 520),
+    ("Submerged_Boulder_Fore_2", -1.1, 6.2, -0.25, (0.55, 0.50, 0.26), -0.4, 521),
+    ("Submerged_Boulder_Fore_3", 1.2, 6.3, -0.26, (0.58, 0.48, 0.27), 0.5, 522),
+]
+
+for (sname, sx, sy, sz, sscale, srot, sseed) in submerged_lake_boulders:
+    spawn_organic_boulder(sname, sx, sy, sz, scale=sscale, rot_z=srot, seed=sseed)
 
 # Hanging Vines draping down the rock ledges
 def spawn_hanging_vine(x, y, z_top, length=1.8, segments=12, name="HangingVine"):

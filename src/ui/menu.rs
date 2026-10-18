@@ -45,6 +45,7 @@ pub struct GameSettings {
     pub mouse_sensitivity: f32,
     pub fov_degrees: f32,
     pub master_volume: f32,
+    pub rtx_enabled: bool,
 }
 
 impl Default for GameSettings {
@@ -54,6 +55,7 @@ impl Default for GameSettings {
             mouse_sensitivity: 0.0022,
             fov_degrees: 75.0,
             master_volume: 0.8,
+            rtx_enabled: false,
         }
     }
 }
@@ -76,6 +78,9 @@ pub struct StartResumeButtonText;
 
 #[derive(Component)]
 pub struct FullscreenButtonText;
+
+#[derive(Component)]
+pub struct RtxButtonText;
 
 #[derive(Component)]
 pub struct SensitivityValueText;
@@ -102,6 +107,7 @@ pub enum MenuButtonAction {
     OpenControls,
     BackToMain,
     ToggleFullscreen,
+    ToggleRtx,
     AdjustSensitivity(f32),
     AdjustFov(f32),
     AdjustVolume(f32),
@@ -151,6 +157,7 @@ impl Plugin for MenuPlugin {
                     update_menu_spores,
                     apply_camera_fov,
                     apply_window_settings,
+                    apply_rtx_settings,
                     apply_default_font_to_unassigned_texts,
                 ),
             )
@@ -427,6 +434,42 @@ pub fn setup_menu_ui(
                                     TextFont {
                                         font: font_handle.clone(),
                                         font_size: 13.0,
+                                        ..default()
+                                    },
+                                    TextColor(COLOR_TEXT_LIGHT),
+                                    Node::default(),
+                                ));
+                            });
+                        },
+                    );
+
+                    // Row: RTX / Ray Tracing
+                    spawn_settings_row(
+                        settings_view,
+                        font_handle.clone(),
+                        "Traçado de Raios (RTX):",
+                        |row| {
+                            row.spawn((
+                                Button,
+                                MenuButtonAction::ToggleRtx,
+                                Node {
+                                    width: Val::Px(240.0),
+                                    height: Val::Px(36.0),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    border: UiRect::all(Val::Px(1.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(COLOR_BTN_NORMAL),
+                                BorderColor(COLOR_BORDER_MUTED),
+                            ))
+                            .with_children(|btn| {
+                                btn.spawn((
+                                    RtxButtonText,
+                                    Text::new("DESATIVADO (PERFORMANCE)"),
+                                    TextFont {
+                                        font: font_handle.clone(),
+                                        font_size: 12.0,
                                         ..default()
                                     },
                                     TextColor(COLOR_TEXT_LIGHT),
@@ -820,6 +863,9 @@ pub fn handle_menu_button_interactions(
                     MenuButtonAction::ToggleFullscreen => {
                         settings.fullscreen = !settings.fullscreen;
                     }
+                    MenuButtonAction::ToggleRtx => {
+                        settings.rtx_enabled = !settings.rtx_enabled;
+                    }
                     MenuButtonAction::AdjustSensitivity(delta) => {
                         settings.mouse_sensitivity =
                             (settings.mouse_sensitivity + delta).clamp(0.0006, 0.0080);
@@ -940,10 +986,11 @@ pub fn update_menu_subview_visibility(
 
 pub fn update_settings_labels(
     settings: Res<GameSettings>,
-    mut fullscreen_txt: Query<&mut Text, (With<FullscreenButtonText>, Without<SensitivityValueText>, Without<FovValueText>, Without<VolumeValueText>)>,
-    mut sens_txt: Query<&mut Text, (With<SensitivityValueText>, Without<FullscreenButtonText>, Without<FovValueText>, Without<VolumeValueText>)>,
-    mut fov_txt: Query<&mut Text, (With<FovValueText>, Without<FullscreenButtonText>, Without<SensitivityValueText>, Without<VolumeValueText>)>,
-    mut vol_txt: Query<&mut Text, (With<VolumeValueText>, Without<FullscreenButtonText>, Without<SensitivityValueText>, Without<FovValueText>)>,
+    mut fullscreen_txt: Query<&mut Text, (With<FullscreenButtonText>, Without<RtxButtonText>, Without<SensitivityValueText>, Without<FovValueText>, Without<VolumeValueText>)>,
+    mut rtx_txt: Query<&mut Text, (With<RtxButtonText>, Without<FullscreenButtonText>, Without<SensitivityValueText>, Without<FovValueText>, Without<VolumeValueText>)>,
+    mut sens_txt: Query<&mut Text, (With<SensitivityValueText>, Without<FullscreenButtonText>, Without<RtxButtonText>, Without<FovValueText>, Without<VolumeValueText>)>,
+    mut fov_txt: Query<&mut Text, (With<FovValueText>, Without<FullscreenButtonText>, Without<RtxButtonText>, Without<SensitivityValueText>, Without<VolumeValueText>)>,
+    mut vol_txt: Query<&mut Text, (With<VolumeValueText>, Without<FullscreenButtonText>, Without<RtxButtonText>, Without<SensitivityValueText>, Without<FovValueText>)>,
 ) {
     if !settings.is_changed() {
         return;
@@ -957,6 +1004,14 @@ pub fn update_settings_labels(
         };
     }
 
+    for mut txt in rtx_txt.iter_mut() {
+        txt.0 = if settings.rtx_enabled {
+            "ATIVADO (RAY-TRACING ULTRA)".to_string()
+        } else {
+            "DESATIVADO (PERFORMANCE)".to_string()
+        };
+    }
+
     for mut txt in sens_txt.iter_mut() {
         txt.0 = format!("{:.4}", settings.mouse_sensitivity);
     }
@@ -967,6 +1022,47 @@ pub fn update_settings_labels(
 
     for mut txt in vol_txt.iter_mut() {
         txt.0 = format!("{:.0}%", (settings.master_volume * 100.0).round());
+    }
+}
+
+pub fn apply_rtx_settings(
+    settings: Res<GameSettings>,
+    mut commands: Commands,
+    camera_query: Query<Entity, With<PlayerCamera>>,
+    ssao_query: Query<Entity, (With<PlayerCamera>, With<bevy::pbr::ScreenSpaceAmbientOcclusion>)>,
+    mut point_lights: Query<&mut PointLight>,
+    mut dir_lights: Query<&mut DirectionalLight>,
+) {
+    if !settings.is_changed() {
+        return;
+    }
+
+    for mut light in point_lights.iter_mut() {
+        light.shadows_enabled = settings.rtx_enabled;
+        if settings.rtx_enabled {
+            light.shadow_depth_bias = 0.08;
+            light.shadow_normal_bias = 0.6;
+        }
+    }
+
+    for mut light in dir_lights.iter_mut() {
+        light.shadows_enabled = settings.rtx_enabled;
+    }
+
+    if settings.rtx_enabled {
+        for cam_entity in camera_query.iter() {
+            commands.entity(cam_entity).insert((
+                bevy::pbr::ScreenSpaceAmbientOcclusion::default(),
+                bevy::pbr::ShadowFilteringMethod::Gaussian,
+            ));
+        }
+    } else {
+        for cam_entity in ssao_query.iter() {
+            commands.entity(cam_entity).remove::<(
+                bevy::pbr::ScreenSpaceAmbientOcclusion,
+                bevy::pbr::ShadowFilteringMethod,
+            )>();
+        }
     }
 }
 
@@ -1081,6 +1177,7 @@ mod tests {
         assert_eq!(app.world_mut().query::<&ControlsViewNode>().iter(app.world()).count(), 1);
         assert_eq!(app.world_mut().query::<&StartResumeButtonText>().iter(app.world()).count(), 1);
         assert_eq!(app.world_mut().query::<&FullscreenButtonText>().iter(app.world()).count(), 1);
+        assert_eq!(app.world_mut().query::<&RtxButtonText>().iter(app.world()).count(), 1);
         assert_eq!(app.world_mut().query::<&SensitivityValueText>().iter(app.world()).count(), 1);
         assert_eq!(app.world_mut().query::<&FovValueText>().iter(app.world()).count(), 1);
         assert_eq!(app.world_mut().query::<&VolumeValueText>().iter(app.world()).count(), 1);
@@ -1154,7 +1251,7 @@ mod tests {
         app.update();
         assert_eq!(app.world().resource::<MenuNavigation>().current_view, MenuView::Settings);
 
-        // Test AdjustSensitivity, AdjustFov, AdjustVolume, ToggleFullscreen
+        // Test AdjustSensitivity, AdjustFov, AdjustVolume, ToggleFullscreen, ToggleRtx
         app.world_mut().spawn((
             Button,
             MenuButtonAction::AdjustSensitivity(0.0010),
@@ -1183,10 +1280,18 @@ mod tests {
             BackgroundColor(COLOR_BTN_NORMAL),
             BorderColor(COLOR_BORDER_MUTED),
         ));
+        app.world_mut().spawn((
+            Button,
+            MenuButtonAction::ToggleRtx,
+            Interaction::Pressed,
+            BackgroundColor(COLOR_BTN_NORMAL),
+            BorderColor(COLOR_BORDER_MUTED),
+        ));
         app.update();
 
         let settings = app.world().resource::<GameSettings>();
         assert_eq!(settings.fullscreen, true);
+        assert_eq!(settings.rtx_enabled, true);
         assert!((settings.mouse_sensitivity - 0.0032).abs() < 1e-5);
         assert_eq!(settings.fov_degrees, 85.0);
         assert!((settings.master_volume - 0.9).abs() < 1e-5);
@@ -1227,11 +1332,13 @@ mod tests {
         app.add_systems(Update, update_settings_labels);
 
         let fs_text = app.world_mut().spawn((FullscreenButtonText, Text::new(""))).id();
+        let rtx_text = app.world_mut().spawn((RtxButtonText, Text::new(""))).id();
         let sens_text = app.world_mut().spawn((SensitivityValueText, Text::new(""))).id();
         let fov_text = app.world_mut().spawn((FovValueText, Text::new(""))).id();
         let vol_text = app.world_mut().spawn((VolumeValueText, Text::new(""))).id();
 
         app.world_mut().resource_mut::<GameSettings>().fullscreen = true;
+        app.world_mut().resource_mut::<GameSettings>().rtx_enabled = true;
         app.world_mut().resource_mut::<GameSettings>().mouse_sensitivity = 0.0035;
         app.world_mut().resource_mut::<GameSettings>().fov_degrees = 90.0;
         app.world_mut().resource_mut::<GameSettings>().master_volume = 0.65;
@@ -1239,9 +1346,39 @@ mod tests {
         app.update();
 
         assert_eq!(app.world().get::<Text>(fs_text).unwrap().0, "ATIVADO (TELA CHEIA)");
+        assert_eq!(app.world().get::<Text>(rtx_text).unwrap().0, "ATIVADO (RAY-TRACING ULTRA)");
         assert_eq!(app.world().get::<Text>(sens_text).unwrap().0, "0.0035");
         assert_eq!(app.world().get::<Text>(fov_text).unwrap().0, "90°");
         assert_eq!(app.world().get::<Text>(vol_text).unwrap().0, "65%");
+    }
+
+    #[test]
+    fn test_apply_rtx_settings() {
+        let mut app = App::new();
+        app.init_resource::<GameSettings>();
+        app.add_systems(Update, apply_rtx_settings);
+
+        let cam = app.world_mut().spawn(PlayerCamera).id();
+        let light = app.world_mut().spawn(PointLight {
+            shadows_enabled: false,
+            ..default()
+        }).id();
+
+        // Enable RTX
+        app.world_mut().resource_mut::<GameSettings>().rtx_enabled = true;
+        app.update();
+
+        assert!(app.world().get::<PointLight>(light).unwrap().shadows_enabled);
+        assert!(app.world().get::<bevy::pbr::ScreenSpaceAmbientOcclusion>(cam).is_some());
+        assert!(app.world().get::<bevy::pbr::ShadowFilteringMethod>(cam).is_some());
+
+        // Disable RTX
+        app.world_mut().resource_mut::<GameSettings>().rtx_enabled = false;
+        app.update();
+
+        assert!(!app.world().get::<PointLight>(light).unwrap().shadows_enabled);
+        assert!(app.world().get::<bevy::pbr::ScreenSpaceAmbientOcclusion>(cam).is_none());
+        assert!(app.world().get::<bevy::pbr::ShadowFilteringMethod>(cam).is_none());
     }
 
     #[test]
