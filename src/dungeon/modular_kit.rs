@@ -45,19 +45,19 @@ pub fn setup_cavern_world(
     // 1. ATMOSPHERE & LIGHTING (RICH NIGHT BLUE - NO PITCH BLACK #000000)
     // -------------------------------------------------------------
     commands.insert_resource(AmbientLight {
-        color: Color::srgb(0.09, 0.16, 0.28), // Deep fantasy night blue
-        brightness: 1350.0,
+        color: Color::srgb(0.10, 0.18, 0.28), // Deep fantasy night blue
+        brightness: 420.0,
     });
 
-    // Sun shaft / Cave ceiling skylight streaming over the waterfall
+    // Soft skylight beam descending from the upper fissure over the waterfall
     commands.spawn((
         DirectionalLight {
-            color: Color::srgb(0.85, 0.95, 1.0),
-            illuminance: 22000.0,
-            shadows_enabled: true,
+            color: Color::srgb(0.75, 0.92, 1.0),
+            illuminance: 6500.0,
+            shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(2.0, 24.0, -4.0).looking_at(Vec3::new(0.0, 1.0, -8.5), Vec3::Y),
+        Transform::from_xyz(1.5, 22.0, -4.5).looking_at(Vec3::new(0.0, 1.2, -8.5), Vec3::Y),
     ));
 
     // --- Bioluminescent PointLights (Lateral Margins, Waterfall & Amphitheater) ---
@@ -231,25 +231,25 @@ pub fn setup_cavern_world(
         Collider::cylinder(0.28, 1.10),
     ));
 
-    // Static physical obstacle colliders for rooted mushrooms (Right cluster: Large, Medium, Small)
+    // Static physical obstacle colliders for rooted mushrooms (Right cluster: 3 vibrant dome mushrooms)
     commands.spawn((
-        Name::new("Collider_Mushroom_Right_Large"),
+        Name::new("Collider_Mushroom_Right_1"),
         CavernObstacle,
-        Transform::from_xyz(5.0, 1.6, -3.2),
+        Transform::from_xyz(4.6, 1.4, -3.1),
         RigidBody::Static,
-        Collider::cylinder(0.52, 3.0),
+        Collider::cylinder(0.48, 2.6),
     ));
     commands.spawn((
-        Name::new("Collider_Mushroom_Right_Medium"),
+        Name::new("Collider_Mushroom_Right_2"),
         CavernObstacle,
-        Transform::from_xyz(4.3, 0.95, -2.4),
+        Transform::from_xyz(4.0, 0.95, -2.3),
         RigidBody::Static,
         Collider::cylinder(0.38, 1.75),
     ));
     commands.spawn((
-        Name::new("Collider_Mushroom_Right_Small"),
+        Name::new("Collider_Mushroom_Right_3"),
         CavernObstacle,
-        Transform::from_xyz(5.5, 0.65, -3.8),
+        Transform::from_xyz(5.3, 0.65, -3.7),
         RigidBody::Static,
         Collider::cylinder(0.28, 1.10),
     ));
@@ -278,10 +278,10 @@ pub fn setup_cavern_world(
     commands.spawn((
         Mesh3d(meshes.add(waterfall_mesh)),
         MeshMaterial3d(water_materials.add(WaterMaterial {
-            base_color: LinearRgba::new(0.16, 0.88, 1.0, 0.98), // Bright radiant cyan
-            deep_color: LinearRgba::new(0.03, 0.28, 0.42, 0.98), // Deep cyan
-            foam_color: LinearRgba::new(1.0, 1.0, 1.0, 1.0),     // Solid white foam
-            params: Vec4::new(0.0, 1.8, 1.0, 3.2), // z = 1.0 (waterfall mode), w = 3.2 (HDR bloom)
+            base_color: LinearRgba::new(0.12, 0.78, 0.90, 0.72), // Radiant translucent cyan
+            deep_color: LinearRgba::new(0.03, 0.26, 0.42, 0.85), // Deep azure
+            foam_color: LinearRgba::new(0.92, 0.97, 1.0, 0.90), // Soft aerated froth
+            params: Vec4::new(0.0, 1.4, 1.0, 1.0), // z = 1.0 (waterfall mode), w = 1.0 (natural bloom)
         })),
         WaterfallMarker,
         waterfall_base,
@@ -292,10 +292,10 @@ pub fn setup_cavern_world(
     commands.spawn((
         Mesh3d(meshes.add(create_water_disk_mesh(5.85, 64))),
         MeshMaterial3d(water_materials.add(WaterMaterial {
-            base_color: LinearRgba::new(0.10, 0.82, 0.92, 0.92), // Radiant crystalline cyan
-            deep_color: LinearRgba::new(0.02, 0.22, 0.32, 0.98), // Deep turquoise
-            foam_color: LinearRgba::new(1.0, 1.0, 1.0, 1.0),     // Solid white foam
-            params: Vec4::new(0.0, 1.2, 0.0, 2.8), // z = 0.0 (lake mode), w = 2.8 (HDR bloom)
+            base_color: LinearRgba::new(0.08, 0.68, 0.80, 0.76), // Crystalline clear water
+            deep_color: LinearRgba::new(0.02, 0.18, 0.28, 0.88), // Deep turquoise
+            foam_color: LinearRgba::new(0.92, 0.98, 1.0, 0.85), // Soft white foam
+            params: Vec4::new(0.0, 1.0, 0.0, 0.9), // z = 0.0 (lake mode), w = 0.9 (natural bloom)
         })),
         Transform::from_xyz(0.0, 0.18, -8.5),
     ));
@@ -375,14 +375,14 @@ pub fn setup_cavern_world(
         },
     ));
 
-    // Masterwork Rustic Alchemy Workstation & Ingredient Bench
+    // Masterwork Rustic Mossy Wooden Bench (lower right on grass, angled toward lagoon)
     commands.spawn((
-        Name::new("Alchemist_Workstation"),
+        Name::new("Rustic_Mossy_Bench"),
         CavernObstacle,
         SceneRoot(asset_server.load("models/alchemy_props.glb#Scene0")),
-        Transform::from_xyz(3.8, 0.0, 1.2).with_rotation(Quat::from_rotation_y(-0.45)),
+        Transform::from_xyz(2.65, 0.04, -2.1).with_rotation(Quat::from_rotation_y(-0.50)),
         RigidBody::Static,
-        Collider::cuboid(2.2, 1.4, 1.0),
+        Collider::cuboid(1.6, 0.9, 0.7),
     ));
 
     info!("Masterwork Cel-Shaded Cavern Grotto initialized with Volumetric Waterfall, Organic Mushrooms, and Sobel Outlines!");
@@ -577,10 +577,10 @@ pub mod tests {
         let light_count = light_query.iter(app.world()).count();
         assert!(light_count >= 9, "Must spawn at least 9 point lights for bioluminescence, waterfall and high ceiling vault");
 
-        // Check CavernObstacle colliders spawned (6 mushroom stems + 2 rock terraces + 1 alchemy workstation)
+        // Check CavernObstacle colliders spawned (6 mushroom stems + 2 rock terraces + 1 rustic mossy bench)
         let mut obstacle_query = app.world_mut().query::<(&CavernObstacle, &Collider, &RigidBody)>();
         let obstacle_count = obstacle_query.iter(app.world()).count();
-        assert_eq!(obstacle_count, 9, "Must spawn 9 static colliders for mushroom stems, rock terraces and alchemy workstation");
+        assert_eq!(obstacle_count, 9, "Must spawn 9 static colliders for mushroom stems, rock terraces and rustic mossy bench");
 
         // Check ParticleEmitter spawned
         let mut emitter_query = app.world_mut().query::<&ParticleEmitter>();

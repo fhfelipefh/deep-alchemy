@@ -1,297 +1,292 @@
+"""
+Masterwork Rustic Mossy Wooden Bench for Deep Alchemy
+Executes inside Blender 4.5 headless mode.
+Generates assets/models/alchemy_props.glb containing the rustic dark-wood bench
+with thick green moss accumulation on the backrest top and seat surface,
+exactly as specified in the reference concept artwork.
+"""
 import bpy
 import bmesh
 import math
 import os
-from mathutils import Vector, Matrix, Euler
+import random
 
 # Reset scene
-for obj in bpy.data.objects:
+for obj in list(bpy.data.objects):
     bpy.data.objects.remove(obj, do_unlink=True)
-for mesh in bpy.data.meshes:
+for mesh in list(bpy.data.meshes):
     bpy.data.meshes.remove(mesh)
-for mat in bpy.data.materials:
+for mat in list(bpy.data.materials):
     bpy.data.materials.remove(mat)
 
-def create_mat(name, color, roughness=0.2, metallic=0.0, emission=None, alpha=1.0):
+def create_mat(name, color, roughness=0.8, metallic=0.0, emission=None, alpha=1.0):
     mat = bpy.data.materials.new(name=name)
     mat.use_nodes = True
-    bsdf = mat.node_tree.nodes.get("Principled BSDF")
+    nodes = mat.node_tree.nodes
+    bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None)
     if bsdf:
-        bsdf.inputs["Base Color"].default_value = color
-        bsdf.inputs["Roughness"].default_value = roughness
-        bsdf.inputs["Metallic"].default_value = metallic
-        if emission:
-            bsdf.inputs["Emission Color"].default_value = emission
-            bsdf.inputs["Emission Strength"].default_value = 2.5
-        if alpha < 1.0:
+        if "Base Color" in bsdf.inputs:
+            bsdf.inputs["Base Color"].default_value = (*color[:3], 1.0)
+        if "Roughness" in bsdf.inputs:
+            bsdf.inputs["Roughness"].default_value = roughness
+        if "Metallic" in bsdf.inputs:
+            bsdf.inputs["Metallic"].default_value = metallic
+        if "Alpha" in bsdf.inputs:
             bsdf.inputs["Alpha"].default_value = alpha
+        if alpha < 1.0:
             mat.blend_method = 'BLEND'
+        if emission:
+            if "Emission Color" in bsdf.inputs:
+                bsdf.inputs["Emission Color"].default_value = (*emission[:3], 1.0)
+            elif "Emission" in bsdf.inputs:
+                bsdf.inputs["Emission"].default_value = (*emission[:3], 1.0)
+            if "Emission Strength" in bsdf.inputs:
+                bsdf.inputs["Emission Strength"].default_value = 1.8
     return mat
 
-mat_glass = create_mat("M_Glass", (0.85, 0.95, 1.0, 0.4), roughness=0.1, alpha=0.5)
-mat_cork = create_mat("M_Cork", (0.6, 0.45, 0.3, 1.0), roughness=0.9)
-mat_potion_blue = create_mat("M_PotionBlue", (0.05, 0.75, 1.0, 0.85), roughness=0.1, emission=(0.1, 0.8, 1.0, 1.0))
-mat_potion_red = create_mat("M_PotionRed", (0.95, 0.15, 0.15, 0.85), roughness=0.1, emission=(1.0, 0.2, 0.2, 1.0))
-mat_potion_green = create_mat("M_PotionGreen", (0.15, 0.95, 0.35, 0.85), roughness=0.1, emission=(0.2, 1.0, 0.4, 1.0))
-mat_potion_gold = create_mat("M_PotionGold", (1.0, 0.8, 0.1, 0.85), roughness=0.1, emission=(1.0, 0.85, 0.2, 1.0))
+# Materials matching Cel-Shaded Concept Artwork
+mat_wood_dark = create_mat("M_Rustic_DarkWood", (0.24, 0.16, 0.10), roughness=0.85)     # Aged dark timber
+mat_wood_light = create_mat("M_Rustic_WoodPlank", (0.30, 0.20, 0.13), roughness=0.80)   # Seat planks
+mat_moss = create_mat("M_Cavern_Moss", (0.16, 0.44, 0.22), roughness=0.90)              # Thick green velvety moss
+mat_vine = create_mat("M_Creeping_Vine", (0.22, 0.55, 0.28), roughness=0.75)            # Climbing foliage
+mat_iron_rivet = create_mat("M_RivetIron", (0.18, 0.18, 0.20), roughness=0.45, metallic=0.75)
 
-mat_brass = create_mat("M_PropBrass", (0.85, 0.65, 0.25, 1.0), roughness=0.3, metallic=0.85)
-mat_iron = create_mat("M_ChestIron", (0.2, 0.2, 0.22, 1.0), roughness=0.5, metallic=0.7)
-mat_wood_dark = create_mat("M_WorkbenchWood", (0.22, 0.14, 0.08, 1.0), roughness=0.75)
-mat_wood_chest = create_mat("M_ChestWood", (0.35, 0.22, 0.12, 1.0), roughness=0.7)
-mat_parchment = create_mat("M_Parchment", (0.88, 0.82, 0.68, 1.0), roughness=0.85)
-mat_stone = create_mat("M_MortarStone", (0.30, 0.30, 0.32, 1.0), roughness=0.8)
-
-# Root Container for complete Workbench workstation
-root_bench = bpy.data.objects.new("Alchemist_Workstation", None)
+root_bench = bpy.data.objects.new("Rustic_Mossy_Bench", None)
 bpy.context.collection.objects.link(root_bench)
 
-# ------------------------------------------------------------------------------
-# 1. RUSTIC WOODEN ALCHEMY WORKBENCH (Mesa de Alquimia com Pés e Tampo)
-# ------------------------------------------------------------------------------
-def build_workbench():
-    # 4 Thick Legs
-    leg_coords = [
-        (-0.72, -0.30),
-        (-0.72, 0.30),
-        (0.72, -0.30),
-        (0.72, 0.30),
-    ]
-    for i, (lx, ly) in enumerate(leg_coords):
-        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(lx, ly, 0.41))
-        leg = bpy.context.active_object
-        leg.name = f"Workbench_Leg_{i}"
-        leg.scale = (0.10, 0.10, 0.82)
-        bpy.ops.object.transform_apply(scale=True)
-        leg.data.materials.append(mat_wood_dark)
-        leg.parent = root_bench
-
-    # Lower shelf stretcher braces
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.0, 0.18))
-    stretcher = bpy.context.active_object
-    stretcher.name = "Workbench_Stretcher"
-    stretcher.scale = (1.44, 0.50, 0.04)
+def make_chamfered_box(name, sx, sy, sz, loc, mat, parent=root_bench):
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=loc)
+    obj = bpy.context.active_object
+    obj.name = name
+    obj.scale = (sx, sy, sz)
     bpy.ops.object.transform_apply(scale=True)
-    stretcher.data.materials.append(mat_wood_dark)
-    stretcher.parent = root_bench
-
-    # Main Heavy Tabletop Planks (Top surface at Z = 0.86m)
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.0, 0.82))
-    top = bpy.context.active_object
-    top.name = "Workbench_Tabletop"
-    top.scale = (1.70, 0.78, 0.08)
-    bpy.ops.object.transform_apply(scale=True)
-    top.data.materials.append(mat_wood_dark)
-    top.parent = root_bench
-
-    # Back Risers & Upper Potion Rack (Shelf at Z = 1.15m)
-    for rx in [-0.70, 0.70]:
-        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(rx, 0.28, 1.00))
-        riser = bpy.context.active_object
-        riser.scale = (0.06, 0.16, 0.30)
-        bpy.ops.object.transform_apply(scale=True)
-        riser.data.materials.append(mat_wood_dark)
-        riser.parent = root_bench
-
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.28, 1.15))
-    shelf = bpy.context.active_object
-    shelf.name = "Workbench_PotionShelf"
-    shelf.scale = (1.56, 0.22, 0.04)
-    bpy.ops.object.transform_apply(scale=True)
-    shelf.data.materials.append(mat_wood_dark)
-    shelf.parent = root_bench
-
-build_workbench()
+    obj.data.materials.append(mat)
+    obj.parent = parent
+    return obj
 
 # ------------------------------------------------------------------------------
-# 2. POTION FLASKS PLACED PROPERLY ON THE UPPER WORKBENCH SHELF (Z = 1.17m)
+# 1. BENCH TIMBER FRAME (Pés, Travessas e Suportes de Madeira Escura)
 # ------------------------------------------------------------------------------
-def build_potion_round(loc, name, liquid_mat):
-    root = bpy.data.objects.new(name, None)
-    bpy.context.collection.objects.link(root)
-    root.location = loc
-    root.parent = root_bench
-    
-    # Outer Glass Bulb (Radius 0.08m, centered at Z = 0.08m above shelf)
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=14, ring_count=10, radius=0.075, location=(loc[0], loc[1], loc[2] + 0.075))
-    bulb = bpy.context.active_object
-    bulb.name = f"{name}_GlassBulb"
-    bulb.data.materials.append(mat_glass)
-    bulb.parent = root
-    
-    # Inner Liquid Bulb
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=12, ring_count=8, radius=0.068, location=(loc[0], loc[1], loc[2] + 0.072))
-    liquid = bpy.context.active_object
-    liquid.name = f"{name}_Liquid"
-    liquid.data.materials.append(liquid_mat)
-    liquid.parent = root
-    
-    # Glass Neck
-    bpy.ops.mesh.primitive_cylinder_add(radius=0.026, depth=0.07, location=(loc[0], loc[1], loc[2] + 0.16))
-    neck = bpy.context.active_object
-    neck.name = f"{name}_Neck"
-    neck.data.materials.append(mat_glass)
-    neck.parent = root
-    
-    # Brass Collar
-    bpy.ops.mesh.primitive_torus_add(major_radius=0.030, minor_radius=0.007, location=(loc[0], loc[1], loc[2] + 0.18))
-    collar = bpy.context.active_object
-    collar.name = f"{name}_Collar"
-    collar.data.materials.append(mat_brass)
-    collar.parent = root
-    
-    # Cork Stopper
-    bpy.ops.mesh.primitive_cylinder_add(radius=0.025, depth=0.045, location=(loc[0], loc[1], loc[2] + 0.20))
-    cork = bpy.context.active_object
-    cork.name = f"{name}_Cork"
-    cork.data.materials.append(mat_cork)
-    cork.parent = root
+# Bench dimensions: length = 1.55m, depth = 0.58m, seat_height = 0.48m, back_height = 0.98m
+# 4 Sturdy Legs
+leg_radius = 0.048
+leg_h = 0.46
+leg_locs = [
+    (-0.68, -0.22, leg_h * 0.5),
+    (-0.68,  0.22, leg_h * 0.5),
+    ( 0.68, -0.22, leg_h * 0.5),
+    ( 0.68,  0.22, leg_h * 0.5),
+]
+for idx, (lx, ly, lz) in enumerate(leg_locs):
+    bpy.ops.mesh.primitive_cylinder_add(vertices=12, radius=leg_radius, depth=leg_h, location=(lx, ly, lz))
+    leg = bpy.context.active_object
+    leg.name = f"Bench_Leg_{idx}"
+    leg.data.materials.append(mat_wood_dark)
+    leg.parent = root_bench
 
-def build_potion_cone(loc, name, liquid_mat):
-    root = bpy.data.objects.new(name, None)
-    bpy.context.collection.objects.link(root)
-    root.location = loc
-    root.parent = root_bench
-    
-    bpy.ops.mesh.primitive_cone_add(vertices=14, radius1=0.08, radius2=0.028, depth=0.15, location=(loc[0], loc[1], loc[2] + 0.075))
-    body = bpy.context.active_object
-    body.name = f"{name}_Body"
-    body.data.materials.append(mat_glass)
-    body.parent = root
-    
-    bpy.ops.mesh.primitive_cone_add(vertices=12, radius1=0.07, radius2=0.025, depth=0.11, location=(loc[0], loc[1], loc[2] + 0.055))
-    liq = bpy.context.active_object
-    liq.name = f"{name}_Liquid"
-    liq.data.materials.append(liquid_mat)
-    liq.parent = root
-    
-    bpy.ops.mesh.primitive_cylinder_add(radius=0.024, depth=0.04, location=(loc[0], loc[1], loc[2] + 0.165))
-    cork = bpy.context.active_object
-    cork.name = f"{name}_Cork"
-    cork.data.materials.append(mat_cork)
-    cork.parent = root
+# Lower Longitudinal Stretchers (travessas inferiores)
+make_chamfered_box("Stretcher_Front", 1.36, 0.05, 0.06, (0.0, -0.22, 0.15), mat_wood_dark)
+make_chamfered_box("Stretcher_Back", 1.36, 0.05, 0.06, (0.0, 0.22, 0.15), mat_wood_dark)
+make_chamfered_box("Stretcher_Left", 0.05, 0.44, 0.06, (-0.68, 0.0, 0.15), mat_wood_dark)
+make_chamfered_box("Stretcher_Right", 0.05, 0.44, 0.06, (0.68, 0.0, 0.15), mat_wood_dark)
 
-# Placed neatly on upper shelf (Z = 1.17)
-shelf_z = 1.17
-build_potion_round((-0.45, 0.28, shelf_z), "Potion_Cyan", mat_potion_blue)
-build_potion_round((-0.15, 0.28, shelf_z), "Potion_Health", mat_potion_red)
-build_potion_round((0.15, 0.28, shelf_z), "Potion_Antidote", mat_potion_green)
-build_potion_cone((0.45, 0.28, shelf_z), "Potion_Sunfire", mat_potion_gold)
+# Upper Seat Support Frame
+make_chamfered_box("Seat_Bearer_Left", 0.07, 0.48, 0.06, (-0.68, 0.0, 0.44), mat_wood_dark)
+make_chamfered_box("Seat_Bearer_Mid", 0.06, 0.48, 0.06, (0.0, 0.0, 0.44), mat_wood_dark)
+make_chamfered_box("Seat_Bearer_Right", 0.07, 0.48, 0.06, (0.68, 0.0, 0.44), mat_wood_dark)
 
 # ------------------------------------------------------------------------------
-# 3. PROPS ON THE MAIN TABLETOP (Z = 0.86m)
+# 2. SEAT PLANKS (Tábuas Rústicas de Madeira Escura)
 # ------------------------------------------------------------------------------
-# Stone Mortar & Pestle on left side of tabletop
-def build_mortar_pestle(loc):
-    root = bpy.data.objects.new("Mortar_Pestle", None)
-    bpy.context.collection.objects.link(root)
-    root.location = loc
-    root.parent = root_bench
-    
-    # Bowl resting on table
-    bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=0.14, depth=0.12, location=(loc[0], loc[1], loc[2] + 0.06))
-    bowl = bpy.context.active_object
-    bowl.name = "Mortar_Bowl"
-    bowl.data.materials.append(mat_stone)
-    bowl.parent = root
-    
-    # Pestle angled in bowl
-    bpy.ops.mesh.primitive_cylinder_add(radius=0.028, depth=0.22, location=(loc[0] + 0.04, loc[1], loc[2] + 0.12), rotation=(0.25, 0.28, 0))
-    pestle = bpy.context.active_object
-    pestle.name = "Mortar_Pestle"
-    pestle.data.materials.append(mat_stone)
-    pestle.parent = root
+# 3 Parallel Timber Planks along length with small gap between them
+plank_w = 0.15
+plank_thick = 0.045
+plank_len = 1.58
+seat_z = 0.49
 
-build_mortar_pestle((-0.48, -0.06, 0.86))
-
-# Open Alchemy Parchment in the middle of the tabletop
-def build_alchemy_parchment(loc):
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(loc[0], loc[1], loc[2] + 0.005))
-    doc = bpy.context.active_object
-    doc.name = "Alchemy_Grimoire_Page"
-    doc.scale = (0.34, 0.24, 0.008)
-    bpy.ops.object.transform_apply(scale=True)
-    doc.data.materials.append(mat_parchment)
-    doc.parent = root_bench
-
-build_alchemy_parchment((0.02, -0.08, 0.86))
-
-# Brass alembic retort vessel on right side of tabletop
-def build_brass_alembic(loc):
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=14, ring_count=10, radius=0.10, location=(loc[0], loc[1], loc[2] + 0.10))
-    flask = bpy.context.active_object
-    flask.name = "Brass_Retort_Flask"
-    flask.data.materials.append(mat_brass)
-    flask.parent = root_bench
-    
-    bpy.ops.mesh.primitive_cylinder_add(radius=0.022, depth=0.16, location=(loc[0] + 0.04, loc[1], loc[2] + 0.16), rotation=(0.0, 0.55, 0.0))
-    spout = bpy.context.active_object
-    spout.name = "Brass_Retort_Spout"
-    spout.data.materials.append(mat_brass)
-    spout.parent = root_bench
-
-build_brass_alembic((0.46, -0.04, 0.86))
+for ip, py in enumerate([-0.17, 0.0, 0.17]):
+    plank = make_chamfered_box(f"Seat_Plank_{ip}", plank_len, plank_w, plank_thick, (0.0, py, seat_z), mat_wood_light)
+    # Iron rivets at ends
+    for rx in [-0.68, 0.68]:
+        bpy.ops.mesh.primitive_cylinder_add(vertices=8, radius=0.012, depth=0.01, location=(rx, py, seat_z + 0.025))
+        rivet = bpy.context.active_object
+        rivet.name = f"Seat_Rivet_{ip}_{rx}"
+        rivet.data.materials.append(mat_iron_rivet)
+        rivet.parent = root_bench
 
 # ------------------------------------------------------------------------------
-# 4. ALCHEMIST TREASURE CHEST (Resting solidly on floor beside table at Z = 0)
+# 3. BACKREST STRUCTURE (Encosto Angulado de Madeira)
 # ------------------------------------------------------------------------------
-def build_alchemist_chest(loc):
-    root = bpy.data.objects.new("Alchemist_Chest", None)
-    bpy.context.collection.objects.link(root)
-    root.location = loc
-    root.parent = root_bench
+# 3 Upright Backrest Posts angled backward slightly (tilt ~ 7 degrees)
+tilt_angle = math.radians(7.0)
+post_h = 0.56
+post_z = seat_z + 0.28
+for px in [-0.68, 0.0, 0.68]:
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(px, 0.25, post_z))
+    post = bpy.context.active_object
+    post.name = f"Backrest_Post_{px}"
+    post.scale = (0.065, 0.055, post_h)
+    post.rotation_euler = (tilt_angle, 0.0, 0.0)
+    bpy.ops.object.transform_apply(scale=True, rotation=True)
+    post.data.materials.append(mat_wood_dark)
+    post.parent = root_bench
+
+# Horizontal Backrest Rails (2 wide timber planks across back)
+rail_y_mid = 0.25 + math.sin(tilt_angle) * 0.18
+rail_z_mid = seat_z + 0.22
+make_chamfered_box("Backrest_Rail_Lower", 1.52, 0.04, 0.14, (0.0, rail_y_mid, rail_z_mid), mat_wood_light)
+
+rail_y_top = 0.25 + math.sin(tilt_angle) * 0.45
+rail_z_top = seat_z + 0.48
+make_chamfered_box("Backrest_Rail_Upper", 1.56, 0.05, 0.14, (0.0, rail_y_top, rail_z_top), mat_wood_dark)
+
+# ------------------------------------------------------------------------------
+# 4. THICK VOLUMETRIC GREEN MOSS ACCUMULATION (Diretriz 2: Encosto e Assento)
+# ------------------------------------------------------------------------------
+def build_moss_layer(name, length, width, thickness, loc, rot=(0.0, 0.0, 0.0), density=18):
+    """Generates an organic, puffy, irregular moss cushion with rounded clumps."""
+    bm = bmesh.new()
+    random.seed(42)
     
-    # Chest Base resting on floor
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(loc[0], loc[1], loc[2] + 0.25))
-    base = bpy.context.active_object
-    base.name = "Chest_Base"
-    base.scale = (0.70, 0.44, 0.45)
-    bpy.ops.object.transform_apply(scale=True)
-    base.data.materials.append(mat_wood_chest)
-    base.parent = root
-    
-    # Curved Lid
-    bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=0.22, depth=0.70, location=(loc[0], loc[1], loc[2] + 0.48), rotation=(0, math.radians(90), 0))
-    lid = bpy.context.active_object
-    lid.name = "Chest_Lid"
-    lid.data.materials.append(mat_wood_chest)
-    lid.parent = root
-    
-    # Iron Bands
-    for x_off in [-0.22, 0.22]:
-        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(loc[0] + x_off, loc[1], loc[2] + 0.25))
-        band = bpy.context.active_object
-        band.scale = (0.05, 0.46, 0.46)
-        bpy.ops.object.transform_apply(scale=True)
-        band.data.materials.append(mat_iron)
-        band.parent = root
+    clump_count = density
+    for ic in range(clump_count):
+        # Position along the plank
+        t_len = (ic / (clump_count - 1) - 0.5) * length * 0.94
+        t_wid = (random.random() - 0.5) * width * 0.75
+        c_thick = thickness * (0.65 + random.random() * 0.6)
+        c_rad = (width * 0.45) * (0.8 + random.random() * 0.45)
         
-    # Lock Plate
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(loc[0], loc[1] + 0.23, loc[2] + 0.38))
-    lock = bpy.context.active_object
-    lock.scale = (0.08, 0.03, 0.10)
-    bpy.ops.object.transform_apply(scale=True)
-    lock.data.materials.append(mat_brass)
-    lock.parent = root
+        # Build organic dome clump
+        rings = 5
+        radials = 8
+        clump_verts = []
+        for ir in range(rings + 1):
+            t_ring = ir / rings
+            rz = math.cos(t_ring * math.pi * 0.5) * c_thick
+            rr = math.sin(t_ring * math.pi * 0.5) * c_rad
+            
+            row = []
+            for ia in range(radials):
+                ang = 2.0 * math.pi * ia / radials
+                noise_r = rr * (1.0 + math.sin(ang * 3.0 + ic) * 0.15)
+                vx = t_len + math.cos(ang) * noise_r
+                vy = t_wid + math.sin(ang) * noise_r
+                vz = rz
+                row.append(bm.verts.new((vx, vy, vz)))
+            clump_verts.append(row)
+            
+        for ir in range(rings):
+            for ia in range(radials):
+                ia_next = (ia + 1) % radials
+                bm.faces.new((clump_verts[ir][ia], clump_verts[ir][ia_next], clump_verts[ir + 1][ia_next], clump_verts[ir + 1][ia]))
+                
+        # Top apex
+        top_v = bm.verts.new((t_len, t_wid, c_thick))
+        for ia in range(radials):
+            ia_next = (ia + 1) % radials
+            bm.faces.new((clump_verts[rings][ia], clump_verts[rings][ia_next], top_v))
 
-# Placed to the left of the workbench on the floor
-build_alchemist_chest((-1.35, 0.0, 0.0))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new(f"{name}_Mesh")
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    bm.to_mesh(mesh)
+    bm.free()
+    
+    for p in mesh.polygons:
+        p.use_smooth = True
+    mesh.update()
+    
+    obj.location = loc
+    obj.rotation_euler = rot
+    obj.data.materials.append(mat_moss)
+    obj.parent = root_bench
+    return obj
 
-# Smooth shading on all meshes
-for obj in bpy.data.objects:
-    if obj.type == 'MESH':
-        for poly in obj.data.polygons:
-            poly.use_smooth = True
-
-target_path = os.path.abspath("assets/models/alchemy_props.glb")
-os.makedirs(os.path.dirname(target_path), exist_ok=True)
-
-bpy.ops.export_scene.gltf(
-    filepath=target_path,
-    export_format='GLB',
-    use_selection=False,
-    export_apply=False,
-    export_yup=True
+# A. Thick Moss across the Top Ridge of the Backrest (Borda Superior do Encosto)
+build_moss_layer(
+    name="Backrest_Top_Moss_Layer",
+    length=1.52,
+    width=0.08,
+    thickness=0.065,
+    loc=(0.0, rail_y_top + 0.015, rail_z_top + 0.075),
+    rot=(tilt_angle, 0.0, 0.0),
+    density=22
 )
 
-print(f">>> [BLENDER 4.5] Successfully exported Masterwork Alchemy Workstation to: {target_path}")
+# B. Organic Moss Patches across Seat Surface (Superfície do Assento)
+# Left corner moss cluster
+build_moss_layer(
+    name="Seat_Moss_Left_Cluster",
+    length=0.48,
+    width=0.32,
+    thickness=0.045,
+    loc=(-0.52, 0.08, seat_z + 0.025),
+    density=12
+)
+
+# Right corner moss cluster
+build_moss_layer(
+    name="Seat_Moss_Right_Cluster",
+    length=0.44,
+    width=0.30,
+    thickness=0.045,
+    loc=(0.52, 0.06, seat_z + 0.025),
+    density=11
+)
+
+# Central back seam moss patch
+build_moss_layer(
+    name="Seat_Moss_Center_Seam",
+    length=0.72,
+    width=0.14,
+    thickness=0.038,
+    loc=(0.0, 0.16, seat_z + 0.025),
+    density=14
+)
+
+# ------------------------------------------------------------------------------
+# 5. CREEPING VINE FOLIAGE (Vinhas Subindo pelos Pés e Encosto)
+# ------------------------------------------------------------------------------
+def build_creeping_leaves(name, loc, parent=root_bench):
+    bm = bmesh.new()
+    leaf_count = 6
+    for il in range(leaf_count):
+        ang = (il / leaf_count) * math.pi * 2.0
+        lx = math.cos(ang) * 0.08
+        ly = math.sin(ang) * 0.08
+        lz = (il * 0.05)
+        # 3-vert diamond leaf
+        v0 = bm.verts.new((lx, ly, lz))
+        v1 = bm.verts.new((lx + 0.05 * math.cos(ang), ly + 0.05 * math.sin(ang), lz + 0.02))
+        v2 = bm.verts.new((lx + 0.02 * math.cos(ang + 0.5), ly + 0.02 * math.sin(ang + 0.5), lz - 0.01))
+        bm.faces.new((v0, v1, v2))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new(f"{name}_Mesh")
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    bm.to_mesh(mesh)
+    bm.free()
+    obj.location = loc
+    obj.data.materials.append(mat_vine)
+    obj.parent = parent
+    return obj
+
+build_creeping_leaves("Vine_Back_Left", (-0.68, 0.22, 0.25))
+build_creeping_leaves("Vine_Back_Right", (0.68, 0.22, 0.25))
+
+# ------------------------------------------------------------------------------
+# 6. EXPORT COMPLETE GLB MODEL
+# ------------------------------------------------------------------------------
+output_path = os.path.abspath("assets/models/alchemy_props.glb")
+os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+bpy.ops.export_scene.gltf(
+    filepath=output_path,
+    export_format='GLB',
+    use_selection=False,
+    export_apply=True,
+    export_materials='EXPORT',
+)
+
+print(f">>> [BLENDER 4.5] Successfully exported Rustic Mossy Bench to: {output_path}")

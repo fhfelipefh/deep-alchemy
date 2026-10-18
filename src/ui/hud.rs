@@ -184,15 +184,7 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                 BorderColor(COLOR_BORDER_GOLD),
             ))
             .with_children(|hotbar| {
-                let slot_data = [
-                    (1, "textures/ui/flask_green.png"),
-                    (2, "textures/ui/flask_red.png"),
-                    (3, "textures/ui/flask_yellow.png"),
-                    (4, "textures/ui/flask_blue.png"),
-                    (5, "textures/ui/flask_white.png"),
-                ];
-
-                for (slot_num, flask_tex) in slot_data {
+                for slot_num in 1..=5 {
                     hotbar.spawn((
                         HotbarSlotUi { slot_index: slot_num },
                         Node {
@@ -201,15 +193,15 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                             flex_direction: FlexDirection::Column,
                             justify_content: JustifyContent::SpaceBetween,
                             align_items: AlignItems::Center,
-                            padding: UiRect::all(Val::Px(2.0)),
+                            padding: UiRect::all(Val::Px(3.0)),
                             border: UiRect::all(if slot_num == 1 { Val::Px(2.5) } else { Val::Px(1.0) }),
                             ..default()
                         },
-                        BackgroundColor(Color::srgba(0.07, 0.09, 0.13, 0.92)),
+                        BackgroundColor(Color::srgba(0.06, 0.08, 0.12, 0.88)),
                         BorderColor(if slot_num == 1 { COLOR_BORDER_ACTIVE } else { COLOR_BORDER_GOLD }),
                     ))
                     .with_children(|slot| {
-                        // Slot number tag
+                        // Slot number tag (top-left aligned feel)
                         slot.spawn((
                             Text::new(format!("{slot_num}")),
                             TextFont {
@@ -220,14 +212,17 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                             TextColor(if slot_num == 1 { COLOR_BORDER_ACTIVE } else { COLOR_BORDER_GOLD }),
                         ));
 
-                        // Round glass potion flask icon with cork and glowing liquid
+                        // Empty slot interior: player just awoke after falling into the cave with empty hands.
+                        // Potions will be placed here once crafted at the alchemy workbench.
                         slot.spawn((
-                            ImageNode::new(asset_server.load(flask_tex)),
                             Node {
-                                width: Val::Px(38.0),
-                                height: Val::Px(38.0),
+                                width: Val::Px(34.0),
+                                height: Val::Px(34.0),
+                                border: UiRect::all(Val::Px(1.0)),
                                 ..default()
                             },
+                            BackgroundColor(Color::srgba(0.04, 0.05, 0.08, 0.45)),
+                            BorderColor(Color::srgba(0.35, 0.38, 0.45, 0.25)),
                         ));
                     });
                 }

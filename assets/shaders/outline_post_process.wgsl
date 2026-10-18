@@ -17,16 +17,20 @@ fn rgb2luma(col: vec3<f32>) -> f32 {
 }
 
 fn is_water_or_foam(col: vec3<f32>) -> bool {
-    // 1. High HDR radiant bloom (> 1.0 in any channel)
-    if (col.r > 1.0 || col.g > 1.0 || col.b > 1.0) {
+    // 1. High HDR radiant bloom (> 0.92 in any channel)
+    if (col.r > 0.92 || col.g > 0.92 || col.b > 0.92) {
         return true;
     }
-    // 2. Pure or bright white foam
-    if (col.r > 0.78 && col.g > 0.85 && col.b > 0.88) {
+    // 2. Pure or bright white foam / aeration
+    if (col.r > 0.62 && col.g > 0.70 && col.b > 0.72) {
         return true;
     }
-    // 3. Cyan / Turquoise / Emerald water palette (G and B dominant over R)
-    if (col.b > 0.32 && col.g > 0.38 && (col.b + col.g) > (col.r * 2.0)) {
+    // 3. Aquatic palette: any cyan, azure, turquoise or deep water (B > 0.16 and B > R * 1.1)
+    if (col.b > 0.16 && (col.b * 1.15) > col.r) {
+        return true;
+    }
+    // 4. Emerald / turquoise shallows
+    if (col.g > 0.25 && col.b > 0.20 && (col.g + col.b) > (col.r * 1.35)) {
         return true;
     }
     return false;
