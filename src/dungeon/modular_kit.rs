@@ -45,44 +45,44 @@ pub fn setup_cavern_world(
     // 1. ATMOSPHERE & LIGHTING (RICH NIGHT BLUE - NO PITCH BLACK #000000)
     // -------------------------------------------------------------
     commands.insert_resource(AmbientLight {
-        color: Color::srgb(0.10, 0.18, 0.28), // Deep fantasy night blue
-        brightness: 420.0,
+        color: Color::srgb(0.08, 0.16, 0.26), // Deep fantasy night blue
+        brightness: 340.0,
     });
 
     // Soft skylight beam descending from the upper fissure over the waterfall
     commands.spawn((
         DirectionalLight {
-            color: Color::srgb(0.75, 0.92, 1.0),
-            illuminance: 6500.0,
+            color: Color::srgb(0.72, 0.90, 1.0),
+            illuminance: 4800.0,
             shadows_enabled: false,
             ..default()
         },
         Transform::from_xyz(1.5, 22.0, -4.5).looking_at(Vec3::new(0.0, 1.2, -8.5), Vec3::Y),
     ));
 
-    // --- Bioluminescent PointLights (Lateral Margins, Waterfall & Amphitheater) ---
-    // Left Giant Mushroom cap light (Lateral margin: X = -5.4, Y = 2.8, Z = -3.6)
+    // --- Bioluminescent PointLights (Lateral Margins, Stalactites, Waterfall & Amphitheater) ---
+    // Left Mushroom cluster light (X = -4.0, Y = 2.6, Z = -3.2)
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.17, 0.95, 0.88), // Electric turquoise #2be8d8
-            intensity: 42000.0,
-            range: 14.0,
+            color: Color::srgb(0.12, 0.96, 0.88), // Electric turquoise #2be8d8
+            intensity: 46000.0,
+            range: 16.0,
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(-5.4, 2.8, -3.6),
+        Transform::from_xyz(-4.0, 2.6, -3.2),
     ));
 
-    // Right Giant Mushroom cap light (Lateral margin: X = 5.4, Y = 2.8, Z = -3.6)
+    // Right Mushroom cluster light (X = 4.0, Y = 2.6, Z = -3.0)
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.17, 0.95, 0.88),
-            intensity: 42000.0,
-            range: 14.0,
+            color: Color::srgb(0.12, 0.96, 0.88),
+            intensity: 46000.0,
+            range: 16.0,
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(5.4, 2.8, -3.6),
+        Transform::from_xyz(4.0, 2.6, -3.0),
     ));
 
     // Waterfall luminous foam and spray bounce light
@@ -121,16 +121,26 @@ pub fn setup_cavern_world(
         Transform::from_xyz(0.0, 8.0, -11.5),
     ));
 
-    // Overhead ceiling arch rim light (illuminates forward stalactites)
+    // Overhead ceiling arch rim lights (accentuates sharp hanging stalactites)
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.25, 0.35, 0.50),
-            intensity: 40000.0,
-            range: 22.0,
+            color: Color::srgb(0.25, 0.45, 0.65),
+            intensity: 42000.0,
+            range: 18.0,
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(0.0, 8.5, -2.5),
+        Transform::from_xyz(-3.8, 4.2, -4.2),
+    ));
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.25, 0.45, 0.65),
+            intensity: 42000.0,
+            range: 18.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(3.8, 4.2, -4.2),
     ));
 
     // Bioluminescent pool cyan glow from crystalline waters
@@ -212,21 +222,21 @@ pub fn setup_cavern_world(
     commands.spawn((
         Name::new("Collider_Mushroom_Left_Large"),
         CavernObstacle,
-        Transform::from_xyz(-5.0, 1.6, -3.2),
+        Transform::from_xyz(-4.2, 1.6, -3.2),
         RigidBody::Static,
         Collider::cylinder(0.52, 3.0),
     ));
     commands.spawn((
         Name::new("Collider_Mushroom_Left_Medium"),
         CavernObstacle,
-        Transform::from_xyz(-4.3, 0.95, -2.4),
+        Transform::from_xyz(-3.4, 0.95, -2.4),
         RigidBody::Static,
         Collider::cylinder(0.38, 1.75),
     ));
     commands.spawn((
         Name::new("Collider_Mushroom_Left_Small"),
         CavernObstacle,
-        Transform::from_xyz(-5.5, 0.65, -3.8),
+        Transform::from_xyz(-4.8, 0.65, -2.6),
         RigidBody::Static,
         Collider::cylinder(0.28, 1.10),
     ));
@@ -235,21 +245,21 @@ pub fn setup_cavern_world(
     commands.spawn((
         Name::new("Collider_Mushroom_Right_1"),
         CavernObstacle,
-        Transform::from_xyz(4.6, 1.4, -3.1),
+        Transform::from_xyz(4.2, 1.4, -3.2),
         RigidBody::Static,
         Collider::cylinder(0.48, 2.6),
     ));
     commands.spawn((
         Name::new("Collider_Mushroom_Right_2"),
         CavernObstacle,
-        Transform::from_xyz(4.0, 0.95, -2.3),
+        Transform::from_xyz(3.6, 0.95, -2.5),
         RigidBody::Static,
         Collider::cylinder(0.38, 1.75),
     ));
     commands.spawn((
         Name::new("Collider_Mushroom_Right_3"),
         CavernObstacle,
-        Transform::from_xyz(5.3, 0.65, -3.7),
+        Transform::from_xyz(5.0, 0.65, -3.8),
         RigidBody::Static,
         Collider::cylinder(0.28, 1.10),
     ));
