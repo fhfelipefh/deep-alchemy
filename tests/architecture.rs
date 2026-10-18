@@ -484,4 +484,35 @@ fn test_architecture_concept_art_fidelity_and_faceted_rocks_pipeline() {
     assert_eq!(magic, 0x46546C67, "faceted_rocks_kit.glb must be valid glTF binary");
 }
 
+#[test]
+fn test_architecture_zero_vision_loop_and_telemetry_pipeline() {
+    // 1. Scene Spec JSON (Cached prompt token saver)
+    let spec_path = Path::new("assets/data/scene_spec.json");
+    assert!(spec_path.exists(), "assets/data/scene_spec.json must exist");
+    let spec_content = fs::read_to_string(spec_path).expect("Failed to read scene_spec.json");
+    assert!(spec_content.contains("starting_waterfall_grotto"), "Spec must define starting_waterfall_grotto");
+    assert!(spec_content.contains("unobstructed_central_waterfall_corridor_x"), "Spec must define central corridor");
+
+    // 2. Vision Squeezer Middleware
+    let squeezer_path = Path::new("scripts/vision_squeezer.py");
+    assert!(squeezer_path.exists(), "scripts/vision_squeezer.py must exist");
+    let squeezer_code = fs::read_to_string(squeezer_path).expect("Failed to read vision_squeezer.py");
+    assert!(squeezer_code.contains("squeeze_screenshot"), "Squeezer must define squeeze_screenshot");
+    assert!(squeezer_code.contains("generate_roi_crops"), "Squeezer must support ROI crops");
+
+    // 3. Engine Telemetry Dumper
+    let telemetry_path = Path::new("src/dungeon/telemetry.rs");
+    assert!(telemetry_path.exists(), "src/dungeon/telemetry.rs must exist");
+    let tele_code = fs::read_to_string(telemetry_path).expect("Failed to read telemetry.rs");
+    assert!(tele_code.contains("dump_camera_frustum_telemetry"), "Telemetry must define dump_camera_frustum_telemetry");
+
+    // 4. Frustum Dump JSON presence
+    let dump_path = Path::new("debug_output/camera_frustum_dump.json");
+    assert!(dump_path.exists(), "debug_output/camera_frustum_dump.json must exist");
+    let dump_content = fs::read_to_string(dump_path).expect("Failed to read camera_frustum_dump.json");
+    assert!(dump_content.contains("camera"), "Dump must contain camera position");
+    assert!(dump_content.contains("entities"), "Dump must contain visible entities");
+}
+
+
 

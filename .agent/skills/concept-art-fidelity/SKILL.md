@@ -77,4 +77,22 @@ Uma tarefa de arte de cenário só é dada como concluída após:
    - Densidade de bordas Sobel $\ge 0.80\%$
    - Pixels cinza monótono $\le 30.0\%$
    - Pixels bioluminescentes vibrantes $\ge 15.0\%$
-3. Visualização da imagem capturada (`view_file` em `frame_check.png`) atestando a harmonia estética com a concept art.
+3. Visualização da imagem capturada (`view_file` em `frame_check.png` ou `frame_check_squeezed.png`) atestando a harmonia estética com a concept art.
+
+---
+
+## Técnica 5: Protocolo "Zero-Vision Loop First" e Redução de Tokens de Visão
+
+Para economizar 75% a 90% dos tokens de visão e acelerar iterações de arte:
+
+1. **Consulta via `scene_spec.json` (Zero-Vision):**
+   - Em vez de reenviar imagens de referência a cada turno, consulte [`assets/data/scene_spec.json`](file:///C:/Users/fhgam/Documents/GitHub/gamelab/assets/data/scene_spec.json). Ele contém todas as paletas Hex, limites de câmera e especificações espaciais cacheadas pelo modelo com custo mínimo.
+2. **Diagnóstico via Telemetria de Frustum (`camera_frustum_dump.json`):**
+   - Durante `--screenshot-test`, a engine exporta [`debug_output/camera_frustum_dump.json`](file:///C:/Users/fhgam/Documents/GitHub/gamelab/debug_output/camera_frustum_dump.json).
+   - O agente lê a posição das entidades, distâncias e diagnósticos de oclusão em **texto puro (<100 tokens)** sem gastar visão.
+3. **Middleware Vision Squeezer:**
+   - Quando a inspeção visual for necessária, execute `python scripts/vision_squeezer.py debug_output/frame_check.png`.
+   - O script alinha a imagem aos tile boundaries do modelo (`640x352` ou crops de 512px em `debug_output/crops/`), reduzindo o custo de 2.200 para ~160-340 tokens por verificação.
+4. **Automação de Viewport com Blender MCP:**
+   - Utilize as ferramentas do servidor MCP `blender` (`get_scene_info`, `execute_blender_code`, `generate_3d`) para inspecionar nós de cena e gerar/importar geometrias sem codificar tentativas no escuro.
+

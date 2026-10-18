@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "engine": "Bevy 0.15 (Rust Desktop)",
+  "description": "Zero-Vision Scene Specification for Deep Alchemy - replaces repeated image re-sending with cached JSON parameters",
+  "scenes": {
+    "starting_waterfall_grotto": {
+      "name": "Gruta da Cachoeira Inicial",
+      "reference_artwork": "assets/artworks/concept_waterfall_grotto.png",
+      "palette": {
+        "water_deep": "#05385c",
+        "water_shallow": "#1cd2ea",
+        "water_foam": "#ebfbff",
+        "shroom_left_cyan": "#12d8cc",
+        "shroom_right_turquoise": "#04e0e6",
+        "velvet_moss": "#246e34",
+        "beaten_earth": "#261408",
+        "rustic_wood": "#362215",
+        "rock_shadow": "#11171f",
+        "rock_lit": "#223038",
+        "ambient_sky_beam": "#b8eaff"
+      },
+      "camera_invariants": {
+        "player_eye_position": [0.0, 1.75, 0.0],
+        "look_target": [0.0, 1.20, -8.50],
+        "vertical_fov_deg": 55.0,
+        "unobstructed_central_waterfall_corridor_x": [-2.8, 2.8],
+        "visible_vertical_height_at_distance_8m": [0.0, 6.5]
+      },
+      "depth_layers": {
+        "foreground": {
+          "z_range": [-1.0, -3.8],
+          "path_width_x": [-2.4, 2.4],
+          "path_material": "beaten_earth",
+          "bench": {
+            "position": [2.65, 0.05, -2.10],
+            "rotation_y_deg": -28.6,
+            "moss_cushions": true
+          },
+          "border_elements": ["river_pebbles", "angular_transition_rocks"]
+        },
+        "midground": {
+          "z_range": [-4.0, -9.0],
+          "lagoon": {
+            "center": [0.0, 0.05, -8.5],
+            "radius": 5.2,
+            "rim_elevation": 0.08,
+            "concentric_ripple_rings": [1.8, 3.2, 4.4]
+          },
+          "waterfall": {
+            "center_x": 0.0,
+            "width_x": 4.2,
+            "height_y": 18.0,
+            "z_plane": -8.5,
+            "impact_foam_billows": true,
+            "ink_line_outline": false
+          }
+        },
+        "background_and_ceiling": {
+          "z_range": [-9.0, -12.0],
+          "amphitheater_tiers": {
+            "left_x_range": [-6.0, -2.4],
+            "right_x_range": [2.4, 6.0],
+            "top_surface_moss": true,
+            "lateral_vines": true
+          },
+          "ceiling_arch": {
+            "visible_y_range": [4.0, 6.5],
+            "lateral_stalactites": {
+              "left_x_range": [-5.5, -3.4],
+              "right_x_range": [3.4, 5.5],
+              "forbidden_central_x_range": [-3.2, 3.2],
+              "material": "rock_shadow"
+            }
+          }
+        }
+      },
+      "validation_criteria": {
+        "sobel_edge_density_min_percent": 0.80,
+        "monotone_gray_max_percent": 30.0,
+        "vibrant_bioluminescent_min_percent": 15.0
+      }
+    },
+    "cave_exit_forest": {
+      "name": "Saída da Caverna para a Floresta",
+      "reference_artwork": "assets/artworks/concept_cave_exit.png",
+      "palette": {
+        "foliage_green": "#4a7c32",
+        "sunlight_beam": "#d4e89c",
+        "rock_mouth_arch": "#1a2228",
+        "stream_water": "#38b0d4"
+      }
+    },
+    "deep_cavern_tunnels": {
+      "name": "Túneis e Galerias da Caverna Profunda",
+      "reference_artwork": "assets/artworks/concept_deep_cavern.png",
+      "palette": {
+        "deep_shadow": "#0a1c24",
+        "wall_spore_cyan": "#18f0d8",
+        "stone_bridge_gray": "#2e4450"
+      }
+    }
+  }
+}

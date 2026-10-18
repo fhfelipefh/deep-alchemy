@@ -47,9 +47,9 @@ fn main() {
         .add_plugins(MenuPlugin);
 
     if is_screenshot_test {
-        info!(">>> [GATE 4] Running in --screenshot-test mode: capturing frame 30 to ./debug_output/frame_check.png");
+        info!(">>> [GATE 4] Running in --screenshot-test mode: capturing frame 20 and dumping telemetry");
         app.add_systems(Startup, switch_to_ingame_for_screenshot_test)
-            .add_systems(Update, handle_screenshot_test_lifecycle);
+            .add_systems(Update, (handle_screenshot_test_lifecycle, deep_alchemy::dungeon::dump_camera_frustum_telemetry));
     } else if is_menu_screenshot {
         info!(">>> [MENU SCREENSHOT] Capturing main menu frame to ./debug_output/menu_check.png");
         app.add_systems(Update, handle_menu_screenshot_lifecycle);
