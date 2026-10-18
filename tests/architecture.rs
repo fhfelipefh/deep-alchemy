@@ -438,4 +438,50 @@ fn test_architecture_procedural_dungeon_wfc_dual_grid_integrity() {
     assert!(dungeon_kit_path.exists(), "assets/models/dungeon_kit.glb must exist");
 }
 
+#[test]
+fn test_architecture_concept_art_fidelity_and_faceted_rocks_pipeline() {
+    // 1. Technical Artist Skill definition
+    let skill_path = Path::new(".agent/skills/concept-art-fidelity/SKILL.md");
+    assert!(skill_path.exists(), ".agent/skills/concept-art-fidelity/SKILL.md must exist");
+    let skill_content = fs::read_to_string(skill_path).expect("Failed to read concept-art-fidelity skill");
+    assert!(skill_content.contains("Visual Diff"), "Skill must define Visual Diff loop");
+    assert!(skill_content.contains("World-Space Normal"), "Skill must define World-Space Normal top moss blending");
+    assert!(skill_content.contains("Extração de Blueprint"), "Skill must define Blueprint Extraction step");
+    assert!(skill_content.contains("Definition of Done"), "Skill must define Definition of Done");
+
+    // 2. Visual Diff & Blueprint Extractor script
+    let blueprint_script = Path::new("scripts/visual_diff_blueprint.py");
+    assert!(blueprint_script.exists(), "scripts/visual_diff_blueprint.py must exist");
+    let script_code = fs::read_to_string(blueprint_script).expect("Failed to read visual_diff_blueprint.py");
+    assert!(script_code.contains("analyze_image_regions"), "Script must analyze depth layers");
+    assert!(script_code.contains("compute_sobel_density"), "Script must measure ink lines density");
+
+    // 3. World-Space Normal Top-Moss WGSL Shader & Render Material
+    let moss_shader_path = Path::new("assets/shaders/cel_shaded_world_moss.wgsl");
+    assert!(moss_shader_path.exists(), "assets/shaders/cel_shaded_world_moss.wgsl must exist");
+    let shader_code = fs::read_to_string(moss_shader_path).expect("Failed to read moss shader");
+    assert!(shader_code.contains("ny_threshold"), "Shader must implement normal.y threshold");
+    assert!(shader_code.contains("smoothstep"), "Shader must blend moss smoothly");
+    assert!(shader_code.contains("toon_bands"), "Shader must implement stepped toon lighting");
+
+    let render_code = fs::read_to_string("src/render/mod.rs").expect("Failed to read render mod.rs");
+    assert!(render_code.contains("CelShadedMossMaterial"), "Render module must register CelShadedMossMaterial");
+
+    // 4. Procedural Faceted Rocks Generator & GLB Kit
+    let rock_gen_script = Path::new("scripts/generate_faceted_rocks.py");
+    assert!(rock_gen_script.exists(), "scripts/generate_faceted_rocks.py must exist");
+    let gen_code = fs::read_to_string(rock_gen_script).expect("Failed to read generate_faceted_rocks.py");
+    assert!(gen_code.contains("generate_angular_rock"), "Rock generator must define generate_angular_rock");
+    assert!(gen_code.contains("generate_rock_cluster"), "Rock generator must define generate_rock_cluster");
+    assert!(gen_code.contains("generate_transition_boulders"), "Rock generator must define generate_transition_boulders");
+    assert!(gen_code.contains("poly.normal.z > 0.60"), "Rock generator must assign top moss when normal.z > 0.60");
+
+    let rock_glb_path = Path::new("assets/models/faceted_rocks_kit.glb");
+    assert!(rock_glb_path.exists(), "assets/models/faceted_rocks_kit.glb must exist");
+    let glb_bytes = fs::read(rock_glb_path).expect("Failed to read faceted_rocks_kit.glb");
+    assert!(glb_bytes.len() > 20_000, "Rock kit GLB must be substantial (>20KB)");
+    let magic = u32::from_le_bytes([glb_bytes[0], glb_bytes[1], glb_bytes[2], glb_bytes[3]]);
+    assert_eq!(magic, 0x46546C67, "faceted_rocks_kit.glb must be valid glTF binary");
+}
+
 
