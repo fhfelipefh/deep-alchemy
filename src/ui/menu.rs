@@ -128,6 +128,9 @@ pub struct FovValueText;
 pub struct VolumeValueText;
 
 #[derive(Component)]
+pub struct LargeMenuButton;
+
+#[derive(Component)]
 pub struct MenuSpore {
     pub speed: f32,
     pub sway_phase: f32,
@@ -312,12 +315,13 @@ pub fn setup_menu_ui(
             // -------------------------------------------------------------
             root.spawn((
                 Node {
-                    width: Val::Px(520.0),
+                    width: Val::Px(540.0),
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
-                    padding: UiRect::axes(Val::Px(28.0), Val::Px(24.0)),
+                    padding: UiRect::axes(Val::Px(24.0), Val::Px(24.0)),
                     border: UiRect::all(Val::Px(2.0)),
                     row_gap: Val::Px(16.0),
+                    overflow: Overflow::clip(),
                     ..default()
                 },
                 BorderRadius::all(Val::Px(12.0)),
@@ -650,6 +654,7 @@ fn spawn_menu_button<T: Component>(
 ) {
     let mut btn = parent.spawn((
         Button,
+        LargeMenuButton,
         action,
         Node {
             width: Val::Px(360.0),
@@ -691,10 +696,10 @@ fn spawn_settings_row<F: FnOnce(&mut ChildBuilder)>(
     parent
         .spawn((
             Node {
-                width: Val::Percent(95.0),
+                width: Val::Percent(100.0),
                 justify_content: JustifyContent::SpaceBetween,
                 align_items: AlignItems::Center,
-                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
                 ..default()
             },
         ))
@@ -707,7 +712,11 @@ fn spawn_settings_row<F: FnOnce(&mut ChildBuilder)>(
                     ..default()
                 },
                 TextColor(COLOR_TEXT_LIGHT),
-                Node::default(),
+                Node {
+                    width: Val::Px(190.0),
+                    flex_shrink: 0.0,
+                    ..default()
+                },
             ));
             control_builder(row);
         });
@@ -728,6 +737,8 @@ fn spawn_stepper_row<T: Component>(
             Node {
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(8.0),
+                width: Val::Px(240.0),
+                justify_content: JustifyContent::FlexEnd,
                 ..default()
             },
         ))
@@ -744,6 +755,7 @@ fn spawn_stepper_row<T: Component>(
                     border: UiRect::all(Val::Px(1.0)),
                     ..default()
                 },
+                BorderRadius::all(Val::Px(4.0)),
                 BackgroundColor(COLOR_BTN_NORMAL),
                 BorderColor(COLOR_BORDER_MUTED),
             ))
@@ -770,6 +782,7 @@ fn spawn_stepper_row<T: Component>(
                     border: UiRect::all(Val::Px(1.0)),
                     ..default()
                 },
+                BorderRadius::all(Val::Px(4.0)),
                 BackgroundColor(Color::srgba(0.04, 0.05, 0.08, 0.8)),
                 BorderColor(COLOR_BORDER_MUTED),
             ))
@@ -799,6 +812,7 @@ fn spawn_stepper_row<T: Component>(
                     border: UiRect::all(Val::Px(1.0)),
                     ..default()
                 },
+                BorderRadius::all(Val::Px(4.0)),
                 BackgroundColor(COLOR_BTN_NORMAL),
                 BorderColor(COLOR_BORDER_MUTED),
             ))
@@ -864,6 +878,7 @@ pub fn handle_menu_button_interactions(
             &mut BorderColor,
             Option<&mut Node>,
             Option<&Children>,
+            Has<LargeMenuButton>,
         ),
         (Changed<Interaction>, With<Button>),
     >,
@@ -873,13 +888,15 @@ pub fn handle_menu_button_interactions(
     mut settings: ResMut<GameSettings>,
     mut exit_events: EventWriter<AppExit>,
 ) {
-    for (interaction, action, mut bg, mut border, node_opt, children_opt) in interaction_query.iter_mut() {
+    for (interaction, action, mut bg, mut border, mut node_opt, children_opt, is_large) in interaction_query.iter_mut() {
         match *interaction {
             Interaction::Pressed => {
                 *bg = BackgroundColor(COLOR_BTN_PRESSED);
                 *border = BorderColor(COLOR_BTN_BORDER_PRESSED);
-                if let Some(mut node) = node_opt {
-                    node.width = Val::Px(356.0);
+                if is_large {
+                    if let Some(ref mut node) = node_opt {
+                        node.width = Val::Px(356.0);
+                    }
                 }
 
                 match action {
@@ -922,8 +939,10 @@ pub fn handle_menu_button_interactions(
             Interaction::Hovered => {
                 *bg = BackgroundColor(COLOR_BTN_HOVER);
                 *border = BorderColor(COLOR_BTN_BORDER_HOVER);
-                if let Some(mut node) = node_opt {
-                    node.width = Val::Px(376.0);
+                if is_large {
+                    if let Some(ref mut node) = node_opt {
+                        node.width = Val::Px(376.0);
+                    }
                 }
                 if let Some(children) = children_opt {
                     for child in children.iter() {
@@ -937,8 +956,10 @@ pub fn handle_menu_button_interactions(
             Interaction::None => {
                 *bg = BackgroundColor(COLOR_BTN_NORMAL);
                 *border = BorderColor(COLOR_BTN_BORDER_NORMAL);
-                if let Some(mut node) = node_opt {
-                    node.width = Val::Px(360.0);
+                if is_large {
+                    if let Some(ref mut node) = node_opt {
+                        node.width = Val::Px(360.0);
+                    }
                 }
                 if let Some(children) = children_opt {
                     for child in children.iter() {

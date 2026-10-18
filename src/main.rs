@@ -18,6 +18,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let is_screenshot_test = args.iter().any(|arg| arg == "--screenshot-test" || arg == "--validate-frame");
     let is_menu_screenshot = args.iter().any(|arg| arg == "--screenshot-menu");
+    let is_settings_screenshot = args.iter().any(|arg| arg == "--screenshot-settings");
 
     let mut app = App::new();
 
@@ -53,6 +54,9 @@ fn main() {
     } else if is_menu_screenshot {
         info!(">>> [MENU SCREENSHOT] Capturing main menu frame to ./debug_output/menu_check.png");
         app.add_systems(Update, handle_menu_screenshot_lifecycle);
+    } else if is_settings_screenshot {
+        info!(">>> [SETTINGS SCREENSHOT] Capturing settings subview frame to ./debug_output/settings_check.png");
+        app.add_systems(Update, handle_settings_screenshot_lifecycle);
     }
 
     app.run();
@@ -96,6 +100,28 @@ fn handle_menu_screenshot_lifecycle(
         info!(">>> [MENU SCREENSHOT] Triggered primary_window screenshot at frame 20 -> debug_output/menu_check.png");
     } else if *counter >= 50 {
         info!(">>> [MENU SCREENSHOT] Frame 50 reached, gracefully exiting.");
+        app_exit.send(AppExit::Success);
+    }
+}
+
+fn handle_settings_screenshot_lifecycle(
+    mut commands: Commands,
+    mut counter: Local<u32>,
+    mut app_exit: EventWriter<AppExit>,
+    mut nav: ResMut<deep_alchemy::ui::menu::MenuNavigation>,
+) {
+    *counter += 1;
+    if *counter == 5 {
+        nav.current_view = deep_alchemy::ui::menu::MenuView::Settings;
+    }
+    if *counter == 25 {
+        std::fs::create_dir_all("debug_output").ok();
+        commands
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk("debug_output/settings_check.png"));
+        info!(">>> [SETTINGS SCREENSHOT] Triggered primary_window screenshot at frame 25 -> debug_output/settings_check.png");
+    } else if *counter >= 50 {
+        info!(">>> [SETTINGS SCREENSHOT] Frame 50 reached, gracefully exiting.");
         app_exit.send(AppExit::Success);
     }
 }
