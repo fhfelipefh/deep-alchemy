@@ -41,3 +41,37 @@ Você é o Engenheiro de Jogos Principal deste projeto. O jogo é um RPG de expl
 * **Origem dos Assets:** Todos os modelos 3D e texturas devem ser autorais criados via Blender / Workbench.
 * **Escala do Mundo:** Altura do jogador = 1,80m. A saída do labirinto procedural nunca pode estar a menos de 500m de distância a pé da praia de início.
 * **Cutscene Inicial 2D:** Exibe o alquimista na pirâmide pegando a estátua de ouro, o chão abrindo, caindo pelo rio subterrâneo até acordar na praia da caverna. Atua como máscara de carregamento.
+
+---
+
+# PROTOCOLO ANTI-PLACEHOLDER E VALIDAÇÃO OBRIGATÓRIA (DEFINITION OF DONE)
+
+É ESTRITAMENTE PROIBIDO declarar o jogo ou qualquer feature como "pronta", "completa" ou "funcional" apenas porque o código compilou. Você NUNCA deve entregar cenas de "programmer art" (cubos/cilindros cinzas sem textura, iluminação padrão de plástico ou UI feita de retângulos chapados sem design).
+
+Antes de encerrar sua resposta após escrever código, você é OBRIGADO a cumprir e validar os 4 Gates abaixo:
+
+## GATE 1: Proibição de Primitivas Visuais e Shaders Padrão
+1. **Proibido Primitivas para Cenário/Props:** NUNCA use `Cuboid`, `Cylinder`, `Sphere` ou `Capsule` nativos com materiais de cor sólida (`StandardMaterial` cinza/branco) para representar rochas, baús, cogumelos ou vapor. 
+   - Partículas (vapor/esporos) DEVEM usar texturas com canal Alpha/Ruído e transparência suave (Soft Particles / Billboards), nunca esferas sólidas cinzas.
+   - Cavernas são ambientes FECHADOS: toda cena subterrânea DEVE possuir malha de Teto, Paredes laterais e Chão com texturas/shaders aplicados. É proibido deixar o fundo de cor sólida (`ClearColor`) visível como "céu" dentro da caverna.
+2. **Proibido Sombreamento Gouraud/PBR Padrão:** Todo objeto 3D na cena DEVE passar pelo `CelShader` (quantização de luz em faixas discretas) e pelo pós-processamento de `EdgeDetection` (contornos pretos). O sombreamento degradê cinza padrão é considerado um BUG CRÍTICO.
+
+## GATE 2: Checklist Mínimo de Locomoção e Gameplay (Locomotion Test)
+O controlador em Primeira Pessoa (True First-Person) só é considerado válido se possuir e passar em testes unitários/integração para:
+- [ ] Caminhada (`WASD`) com aceleração/desaceleração física.
+- [ ] **Corrida / Sprint (`Left Shift`)**: Deve aumentar a velocidade base em pelo menos 1.5x, alterar sutilmente o FOV da câmera (+5 a +8 graus), intensificar o *Head-Bob* e consumir a barra de Stamina (verde) continuamente.
+- [ ] Regeneração de Stamina após parar de correr por X segundos.
+- [ ] Pulo (`Space`) com checagem real de chão (*Ground Raycast/ShapeCast*) e gravidade customizada (sem flutuar).
+- [ ] Agachar (`Ctrl`) reduzindo a altura do colisor e a velocidade.
+
+## GATE 3: UI Fiel ao Concept
+- É PROIBIDO criar barras de vida/stamina usando apenas retângulos vermelhos e verdes chapados nos cantos da tela.
+- A UI deve seguir estritamente o layout definido: Indicadores de Vida no topo esquerdo (corações/ícones estilizados) e Hotbar de 5 slots centralizada na base da tela com bordas, ícones de poções e destaque no slot ativo (teclas 1 a 5).
+
+## GATE 4: Auto-Verificação Visual (Screenshot Gate)
+1. O código deve suportar a flag de linha de comando `--screenshot-test`, que renderiza 30 frames da câmera principal, salva `./debug_output/frame_check.png` e encerra o processo.
+2. Sempre que alterar gráficos, cenário ou UI, você DEVE executar o binário com `--screenshot-test`, inspecionar o arquivo `./debug_output/frame_check.png` gerado e verificar:
+   - Existem contornos pretos nítidos nas bordas da geometria?
+   - Há emissão de luz (Bloom) ciano/verde nos cogumelos e poções?
+   - O fundo cinza vazio da janela está 100% coberto pela geometria do teto/paredes da caverna?
+   Se a resposta para qualquer item for "Não", NÃO entregue a tarefa ao usuário. Corrija o shader/cena e rode o teste novamente.

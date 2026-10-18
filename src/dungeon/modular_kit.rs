@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 use avian3d::prelude::*;
+use bevy::render::mesh::{Indices, PrimitiveTopology};
+use bevy::render::render_asset::RenderAssetUsages;
 use crate::{
     alchemy::{AlchemicalEffectKind, AlchemicalIngredient, ThermalGeyser},
     player::interaction::Interactable,
@@ -9,11 +11,24 @@ use crate::{
     },
 };
 
+#[derive(Component)]
+pub struct WaterfallMarker;
+
+#[derive(Component, Clone)]
+pub struct WaterfallBaseMesh {
+    pub base_positions: Vec<[f32; 3]>,
+    pub base_normals: Vec<[f32; 3]>,
+}
+
 pub struct DungeonPlugin;
 
 impl Plugin for DungeonPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_cavern_world);
+        app.add_systems(
+            Startup,
+            (setup_cavern_world, crate::dungeon::generator::spawn_procedural_dungeon),
+        )
+        .add_systems(Update, animate_waterfall_mesh);
     }
 }
 
@@ -21,163 +36,204 @@ pub fn setup_cavern_world(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     mut water_materials: ResMut<Assets<WaterMaterial>>,
 ) {
-    // 1. Atmosphere & Lighting (Deep Cel-Shaded Contrast)
+    // -------------------------------------------------------------
+    // 1. ATMOSPHERE & LIGHTING (RICH NIGHT BLUE - NO PITCH BLACK #000000)
+    // -------------------------------------------------------------
     commands.insert_resource(AmbientLight {
-        color: Color::srgb(0.08, 0.12, 0.22),
-        brightness: 120.0,
+        color: Color::srgb(0.09, 0.16, 0.28), // Deep fantasy night blue
+        brightness: 1350.0,
     });
 
-    // Sun shaft / Cave skylight
+    // Sun shaft / Cave ceiling skylight streaming over the waterfall
     commands.spawn((
         DirectionalLight {
-            color: Color::srgb(0.75, 0.85, 1.0),
-            illuminance: 3200.0,
+            color: Color::srgb(0.85, 0.95, 1.0),
+            illuminance: 22000.0,
             shadows_enabled: true,
             ..default()
         },
-        Transform::from_xyz(10.0, 25.0, 15.0).looking_at(Vec3::new(0.0, 0.0, 0.0), Vec3::Y),
+        Transform::from_xyz(2.0, 24.0, -4.0).looking_at(Vec3::new(0.0, 1.0, -8.5), Vec3::Y),
     ));
 
-    // Warm amber glow from thermal vents
+    // --- Bioluminescent PointLights (Lateral Margins, Waterfall & Amphitheater) ---
+    // Left Giant Mushroom cap light (Lateral margin: X = -5.4, Y = 2.8, Z = -3.6)
     commands.spawn((
         PointLight {
-            color: Color::srgb(1.0, 0.55, 0.15),
-            intensity: 8000.0,
-            range: 18.0,
+            color: Color::srgb(0.17, 0.95, 0.88), // Electric turquoise #2be8d8
+            intensity: 42000.0,
+            range: 14.0,
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(-6.0, 2.5, 2.0),
+        Transform::from_xyz(-5.4, 2.8, -3.6),
     ));
 
-    // Cyan bioluminescent light near player spawn
+    // Right Giant Mushroom cap light (Lateral margin: X = 5.4, Y = 2.8, Z = -3.6)
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.1, 0.9, 1.0),
-            intensity: 6500.0,
-            range: 15.0,
+            color: Color::srgb(0.17, 0.95, 0.88),
+            intensity: 42000.0,
+            range: 14.0,
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(3.0, 3.0, -3.0),
+        Transform::from_xyz(5.4, 2.8, -3.6),
     ));
 
-    // 2. Cavern Kit Architecture (.glb)
+    // Waterfall luminous foam and spray bounce light
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.35, 0.90, 1.0),
+            intensity: 55000.0,
+            range: 20.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 1.8, -10.2),
+    ));
+
+    // Upper waterfall cleft / skylight glow
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.40, 0.95, 1.0),
+            intensity: 65000.0,
+            range: 26.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 13.5, -11.2),
+    ));
+
+    // Back cliff amphitheater fill light (blue slate - eliminates pitch black void)
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.24, 0.38, 0.55),
+            intensity: 85000.0,
+            range: 35.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 8.0, -11.5),
+    ));
+
+    // Overhead ceiling arch rim light (illuminates forward stalactites)
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.25, 0.35, 0.50),
+            intensity: 40000.0,
+            range: 22.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 8.5, -2.5),
+    ));
+
+    // Bioluminescent pool cyan glow from crystalline waters
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.18, 0.92, 0.98),
+            intensity: 45000.0,
+            range: 22.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 1.8, -8.5),
+    ));
+
+    // -------------------------------------------------------------
+    // 2. MASTERWORK CAVERN KIT SCENE (.glb)
+    // -------------------------------------------------------------
     commands.spawn((
         SceneRoot(asset_server.load("models/cavern_kit.glb#Scene0")),
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));
 
-    // Cavern Floor with Physics Collider
+    // Static physics ground plane for collision
     commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(80.0, 80.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.14, 0.15, 0.18),
-            perceptual_roughness: 0.9,
-            ..default()
-        })),
         Transform::from_xyz(0.0, 0.0, 0.0),
         RigidBody::Static,
         Collider::half_space(Vec3::Y),
     ));
 
-    // 3. THE GRAND WATERFALL BEHIND PLAYER (Spawn is at 0, 1.2, 0 looking forward +Z)
-    // Waterfall is at Z = -11.0 falling from Y = 16.0 down to Y = 0.5
-    let waterfall_height = 16.0;
-    let waterfall_width = 8.0;
-
-    // A. Vertical Waterfall Curtain (Rushing cascading foam)
+    // -------------------------------------------------------------
+    // 3. CEL-SHADED DYNAMIC WATERFALL CURTAIN & LAKE POOL
+    // -------------------------------------------------------------
+    // Volumetric curved convex waterfall curtain (flattened half-pipe 48x32 with vertex wave undulation)
+    let (waterfall_mesh, waterfall_base) = create_waterfall_mesh(32, 48);
     commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(waterfall_width, waterfall_height))),
+        Mesh3d(meshes.add(waterfall_mesh)),
         MeshMaterial3d(water_materials.add(WaterMaterial {
-            base_color: LinearRgba::new(0.4, 0.85, 1.0, 0.92),
-            deep_color: LinearRgba::new(0.1, 0.5, 0.8, 0.95),
-            foam_color: LinearRgba::new(1.0, 1.0, 1.0, 1.0),
-            params: Vec4::new(0.0, 3.5, 0.1, 0.9), // Higher speed for waterfall rush!
+            base_color: LinearRgba::new(0.16, 0.88, 1.0, 0.98), // Bright radiant cyan
+            deep_color: LinearRgba::new(0.03, 0.28, 0.42, 0.98), // Deep cyan
+            foam_color: LinearRgba::new(1.0, 1.0, 1.0, 1.0),     // Solid white foam
+            params: Vec4::new(0.0, 1.8, 1.0, 3.2), // z = 1.0 (waterfall mode), w = 3.2 (HDR bloom)
         })),
-        Transform::from_xyz(0.0, 8.0, -11.2)
-            .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
+        WaterfallMarker,
+        waterfall_base,
+        Transform::from_xyz(0.0, 0.0, 0.0),
     ));
 
-    // B. Waterfall Splash / Mist Particle Emitters at base (Z = -11.0, Y = 0.5)
-    for x_off in [-2.5, 0.0, 2.5] {
+    // Wide circular lake water disk (radius = 5.85m to seamlessly enclose waterfall plunge basin & travertine rim)
+    commands.spawn((
+        Mesh3d(meshes.add(create_water_disk_mesh(5.85, 64))),
+        MeshMaterial3d(water_materials.add(WaterMaterial {
+            base_color: LinearRgba::new(0.10, 0.82, 0.92, 0.92), // Radiant crystalline cyan
+            deep_color: LinearRgba::new(0.02, 0.22, 0.32, 0.98), // Deep turquoise
+            foam_color: LinearRgba::new(1.0, 1.0, 1.0, 1.0),     // Solid white foam
+            params: Vec4::new(0.0, 1.2, 0.0, 2.8), // z = 0.0 (lake mode), w = 2.8 (HDR bloom)
+        })),
+        Transform::from_xyz(0.0, 0.18, -8.5),
+    ));
+
+    // -------------------------------------------------------------
+    // 4. WATERFALL IMPACT SPRAY & AMBIENT STEAM/FOAM VAPOR
+    // -------------------------------------------------------------
+    // Wide impact mist / foam emitters where wide waterfall hits lake (spanning X in [-3.6, 3.6])
+    for x_off in [-3.6, -2.4, -1.2, 0.0, 1.2, 2.4, 3.6] {
         commands.spawn((
-            Transform::from_xyz(x_off, 0.6, -11.0),
+            Transform::from_xyz(x_off, 0.28, -8.5),
             ParticleEmitter {
                 spawn_timer: 0.0,
-                spawn_rate: 0.08,
+                spawn_rate: 0.035,
                 particle_type: ParticleType::WaterSplash,
+            },
+        ));
+        commands.spawn((
+            Transform::from_xyz(x_off * 0.8, 0.35, -8.7),
+            ParticleEmitter {
+                spawn_timer: 0.0,
+                spawn_rate: 0.06,
+                particle_type: ParticleType::Steam,
             },
         ));
     }
 
-    // C. Stream River Lake flowing from the waterfall past player into the cavern
-    // The river stretches from Z = -12.0 to Z = 25.0
+    // Lateral mushroom spore emitters
     commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(14.0, 45.0))),
-        MeshMaterial3d(water_materials.add(WaterMaterial {
-            base_color: LinearRgba::new(0.05, 0.72, 0.82, 0.85),
-            deep_color: LinearRgba::new(0.01, 0.25, 0.40, 0.95),
-            foam_color: LinearRgba::new(0.95, 0.98, 1.0, 0.98),
-            params: Vec4::new(0.0, 1.2, 0.2, 0.8),
-        })),
-        Transform::from_xyz(0.0, 0.22, 5.0),
-    ));
-
-    // 4. Thermal Rim Pools & Geysers (At X = -6.0, Z = 0.0 to 6.0)
-    commands.spawn((
-        Transform::from_xyz(-6.0, 0.6, 2.0),
-        ThermalGeyser {
-            eruption_timer: 0.0,
-            eruption_interval: 3.0,
-            is_erupting: true,
-            heat_radius: 5.5,
-        },
-        ParticleEmitter {
-            spawn_timer: 0.0,
-            spawn_rate: 0.07,
-            particle_type: ParticleType::Steam,
-        },
-    ));
-
-    // Second thermal vent
-    commands.spawn((
-        Transform::from_xyz(-7.5, 0.6, 5.5),
-        ThermalGeyser {
-            eruption_timer: 1.5,
-            eruption_interval: 4.0,
-            is_erupting: false,
-            heat_radius: 4.5,
-        },
+        Transform::from_xyz(-5.4, 2.5, -3.6),
         ParticleEmitter {
             spawn_timer: 0.0,
             spawn_rate: 0.12,
-            particle_type: ParticleType::Steam,
+            particle_type: ParticleType::GlowSpore,
         },
     ));
-
-    // 5. Interactive Alchemy Campsite (Right of player: X = 2.5, Z = 2.0)
     commands.spawn((
-        SceneRoot(asset_server.load("models/alchemy_props.glb#Scene0")),
-        Transform::from_xyz(2.0, 0.0, 2.0),
-    ));
-
-    // Spore emitter around glowing mushroom
-    commands.spawn((
-        Transform::from_xyz(4.2, 0.8, 2.0),
+        Transform::from_xyz(5.4, 2.5, -3.6),
         ParticleEmitter {
             spawn_timer: 0.0,
-            spawn_rate: 0.18,
+            spawn_rate: 0.12,
             particle_type: ParticleType::GlowSpore,
         },
     ));
 
-    // Harvestable Cyan Glow Mushroom
+    // -------------------------------------------------------------
+    // 5. INTERACTIVE ALCHEMY INGREDIENTS & THERMAL GEYSERS
+    // -------------------------------------------------------------
+    // Harvestable Cyan Glow Mushroom (Left cluster)
     commands.spawn((
-        Interactable { label: "Cyan Glow Mushroom" },
+        Interactable { label: "Cyan Parasol Mushroom" },
         AlchemicalIngredient {
             id: "ing_cyan_spore".to_string(),
             name: "Glow Spore".to_string(),
@@ -185,39 +241,205 @@ pub fn setup_cavern_world(
             secondary_effect: AlchemicalEffectKind::Swiftness,
             harvested: false,
         },
-        Transform::from_xyz(4.2, 0.5, 2.0),
+        Transform::from_xyz(-4.8, 0.5, -3.2),
         GlobalTransform::default(),
         Collider::cylinder(0.4, 0.8),
     ));
 
-    // Collectible Potion Flasks
+    // Thermal Geyser at travertine terrace
     commands.spawn((
-        Interactable { label: "Potion of Swiftness" },
-        Transform::from_xyz(2.0, 0.4, 2.0),
-        GlobalTransform::default(),
-        RigidBody::Dynamic,
-        Collider::cylinder(0.15, 0.35),
+        Transform::from_xyz(-4.5, 0.5, -6.5),
+        ThermalGeyser {
+            eruption_timer: 0.0,
+            eruption_interval: 3.5,
+            is_erupting: true,
+            heat_radius: 5.0,
+        },
+        ParticleEmitter {
+            spawn_timer: 0.0,
+            spawn_rate: 0.08,
+            particle_type: ParticleType::Steam,
+        },
     ));
 
+    // Interactive Alchemy Props Bench
     commands.spawn((
-        Interactable { label: "Potion of Vitality" },
-        Transform::from_xyz(2.5, 0.4, 2.0),
-        GlobalTransform::default(),
-        RigidBody::Dynamic,
-        Collider::cylinder(0.15, 0.35),
+        SceneRoot(asset_server.load("models/alchemy_props.glb#Scene0")),
+        Transform::from_xyz(2.2, 0.0, 1.8),
     ));
 
-    info!("Deep Cavern Grotto initialized with Grand Waterfall, Thermal Geysers, and River Stream!");
+    info!("Masterwork Cel-Shaded Cavern Grotto initialized with Volumetric Waterfall, Organic Mushrooms, and Sobel Outlines!");
+}
+
+pub fn create_water_disk_mesh(radius: f32, segments: usize) -> Mesh {
+    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(segments + 2);
+    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(segments + 2);
+    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(segments + 2);
+    let mut indices: Vec<u32> = Vec::with_capacity(segments * 3);
+
+    // Center vertex
+    positions.push([0.0, 0.0, 0.0]);
+    normals.push([0.0, 1.0, 0.0]);
+    uvs.push([0.5, 0.5]);
+
+    for i in 0..=segments {
+        let angle = (i as f32 / segments as f32) * std::f32::consts::TAU;
+        let x = angle.cos() * radius;
+        let z = angle.sin() * radius;
+        positions.push([x, 0.0, z]);
+        normals.push([0.0, 1.0, 0.0]);
+        uvs.push([0.5 + 0.5 * angle.cos(), 0.5 + 0.5 * angle.sin()]);
+    }
+
+    for i in 1..=segments as u32 {
+        indices.push(0);
+        indices.push(i + 1);
+        indices.push(i);
+    }
+
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    );
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_indices(Indices::U32(indices));
+    mesh
+}
+
+pub fn create_waterfall_mesh(u_segs: usize, v_segs: usize) -> (Mesh, WaterfallBaseMesh) {
+    let num_verts = (u_segs + 1) * (v_segs + 1);
+    let mut positions = Vec::with_capacity(num_verts);
+    let mut normals = Vec::with_capacity(num_verts);
+    let mut uvs = Vec::with_capacity(num_verts);
+    let mut indices = Vec::with_capacity(u_segs * v_segs * 12);
+
+    let h_top = 17.5;
+    let h_bottom = 0.06;
+    let z_top = -10.8;
+    let z_bottom = -8.5;
+    let width_top = 4.2;
+    let width_bottom = 6.4;
+
+    for iv in 0..=v_segs {
+        let v_frac = iv as f32 / v_segs as f32;
+        let y_calc = h_bottom + (1.0 - v_frac) * (h_top - h_bottom);
+        // Arcs forward into the lake center at z = -8.5
+        let curr_z_center = z_top + v_frac.powf(1.4) * (z_bottom - z_top);
+        let curr_width = width_top + v_frac * (width_bottom - width_top);
+
+        for iu in 0..=u_segs {
+            let u_frac = iu as f32 / u_segs as f32;
+            let u_norm = (u_frac - 0.5) * 2.0; // [-1.0, 1.0]
+            let x = u_norm * (curr_width * 0.5);
+
+            // Convex forward curvature: half-pipe bulging toward +Z (viewer)
+            let convex_arc = (1.0 - u_norm * u_norm) * 0.52;
+            // Fluted vertical cascading ridges
+            let fluting = (u_norm * std::f32::consts::PI * 8.0).sin() * 0.08;
+            let z = curr_z_center + convex_arc + fluting;
+
+            let bottom_scallop = if iv == v_segs {
+                (u_frac * std::f32::consts::PI).sin() * 0.08
+            } else {
+                0.0
+            };
+            let y = y_calc - bottom_scallop;
+
+            positions.push([x, y, z]);
+
+            // Smooth outward facing normal
+            let nx = -u_norm * 0.45;
+            let ny = 0.15;
+            let nz = 1.0;
+            let len = (nx * nx + ny * ny + nz * nz).sqrt();
+            normals.push([nx / len, ny / len, nz / len]);
+
+            uvs.push([u_frac, v_frac]);
+        }
+    }
+
+    for iv in 0..v_segs as u32 {
+        for iu in 0..u_segs as u32 {
+            let row_stride = (u_segs + 1) as u32;
+            let v1 = iv * row_stride + iu;
+            let v2 = iv * row_stride + iu + 1;
+            let v3 = (iv + 1) * row_stride + iu + 1;
+            let v4 = (iv + 1) * row_stride + iu;
+
+            // Front face (facing +Z)
+            indices.push(v1);
+            indices.push(v4);
+            indices.push(v2);
+
+            indices.push(v2);
+            indices.push(v4);
+            indices.push(v3);
+
+            // Back face (double-sided visibility)
+            indices.push(v1);
+            indices.push(v2);
+            indices.push(v4);
+
+            indices.push(v2);
+            indices.push(v3);
+            indices.push(v4);
+        }
+    }
+
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    );
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions.clone());
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals.clone());
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_indices(Indices::U32(indices));
+
+    let base_mesh = WaterfallBaseMesh {
+        base_positions: positions,
+        base_normals: normals,
+    };
+
+    (mesh, base_mesh)
+}
+
+pub fn animate_waterfall_mesh(
+    time: Res<Time>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    query: Query<(&Mesh3d, &WaterfallBaseMesh), With<WaterfallMarker>>,
+) {
+    let t = time.elapsed_secs();
+    for (mesh_handle, base) in &query {
+        if let Some(mesh) = meshes.get_mut(&mesh_handle.0) {
+            let mut new_positions = Vec::with_capacity(base.base_positions.len());
+            for (pos, norm) in base.base_positions.iter().zip(base.base_normals.iter()) {
+                let wave = (pos[1] * 4.0 - t * 5.0).sin() * 0.05 + (pos[0] * 3.0 + t * 2.5).cos() * 0.025;
+                let displaced = [
+                    pos[0] + norm[0] * wave,
+                    pos[1] + norm[1] * wave * 0.5,
+                    pos[2] + norm[2] * wave,
+                ];
+                new_positions.push(displaced);
+            }
+            mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, new_positions);
+        }
+    }
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
 
     #[test]
     fn test_dungeon_plugin_build() {
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins);
+        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
+        app.init_asset::<Mesh>();
+        app.init_asset::<StandardMaterial>();
+        app.init_asset::<WaterMaterial>();
+        app.init_asset::<bevy::scene::Scene>();
         app.add_plugins(DungeonPlugin);
         assert!(app.is_plugin_added::<DungeonPlugin>());
     }
@@ -226,19 +448,53 @@ mod tests {
     fn test_setup_cavern_world_spawns_environment() {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
-        app.init_asset::<bevy::scene::Scene>();
         app.init_asset::<Mesh>();
         app.init_asset::<StandardMaterial>();
         app.init_asset::<WaterMaterial>();
+        app.init_asset::<bevy::scene::Scene>();
         app.add_systems(Startup, setup_cavern_world);
         app.update();
 
-        // Verify grand waterfall and river elements were spawned
-        assert!(app.world().resource::<AmbientLight>().brightness > 0.0);
-        let water_plane_count = app.world_mut().query::<&MeshMaterial3d<WaterMaterial>>().iter(app.world()).count();
-        assert!(water_plane_count >= 2, "Grand waterfall curtain and river stream must be spawned");
+        // Check PointLights spawned
+        let mut light_query = app.world_mut().query::<&PointLight>();
+        let light_count = light_query.iter(app.world()).count();
+        assert!(light_count >= 5, "Must spawn at least 5 point lights for bioluminescence and waterfall");
 
-        let geyser_count = app.world_mut().query::<&ThermalGeyser>().iter(app.world()).count();
-        assert_eq!(geyser_count, 2, "Thermal geysers must be spawned");
+        // Check ParticleEmitter spawned
+        let mut emitter_query = app.world_mut().query::<&ParticleEmitter>();
+        let emitter_count = emitter_query.iter(app.world()).count();
+        assert!(emitter_count >= 4, "Must spawn particle emitters for waterfall foam and mushroom spores");
+
+        // Check SceneRoot spawned for cavern kit and alchemy props
+        let mut scene_query = app.world_mut().query::<&SceneRoot>();
+        let scene_count = scene_query.iter(app.world()).count();
+        assert!(scene_count >= 2, "Must spawn cavern_kit and alchemy_props scenes");
+
+        // Check Waterfall spawned with WaterfallMarker
+        let mut waterfall_query = app.world_mut().query::<&WaterfallMarker>();
+        let waterfall_count = waterfall_query.iter(app.world()).count();
+        assert_eq!(waterfall_count, 1, "Must spawn dynamic waterfall entity");
+    }
+
+    #[test]
+    fn test_create_water_disk_mesh_attributes_and_topology() {
+        let mesh = create_water_disk_mesh(5.0, 32);
+        assert_eq!(mesh.primitive_topology(), PrimitiveTopology::TriangleList);
+        assert!(mesh.attribute(Mesh::ATTRIBUTE_POSITION).is_some());
+        assert!(mesh.attribute(Mesh::ATTRIBUTE_NORMAL).is_some());
+        assert!(mesh.attribute(Mesh::ATTRIBUTE_UV_0).is_some());
+        assert!(mesh.indices().is_some());
+    }
+
+    #[test]
+    fn test_create_waterfall_mesh_attributes_and_curvature() {
+        let (mesh, base) = create_waterfall_mesh(16, 24);
+        assert_eq!(mesh.primitive_topology(), PrimitiveTopology::TriangleList);
+        assert!(mesh.attribute(Mesh::ATTRIBUTE_POSITION).is_some());
+        assert!(mesh.attribute(Mesh::ATTRIBUTE_NORMAL).is_some());
+        assert!(mesh.attribute(Mesh::ATTRIBUTE_UV_0).is_some());
+        assert!(mesh.indices().is_some());
+        assert_eq!(base.base_positions.len(), (16 + 1) * (24 + 1));
+        assert_eq!(base.base_normals.len(), (16 + 1) * (24 + 1));
     }
 }

@@ -16,6 +16,7 @@ impl Plugin for PlayerPlugin {
                 (
                     controller::player_movement,
                     controller::player_look,
+                    controller::player_camera_effects,
                     interaction::player_raycast_interaction,
                     interaction::player_physics_grab,
                     ragdoll::check_player_death,

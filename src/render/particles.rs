@@ -61,14 +61,14 @@ pub fn spawn_particles(
                 }
                 ParticleType::WaterSplash => {
                     let vel = Vec3::new(
-                        (fastrand::f32() - 0.5) * 2.0,
-                        1.5 + fastrand::f32() * 1.5,
-                        (fastrand::f32() - 0.5) * 2.0,
+                        (fastrand::f32() - 0.5) * 1.8,
+                        0.6 + fastrand::f32() * 0.9,
+                        (fastrand::f32() - 0.5) * 1.8,
                     );
                     commands.spawn((
-                        Mesh3d(meshes.add(Sphere::new(0.08).mesh().uv(6, 4))),
+                        Mesh3d(meshes.add(Sphere::new(0.22).mesh().uv(8, 6))),
                         MeshMaterial3d(materials.add(StandardMaterial {
-                            base_color: Color::srgba(0.85, 0.95, 1.0, 0.7),
+                            base_color: Color::LinearRgba(LinearRgba::new(2.2, 4.2, 5.0, 0.40)),
                             alpha_mode: AlphaMode::Blend,
                             unlit: true,
                             ..default()
@@ -76,7 +76,7 @@ pub fn spawn_particles(
                         Transform::from_translation(pos),
                         Particle {
                             lifetime: 0.0,
-                            max_lifetime: 1.0,
+                            max_lifetime: 1.4,
                             velocity: vel,
                             p_type: ParticleType::WaterSplash,
                         },
@@ -91,8 +91,8 @@ pub fn spawn_particles(
                     commands.spawn((
                         Mesh3d(meshes.add(Sphere::new(0.04).mesh().uv(6, 4))),
                         MeshMaterial3d(materials.add(StandardMaterial {
-                            base_color: Color::srgb(0.1, 0.9, 1.0),
-                            emissive: LinearRgba::new(0.2, 1.8, 2.0, 1.0),
+                            base_color: Color::LinearRgba(LinearRgba::new(3.0, 6.0, 7.0, 0.85)),
+                            alpha_mode: AlphaMode::Blend,
                             unlit: true,
                             ..default()
                         })),
@@ -132,7 +132,10 @@ pub fn update_particles(
                 tf.scale = Vec3::splat(scale);
             }
             ParticleType::WaterSplash => {
-                p.velocity.y -= 9.8 * dt; // Gravity
+                let progress = p.lifetime / p.max_lifetime;
+                let scale = 1.0 + progress * 2.2;
+                tf.scale = Vec3::splat(scale);
+                p.velocity.y += 0.2 * dt; // Billowing gentle upward expansion
             }
             ParticleType::GlowSpore => {
                 let wave = (p.lifetime * 3.0).sin() * 0.1;

@@ -120,7 +120,7 @@ impl Plugin for MenuPlugin {
         app.init_state::<GameState>()
             .init_resource::<MenuNavigation>()
             .init_resource::<GameSettings>()
-            .add_systems(Startup, setup_menu_ui)
+            .add_systems(Startup, (setup_menu_ui, setup_window_icon))
             .add_systems(
                 Update,
                 (
@@ -130,6 +130,7 @@ impl Plugin for MenuPlugin {
                     update_settings_labels,
                     apply_camera_fov,
                     apply_window_settings,
+                    apply_default_font_to_unassigned_texts,
                 ),
             )
             .add_systems(OnEnter(GameState::MainMenu), on_enter_menu_state)
@@ -137,7 +138,54 @@ impl Plugin for MenuPlugin {
     }
 }
 
-pub fn setup_menu_ui(mut commands: Commands) {
+pub fn setup_window_icon(
+    winit_windows: Option<NonSend<bevy::winit::WinitWindows>>,
+    primary_window_query: Query<Entity, With<PrimaryWindow>>,
+) {
+    let Some(winit_windows) = winit_windows else {
+        return;
+    };
+    let Ok(window_entity) = primary_window_query.get_single() else {
+        return;
+    };
+    let Some(window) = winit_windows.get_window(window_entity) else {
+        return;
+    };
+
+    if let Ok(icon_bytes) = std::fs::read("assets/icons/app_icon.png") {
+        if let Ok(decoded) = image::load_from_memory(&icon_bytes) {
+            let rgba = decoded.to_rgba8();
+            let (width, height) = rgba.dimensions();
+            if let Ok(icon) = winit::window::Icon::from_rgba(rgba.into_raw(), width, height) {
+                window.set_window_icon(Some(icon));
+            }
+        }
+    }
+}
+
+pub fn apply_default_font_to_unassigned_texts(
+    asset_server: Option<Res<AssetServer>>,
+    mut text_font_query: Query<&mut TextFont, Added<TextFont>>,
+) {
+    if let Some(server) = asset_server {
+        let default_font: Handle<Font> = server.load("fonts/DejaVuSans.ttf");
+        for mut text_font in text_font_query.iter_mut() {
+            if text_font.font == Handle::default() {
+                text_font.font = default_font.clone();
+            }
+        }
+    }
+}
+
+pub fn setup_menu_ui(
+    mut commands: Commands,
+    asset_server: Option<Res<AssetServer>>,
+) {
+    let font_handle: Handle<Font> = asset_server
+        .as_ref()
+        .map(|s| s.load("fonts/DejaVuSans.ttf"))
+        .unwrap_or_default();
+
     // Menu Root overlay covering entire viewport
     commands
         .spawn((
@@ -174,6 +222,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                 card.spawn((
                     Text::new("DEEP ALCHEMY"),
                     TextFont {
+                        font: font_handle.clone(),
                         font_size: 32.0,
                         ..default()
                     },
@@ -185,6 +234,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                 card.spawn((
                     Text::new("EXPLORAÇÃO & ALQUIMIA EM 1ª PESSOA"),
                     TextFont {
+                        font: font_handle.clone(),
                         font_size: 13.0,
                         ..default()
                     },
@@ -221,6 +271,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                     // Play / Resume Button
                     spawn_menu_button(
                         main_view,
+                        font_handle.clone(),
                         MenuButtonAction::StartOrResume,
                         "INICIAR JORNADA",
                         Some(StartResumeButtonText),
@@ -229,6 +280,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                     // Settings Button
                     spawn_menu_button(
                         main_view,
+                        font_handle.clone(),
                         MenuButtonAction::OpenSettings,
                         "CONFIGURAÇÕES",
                         None::<StartResumeButtonText>,
@@ -237,6 +289,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                     // Controls Guide Button
                     spawn_menu_button(
                         main_view,
+                        font_handle.clone(),
                         MenuButtonAction::OpenControls,
                         "GUIA DE CONTROLES",
                         None::<StartResumeButtonText>,
@@ -245,6 +298,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                     // Quit Button
                     spawn_menu_button(
                         main_view,
+                        font_handle.clone(),
                         MenuButtonAction::Quit,
                         "SAIR DO JOGO",
                         None::<StartResumeButtonText>,
@@ -269,6 +323,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                     settings_view.spawn((
                         Text::new("CONFIGURAÇÕES DO JOGO"),
                         TextFont {
+                            font: font_handle.clone(),
                             font_size: 16.0,
                             ..default()
                         },
@@ -279,6 +334,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                     // Row: Fullscreen
                     spawn_settings_row(
                         settings_view,
+                        font_handle.clone(),
                         "Tela Cheia (F11):",
                         |row| {
                             row.spawn((
@@ -300,6 +356,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                                     FullscreenButtonText,
                                     Text::new("DESATIVADO (JANELA)"),
                                     TextFont {
+                                        font: font_handle.clone(),
                                         font_size: 13.0,
                                         ..default()
                                     },
@@ -313,6 +370,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                     // Row: Sensitivity
                     spawn_stepper_row(
                         settings_view,
+                        font_handle.clone(),
                         "Sensibilidade:",
                         MenuButtonAction::AdjustSensitivity(-0.0002),
                         MenuButtonAction::AdjustSensitivity(0.0002),
@@ -323,6 +381,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                     // Row: FOV
                     spawn_stepper_row(
                         settings_view,
+                        font_handle.clone(),
                         "Campo de Visão (FOV):",
                         MenuButtonAction::AdjustFov(-5.0),
                         MenuButtonAction::AdjustFov(5.0),
@@ -333,6 +392,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                     // Row: Volume
                     spawn_stepper_row(
                         settings_view,
+                        font_handle.clone(),
                         "Volume Geral:",
                         MenuButtonAction::AdjustVolume(-0.1),
                         MenuButtonAction::AdjustVolume(0.1),
@@ -343,6 +403,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                     // Back to Main Menu Button
                     spawn_menu_button(
                         settings_view,
+                        font_handle.clone(),
                         MenuButtonAction::BackToMain,
                         "VOLTAR AO MENU",
                         None::<StartResumeButtonText>,
@@ -367,6 +428,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                     controls_view.spawn((
                         Text::new("COMANDOS & TECLAS DE ATALHO"),
                         TextFont {
+                            font: font_handle.clone(),
                             font_size: 16.0,
                             ..default()
                         },
@@ -398,6 +460,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                             item.spawn((
                                 Text::new(key),
                                 TextFont {
+                                    font: font_handle.clone(),
                                     font_size: 13.0,
                                     ..default()
                                 },
@@ -407,6 +470,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                             item.spawn((
                                 Text::new(desc),
                                 TextFont {
+                                    font: font_handle.clone(),
                                     font_size: 13.0,
                                     ..default()
                                 },
@@ -419,6 +483,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
                     // Back Button
                     spawn_menu_button(
                         controls_view,
+                        font_handle.clone(),
                         MenuButtonAction::BackToMain,
                         "VOLTAR AO MENU",
                         None::<StartResumeButtonText>,
@@ -430,6 +495,7 @@ pub fn setup_menu_ui(mut commands: Commands) {
 
 fn spawn_menu_button<T: Component>(
     parent: &mut ChildBuilder,
+    font: Handle<Font>,
     action: MenuButtonAction,
     label: &str,
     extra_marker: Option<T>,
@@ -453,6 +519,7 @@ fn spawn_menu_button<T: Component>(
         let mut txt = b.spawn((
             Text::new(label),
             TextFont {
+                font,
                 font_size: 15.0,
                 ..default()
             },
@@ -467,6 +534,7 @@ fn spawn_menu_button<T: Component>(
 
 fn spawn_settings_row<F: FnOnce(&mut ChildBuilder)>(
     parent: &mut ChildBuilder,
+    font: Handle<Font>,
     label: &str,
     control_builder: F,
 ) {
@@ -484,6 +552,7 @@ fn spawn_settings_row<F: FnOnce(&mut ChildBuilder)>(
             row.spawn((
                 Text::new(label),
                 TextFont {
+                    font,
                     font_size: 13.0,
                     ..default()
                 },
@@ -496,13 +565,15 @@ fn spawn_settings_row<F: FnOnce(&mut ChildBuilder)>(
 
 fn spawn_stepper_row<T: Component>(
     parent: &mut ChildBuilder,
+    font: Handle<Font>,
     label: &str,
     dec_action: MenuButtonAction,
     inc_action: MenuButtonAction,
     initial_val: &str,
     value_marker: T,
 ) {
-    spawn_settings_row(parent, label, |row| {
+    let font_clone = font.clone();
+    spawn_settings_row(parent, font.clone(), label, move |row| {
         row.spawn((
             Node {
                 align_items: AlignItems::Center,
@@ -530,6 +601,7 @@ fn spawn_stepper_row<T: Component>(
                 b.spawn((
                     Text::new("-"),
                     TextFont {
+                        font: font_clone.clone(),
                         font_size: 16.0,
                         ..default()
                     },
@@ -556,6 +628,7 @@ fn spawn_stepper_row<T: Component>(
                     value_marker,
                     Text::new(initial_val),
                     TextFont {
+                        font: font_clone.clone(),
                         font_size: 13.0,
                         ..default()
                     },
@@ -583,6 +656,7 @@ fn spawn_stepper_row<T: Component>(
                 b.spawn((
                     Text::new("+"),
                     TextFont {
+                        font: font_clone,
                         font_size: 16.0,
                         ..default()
                     },

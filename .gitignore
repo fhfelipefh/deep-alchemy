@@ -13,3 +13,4 @@ Thumbs.db
 # Added by cargo
 
 /target
+debug_output/

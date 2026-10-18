@@ -32,6 +32,41 @@ pub struct Stamina {
     pub max: f32,
 }
 
+#[derive(Component, Debug, Clone)]
+pub struct LocomotionState {
+    pub is_sprinting: bool,
+    pub is_crouching: bool,
+    pub is_grounded: bool,
+    pub vertical_velocity: f32,
+    pub stamina_regen_delay_timer: f32,
+    pub head_bob_timer: f32,
+    pub current_speed: f32,
+}
+
+impl Default for LocomotionState {
+    fn default() -> Self {
+        Self {
+            is_sprinting: false,
+            is_crouching: false,
+            is_grounded: true,
+            vertical_velocity: 0.0,
+            stamina_regen_delay_timer: 0.0,
+            head_bob_timer: 0.0,
+            current_speed: 4.2,
+        }
+    }
+}
+
+#[derive(Component, Debug, Clone, PartialEq, Eq)]
+pub struct BoneJoint {
+    pub name: String,
+}
+
+#[derive(Component, Debug, Clone, PartialEq, Eq)]
+pub struct RagdollLimb {
+    pub limb_name: String,
+}
+
 pub fn grab_mouse(mut windows: Query<&mut Window, With<PrimaryWindow>>) {
     if let Ok(mut window) = windows.get_single_mut() {
         window.cursor_options.grab_mode = CursorGrabMode::Locked;
@@ -48,6 +83,7 @@ pub fn setup_player(
         .spawn((
             Player,
             PlayerState::Active,
+            LocomotionState::default(),
             Health { current: 100.0, max: 100.0 },
             Stamina { current: 100.0, max: 100.0 },
             RigidBody::Kinematic,
@@ -56,40 +92,81 @@ pub fn setup_player(
             Visibility::default(),
         ))
         .with_children(|parent| {
-            // Spawn 1st Person Camera at eye height (1.75m)
             parent.spawn((
                 PlayerCamera,
                 Camera3d::default(),
+                bevy::core_pipeline::prepass::DepthPrepass,
+                bevy::core_pipeline::prepass::NormalPrepass,
+                crate::render::outline::OutlineSettings::default(),
+                bevy::core_pipeline::bloom::Bloom::NATURAL,
                 RenderLayers::layer(0),
                 Transform::from_xyz(0.0, 0.55, 0.0),
                 DistanceFog {
-                    color: Color::srgba(0.04, 0.08, 0.12, 1.0),
-                    falloff: FogFalloff::ExponentialSquared { density: 0.015 },
+                    color: Color::srgba(0.05, 0.09, 0.16, 1.0),
+                    falloff: FogFalloff::ExponentialSquared { density: 0.008 },
                     ..default()
                 },
             ));
 
-            // Load Player Model (Full Body)
+            // Load Player Model (Full Body) - placed on layer 1 to isolate from 1P camera view
             parent.spawn((
                 SceneRoot(asset_server.load("models/player.glb#Scene0")),
                 Transform::from_xyz(0.0, -0.9, 0.0),
-                RenderLayers::layer(0),
+                RenderLayers::layer(1),
             ));
+
+            // True First-Person & Ragdoll Bone Joint Hierarchy
+            let joints = [
+                ("Spine", Vec3::new(0.0, 0.0, 0.0)),
+                ("Chest", Vec3::new(0.0, 0.35, 0.0)),
+                ("Head", Vec3::new(0.0, 0.65, 0.0)),
+                ("LeftArm", Vec3::new(-0.35, 0.35, 0.0)),
+                ("RightArm", Vec3::new(0.35, 0.35, 0.0)),
+                ("LeftLeg", Vec3::new(-0.18, -0.45, 0.0)),
+                ("RightLeg", Vec3::new(0.18, -0.45, 0.0)),
+                ("Backpack", Vec3::new(0.0, 0.3, -0.22)),
+                ("AlchemyPouch", Vec3::new(0.22, 0.0, 0.15)),
+            ];
+
+            for (joint_name, local_pos) in joints {
+                let mut joint_cmd = parent.spawn((
+                    BoneJoint { name: joint_name.to_string() },
+                    RagdollLimb { limb_name: joint_name.to_string() },
+                    Transform::from_translation(local_pos),
+                    GlobalTransform::default(),
+                ));
+
+                if joint_name == "Head" {
+                    // Head & Hat is specifically placed on layer 1 for 1P shadow/reflection only
+                    joint_cmd.insert((
+                        HeadHatPart,
+                        RenderLayers::layer(1),
+                    ));
+                }
+            }
         })
         .id();
 
     info!("Player spawned with full-body awareness at {:?}", player_id);
 }
 
-// Ensure Head_Hat part gets RenderLayers::layer(1) to avoid 1P clipping
+// Ensure Head_Hat and distorted body parts get RenderLayers::layer(1) to avoid 1P clipping
 pub fn configure_player_model_layers(
     mut commands: Commands,
     names: Query<(Entity, &Name), Added<Name>>,
 ) {
     for (entity, name) in names.iter() {
-        if name.as_str().contains("Head_Hat") || name.as_str().contains("Hat_") {
+        let n = name.as_str();
+        if n.contains("Head_Hat") || n.contains("Hat_") {
             commands.entity(entity).insert((
                 HeadHatPart,
+                RenderLayers::layer(1), // Invisible to 1P camera (layer 0)
+            ));
+        } else if n.contains("Arm") || n.contains("Hand")
+            || n.contains("Leg") || n.contains("Boot") || n.contains("Foot")
+            || n.contains("Torso") || n.contains("Vest") || n.contains("CoatTail")
+            || n.contains("Thigh") || n.contains("Shin") {
+            commands.entity(entity).insert((
                 RenderLayers::layer(1), // Invisible to 1P camera (layer 0)
             ));
         }
@@ -157,5 +234,11 @@ mod tests {
 
         let camera_count = app.world_mut().query::<&PlayerCamera>().iter(app.world()).count();
         assert_eq!(camera_count, 1, "Player 1P camera must be spawned");
+
+        let bone_count = app.world_mut().query::<&BoneJoint>().iter(app.world()).count();
+        assert!(bone_count >= 8, "Player hierarchy must include skeleton bone joints for full body awareness");
+
+        let has_locomotion = app.world_mut().query::<(&Player, &LocomotionState)>().iter(app.world()).count() == 1;
+        assert!(has_locomotion, "Player must possess LocomotionState");
     }
 }
