@@ -150,24 +150,24 @@ def get_cavern_ceiling_z(x, y):
     Mathematical elevation function for the cavern ceiling rock vault.
     Guarantees exact matching between ceiling mesh and stalactite anchoring.
     """
-    wall_dist = 6.8 + max(0.0, y - 2.0) * 0.28
+    wall_dist = 9.2 + max(0.0, y - 2.0) * 0.35
     sin_ang = max(-0.99, min(0.99, x / max(0.01, wall_dist)))
     angle = math.asin(sin_ang)
     is_over_waterfall = (abs(angle) < 0.35 and y > 7.0)
     
-    if y >= 11.2:
+    if y >= 12.5:
         # Rear rock vault meeting the back cliff wall
         curr_z = 18.2 - abs(math.sin(angle)) * 4.0
     elif is_over_waterfall:
         # Vault arches cleanly over the waterfall top (Z = 17.5) at Z = 18.2..18.6
-        y_blend = min(1.0, max(0.0, (y - 7.0) / 3.8))
-        peak_z = 18.3 - (abs(angle) / 0.35) * 1.5
-        curr_z = 8.5 + y_blend * (peak_z - 8.5)
+        y_blend = min(1.0, max(0.0, (y - 7.0) / 4.8))
+        peak_z = 18.5 - (abs(angle) / 0.35) * 1.5
+        curr_z = 10.5 + y_blend * (peak_z - 10.5)
     else:
-        # Framing cavern arch dipping into view at camera foreground
-        arch_dip = math.cos(angle * 1.25) * 2.8
-        base_z = 3.8 + arch_dip + (y * 0.24)
-        curr_z = max(2.5, base_z)
+        # Framing cavern arch: opens high and wide, eliminating claustrophobia
+        arch_dip = math.cos(angle * 1.15) * 1.8
+        base_z = 6.2 + arch_dip + max(0.0, y) * 0.28
+        curr_z = max(4.5, base_z)
         
     n_disp = continuous_noise_3d(angle * 3.5, y * 0.45, curr_z * 0.35) * 0.38
     return curr_z + n_disp
@@ -177,7 +177,7 @@ def build_visible_cavern_roof_and_arch():
     Creates an unbroken, organically curved cavern vault:
     - Arches over the waterfall origin (Z = 17.5, Y = 10.8) at Z = 18.2..18.6, encasing it seamlessly.
     - Connects directly to the solid waterfall back cliff wall, completely sealing off any black void.
-    - Dips down to Z = 4.2..6.5 in the foreground to frame the camera shot in a natural arch.
+    - Dips down to Z = 6.2..8.0 in the foreground to frame the camera shot in a natural wide arch.
     - Uses smooth subdivision (use_smooth = True) and continuous 3D noise for authentic cave rock.
     """
     bm = bmesh.new()
@@ -187,13 +187,13 @@ def build_visible_cavern_roof_and_arch():
     grid = []
     for iv in range(segments_v + 1):
         v_frac = iv / segments_v
-        curr_y = -3.5 + v_frac * 16.0
+        curr_y = -4.5 + v_frac * 18.0
         
         row = []
         for iu in range(segments_u + 1):
             u_frac = iu / segments_u
             angle = -math.pi * 0.48 + u_frac * math.pi * 0.96
-            wall_dist = 6.8 + max(0.0, curr_y - 2.0) * 0.28
+            wall_dist = 9.2 + max(0.0, curr_y - 2.0) * 0.35
             curr_x = math.sin(angle) * wall_dist
             curr_z = get_cavern_ceiling_z(curr_x, curr_y)
             
@@ -340,24 +340,24 @@ def spawn_organic_stalactite(x, y, z_top, height=2.8, radius=0.42, tilt=(0.0, 0.
 # Anchored dynamically in the ceiling vault (z_top = ceiling_z + 0.5) descending into view.
 visible_stalactite_targets = [
     # Top-Left framing stalactites: (x, y, target_tip_z, radius, tilt)
-    (-5.2, 3.8, 4.30, 0.42, (0.06, -0.04)),
-    (-4.2, 3.4, 4.50, 0.38, (0.04, 0.03)),
-    (-4.8, 5.2, 4.20, 0.44, (0.07, -0.05)),
-    (-3.6, 4.8, 4.60, 0.36, (-0.03, 0.04)),
-    (-3.4, 6.2, 4.80, 0.38, (-0.04, 0.03)),
-    (-4.2, 0.8, 3.80, 0.40, (0.05, -0.04)),
-    (-3.8, -0.8, 3.60, 0.38, (0.04, 0.03)),
-    (-3.5, 2.0, 4.00, 0.36, (-0.03, 0.04)),
+    (-6.5, 3.8, 4.30, 0.42, (0.06, -0.04)),
+    (-5.5, 3.4, 4.50, 0.38, (0.04, 0.03)),
+    (-6.0, 5.2, 4.20, 0.44, (0.07, -0.05)),
+    (-4.8, 4.8, 4.60, 0.36, (-0.03, 0.04)),
+    (-4.5, 6.2, 4.80, 0.38, (-0.04, 0.03)),
+    (-5.6, 0.8, 4.20, 0.40, (0.05, -0.04)),
+    (-5.2, -0.8, 4.20, 0.38, (0.04, 0.03)),
+    (-4.8, 2.0, 4.30, 0.36, (-0.03, 0.04)),
 
     # Top-Right framing stalactites: (x, y, target_tip_z, radius, tilt)
-    (5.2, 3.8, 4.30, 0.42, (-0.06, -0.04)),
-    (4.2, 3.4, 4.50, 0.38, (-0.04, 0.03)),
-    (4.8, 5.2, 4.20, 0.44, (-0.07, -0.05)),
-    (3.6, 4.8, 4.60, 0.36, (0.03, 0.04)),
-    (3.4, 6.2, 4.80, 0.38, (0.04, 0.03)),
-    (4.2, 0.8, 3.80, 0.40, (-0.05, -0.04)),
-    (3.8, -0.8, 3.60, 0.38, (-0.04, 0.03)),
-    (3.5, 2.0, 4.00, 0.36, (0.03, 0.04)),
+    (6.5, 3.8, 4.30, 0.42, (-0.06, -0.04)),
+    (5.5, 3.4, 4.50, 0.38, (-0.04, 0.03)),
+    (6.0, 5.2, 4.20, 0.44, (-0.07, -0.05)),
+    (4.8, 4.8, 4.60, 0.36, (0.03, 0.04)),
+    (4.5, 6.2, 4.80, 0.38, (0.04, 0.03)),
+    (5.6, 0.8, 4.20, 0.40, (-0.05, -0.04)),
+    (5.2, -0.8, 4.20, 0.38, (-0.04, 0.03)),
+    (4.8, 2.0, 4.30, 0.36, (0.03, 0.04)),
 ]
 
 for idx, (sx, sy, target_tip_z, sr, stilt) in enumerate(visible_stalactite_targets):
@@ -372,12 +372,13 @@ for idx, (sx, sy, target_tip_z, sr, stilt) in enumerate(visible_stalactite_targe
 def build_continuous_u_canyon_grotto_walls():
     """
     Unified Continuous Horseshoe Canyon & Amphitheater Walls:
-    - Runs continuously from rear wall behind player (Y = -3.5, X in [-6.0, 6.0]),
-      along the left canyon rock wall (X in [-6.2, -5.5], Y in [-3.5, 5.5]),
-      around the lake amphitheater horseshoe (Y in [5.5, 12.0], curving tightly behind waterfall cascade at X=0, Y=11.2),
-      along the right canyon rock wall (X in [5.5, 6.2], Y in [5.5, -3.5]),
+    - Runs continuously from rear wall behind player (Y = -4.5, X in [-8.5, 8.5]),
+      along the left canyon rock wall (X in [-8.8, -8.2], Y in [-4.5, 5.5]),
+      around the lake amphitheater horseshoe (Y in [5.5, 13.5], curving gracefully behind waterfall cascade at X=0, Y=13.5),
+      along the right canyon rock wall (X in [8.2, 8.8], Y in [5.5, -4.5]),
       and closing seamlessly behind the player!
     - 100% seals the grotto horizontally: no empty green voids or black gaps in camera view.
+    - Leaves > 2.5m open clearance behind the waterfall curtain (Y = 10.8 down to 8.5).
     - Rises from terrain surface level up to the cavern ceiling vault, connecting seamlessly.
     - 3-tier stepped terracing:
       * Tier 1 (Base ledge, 0.0..0.28): Inward bulge forming natural travertine base shelves.
@@ -398,17 +399,20 @@ def build_continuous_u_canyon_grotto_walls():
         if u_frac < 0.22:
             # Segment 1: Left canyon wall from rear to lake margin
             t = u_frac / 0.22
-            y0 = -3.5 + t * 9.0
-            meander = math.sin(t * math.pi * 2.0) * 0.35 + continuous_noise_3d(-5.8, y0 * 0.4, 0.0) * 0.25
-            x0 = -5.8 + meander
+            y0 = -4.5 + t * 10.0
+            meander = math.sin(t * math.pi * 2.0) * 0.35 + continuous_noise_3d(-8.5, y0 * 0.4, 0.0) * 0.25
+            x0 = -8.5 + meander
             inward_nx = 1.0
             inward_ny = 0.0
         elif u_frac < 0.55:
-            # Segment 2: Horseshoe curve around lake and behind waterfall
+            # Segment 2: Horseshoe amphitheater curve around lake and BEHIND waterfall
             t = (u_frac - 0.22) / 0.33
-            ang = -2.25 + t * 4.50
-            t_ang = abs(ang) / 2.25
-            dist_base = 2.65 + 3.85 * (t_ang ** 1.5)
+            theta_0 = 1.92
+            ang = -theta_0 + t * (2.0 * theta_0)
+            t_ang = abs(ang) / theta_0
+            r_apex = 5.0
+            r_base = 9.1
+            dist_base = r_apex + (r_base - r_apex) * (t_ang ** 1.6)
             x0 = 0.0 + math.sin(ang) * dist_base
             y0 = 8.5 + math.cos(ang) * dist_base
             inward_nx = -math.sin(ang)
@@ -416,17 +420,17 @@ def build_continuous_u_canyon_grotto_walls():
         elif u_frac < 0.77:
             # Segment 3: Right canyon wall from lake margin down to rear
             t = (u_frac - 0.55) / 0.22
-            y0 = 5.5 - t * 9.0
-            meander = math.sin(t * math.pi * 2.0) * 0.35 + continuous_noise_3d(5.8, y0 * 0.4, 0.0) * 0.25
-            x0 = 5.8 - meander
+            y0 = 5.5 - t * 10.0
+            meander = math.sin(t * math.pi * 2.0) * 0.35 + continuous_noise_3d(8.5, y0 * 0.4, 0.0) * 0.25
+            x0 = 8.5 - meander
             inward_nx = -1.0
             inward_ny = 0.0
         else:
             # Segment 4: Rear wall behind player closing from right to left
             t = (u_frac - 0.77) / 0.23
-            x0 = 5.8 - t * 11.6
+            x0 = 8.5 - t * 17.0
             meander = math.sin(t * math.pi) * 0.4
-            y0 = -3.5 - meander
+            y0 = -4.5 - meander
             inward_nx = 0.0
             inward_ny = 1.0
 
@@ -441,14 +445,22 @@ def build_continuous_u_canyon_grotto_walls():
 
             # 3-tier stepped terracing profile
             if v_frac < 0.28:
-                d_tier = math.sin((v_frac / 0.28) * math.pi) * 0.65
+                d_tier = math.sin((v_frac / 0.28) * math.pi) * 0.60
             elif v_frac < 0.55:
-                d_tier = math.sin(((v_frac - 0.28) / 0.27) * math.pi) * 0.52
+                d_tier = math.sin(((v_frac - 0.28) / 0.27) * math.pi) * 0.48
             else:
                 d_tier = ((v_frac - 0.55) / 0.45) * 0.15
 
-            n_disp = continuous_noise_3d(x0 * 0.45, y0 * 0.45, curr_z * 0.35) * 0.45
-            d_total = d_tier + n_disp
+            n_disp = continuous_noise_3d(x0 * 0.45, y0 * 0.45, curr_z * 0.35) * 0.40
+            
+            # Attenuate inward displacement at the rear apex to keep lake basin completely open
+            if 0.22 <= u_frac <= 0.55:
+                t_ang_sub = abs(-1.92 + ((u_frac - 0.22) / 0.33) * 3.84) / 1.92
+                apex_atten = 0.45 + 0.55 * (t_ang_sub ** 2.0)
+            else:
+                apex_atten = 1.0
+                
+            d_total = (d_tier * 0.75 + n_disp * 0.35) * apex_atten
 
             vx = x0 + inward_nx * d_total
             vy = y0 + inward_ny * d_total
@@ -541,52 +553,52 @@ def spawn_organic_boulder(name, center_x, center_y, center_z, scale=(1.0, 1.0, 1
     return obj
 
 # Stepped organic boulder terraces in 3 height levels (Base, Mid, Upper) framing both sides
+# Receded outwards (|X| >= 6.5) to clear mushrooms and bench with > 1.8m margin and open the amphitheater
 organic_terraces = [
     # Left tiered shelves (Base, Mid, Upper tiers from camera foreground to waterfall)
     # Tier 1 (Base shelves):
-    ("Left_Terrace_B0", -4.2, -1.8, 0.45, (1.6, 1.4, 0.85), 0.3, 110),
-    ("Left_Terrace_B1", -4.0, -0.4, 0.48, (1.5, 1.3, 0.90), -0.2, 111),
-    ("Left_Terrace_B2", -3.8, 1.0, 0.50, (1.6, 1.4, 0.95), 0.4, 112),
-    ("Left_Terrace_B3", -3.9, 2.5, 0.52, (1.5, 1.3, 0.90), -0.3, 113),
-    ("Left_Terrace_B4", -4.2, 4.4, 0.55, (1.6, 1.4, 0.90), 0.2, 114),
-    ("Left_Terrace_1", -4.2, 6.8, 0.55, (1.6, 1.4, 0.9), 0.2, 101),
-    ("Left_Terrace_Low", -3.6, 5.8, 0.40, (1.2, 1.1, 0.65), 0.5, 105),
+    ("Left_Terrace_B0", -7.0, -2.0, 0.40, (1.5, 1.3, 0.75), 0.3, 110),
+    ("Left_Terrace_B1", -6.8, -0.5, 0.42, (1.5, 1.3, 0.80), -0.2, 111),
+    ("Left_Terrace_B2", -6.6, 1.0, 0.45, (1.6, 1.4, 0.85), 0.4, 112),
+    ("Left_Terrace_B3", -6.5, 2.6, 0.48, (1.5, 1.3, 0.85), -0.3, 113),
+    ("Left_Terrace_B4", -6.6, 4.4, 0.52, (1.6, 1.4, 0.90), 0.2, 114),
+    ("Left_Terrace_1", -6.5, 6.8, 0.55, (1.6, 1.4, 0.90), 0.2, 101),
+    ("Left_Terrace_Low", -5.8, 5.8, 0.40, (1.2, 1.1, 0.65), 0.5, 105),
 
     # Tier 2 (Mid-height shelves):
-    ("Left_Terrace_M0", -4.8, -1.2, 1.80, (1.5, 1.3, 1.10), -0.4, 120),
-    ("Left_Terrace_M1", -4.6, 0.6, 1.95, (1.6, 1.3, 1.15), 0.3, 121),
-    ("Left_Terrace_M2", -4.7, 2.4, 2.15, (1.5, 1.2, 1.10), -0.2, 122),
-    ("Left_Terrace_M3", -4.8, 4.2, 2.30, (1.5, 1.3, 1.15), 0.4, 123),
-    ("Left_Terrace_2", -4.8, 7.8, 1.40, (1.5, 1.3, 1.1), -0.3, 102),
-    ("Left_Terrace_3", -5.2, 8.8, 2.45, (1.4, 1.2, 1.2), 0.4, 103),
+    ("Left_Terrace_M0", -7.5, -1.2, 1.40, (1.4, 1.2, 0.95), -0.4, 120),
+    ("Left_Terrace_M1", -7.3, 0.6, 1.55, (1.5, 1.2, 1.00), 0.3, 121),
+    ("Left_Terrace_M2", -7.2, 2.5, 1.80, (1.5, 1.2, 1.05), -0.2, 122),
+    ("Left_Terrace_M3", -7.2, 4.4, 2.00, (1.5, 1.2, 1.10), 0.4, 123),
+    ("Left_Terrace_2", -6.8, 7.8, 1.40, (1.5, 1.3, 1.10), -0.3, 102),
+    ("Left_Terrace_3", -7.0, 8.8, 2.45, (1.4, 1.2, 1.20), 0.4, 103),
 
-    # Tier 3 (Upper cliff shelves connecting to ceiling):
-    ("Left_Terrace_U0", -5.4, -0.6, 3.80, (1.4, 1.2, 1.30), 0.2, 130),
-    ("Left_Terrace_U1", -5.2, 1.5, 4.00, (1.5, 1.2, 1.25), -0.3, 131),
-    ("Left_Terrace_U2", -5.3, 3.8, 4.20, (1.4, 1.1, 1.30), 0.3, 132),
-    ("Left_Terrace_4", -5.5, 9.8, 3.65, (1.3, 1.1, 1.3), -0.2, 104),
+    # Tier 3 (Upper cliff shelves connecting to ceiling - only deep in the cavern to let foreground breathe):
+    ("Left_Terrace_U1", -7.8, 2.0, 3.20, (1.4, 1.2, 1.15), -0.3, 131),
+    ("Left_Terrace_U2", -7.6, 4.0, 3.60, (1.4, 1.1, 1.20), 0.3, 132),
+    ("Left_Terrace_4", -7.4, 9.8, 3.65, (1.3, 1.1, 1.30), -0.2, 104),
 
     # Right tiered shelves (Base, Mid, Upper tiers):
     # Tier 1 (Base shelves):
-    ("Right_Terrace_B0", 4.2, -1.8, 0.45, (1.6, 1.4, 0.85), -0.3, 210),
-    ("Right_Terrace_B1", 4.0, -0.4, 0.48, (1.5, 1.3, 0.90), 0.2, 211),
-    ("Right_Terrace_B2", 3.8, 0.9, 0.50, (1.5, 1.3, 0.90), -0.4, 212),
-    ("Right_Terrace_1", 4.2, 6.8, 0.55, (1.6, 1.4, 0.9), -0.2, 201),
-    ("Right_Terrace_Low", 3.6, 5.8, 0.40, (1.2, 1.1, 0.65), -0.5, 205),
+    ("Right_Terrace_B0", 7.0, -2.0, 0.40, (1.5, 1.3, 0.75), -0.3, 210),
+    ("Right_Terrace_B1", 6.8, -0.5, 0.42, (1.5, 1.3, 0.80), 0.2, 211),
+    ("Right_Terrace_B2", 6.6, 1.0, 0.45, (1.6, 1.4, 0.85), -0.4, 212),
+    ("Right_Terrace_B3", 6.5, 2.6, 0.48, (1.5, 1.3, 0.85), 0.3, 213),
+    ("Right_Terrace_1", 6.5, 6.8, 0.55, (1.6, 1.4, 0.90), -0.2, 201),
+    ("Right_Terrace_Low", 5.8, 5.8, 0.40, (1.2, 1.1, 0.65), -0.5, 205),
 
     # Tier 2 (Mid-height shelves):
-    ("Right_Terrace_M0", 4.8, -1.2, 1.80, (1.5, 1.3, 1.10), 0.4, 220),
-    ("Right_Terrace_M1", 4.6, 0.6, 1.95, (1.6, 1.3, 1.15), -0.3, 221),
-    ("Right_Terrace_M2", 5.0, 2.5, 2.20, (1.5, 1.2, 1.10), 0.3, 222),
-    ("Right_Terrace_M3", 4.8, 4.6, 2.35, (1.5, 1.3, 1.15), -0.4, 223),
-    ("Right_Terrace_2", 4.8, 7.8, 1.40, (1.5, 1.3, 1.1), 0.3, 202),
-    ("Right_Terrace_3", 5.2, 8.8, 2.45, (1.4, 1.2, 1.2), -0.4, 203),
+    ("Right_Terrace_M0", 7.5, -1.2, 1.40, (1.4, 1.2, 0.95), 0.4, 220),
+    ("Right_Terrace_M1", 7.3, 0.6, 1.55, (1.5, 1.2, 1.00), -0.3, 221),
+    ("Right_Terrace_M2", 7.2, 2.5, 1.80, (1.5, 1.2, 1.05), 0.3, 222),
+    ("Right_Terrace_M3", 7.2, 4.4, 2.00, (1.5, 1.2, 1.10), -0.4, 223),
+    ("Right_Terrace_2", 6.8, 7.8, 1.40, (1.5, 1.3, 1.10), 0.3, 202),
+    ("Right_Terrace_3", 7.0, 8.8, 2.45, (1.4, 1.2, 1.20), -0.4, 203),
 
     # Tier 3 (Upper cliff shelves connecting to ceiling):
-    ("Right_Terrace_U0", 5.4, -0.6, 3.80, (1.4, 1.2, 1.30), -0.2, 230),
-    ("Right_Terrace_U1", 5.2, 1.5, 4.00, (1.5, 1.2, 1.25), 0.3, 231),
-    ("Right_Terrace_U2", 5.3, 3.8, 4.20, (1.4, 1.1, 1.30), -0.3, 232),
-    ("Right_Terrace_4", 5.5, 9.8, 3.65, (1.3, 1.1, 1.3), 0.2, 204),
+    ("Right_Terrace_U1", 7.8, 2.0, 3.20, (1.4, 1.2, 1.15), 0.3, 231),
+    ("Right_Terrace_U2", 7.6, 4.0, 3.60, (1.4, 1.1, 1.20), -0.3, 232),
+    ("Right_Terrace_4", 7.4, 9.8, 3.65, (1.3, 1.1, 1.30), 0.2, 204),
 ]
 
 for (tname, tx, ty, tz, tscale, trot, tseed) in organic_terraces:
@@ -629,26 +641,26 @@ def spawn_hanging_vine(x, y, z_top, length=1.8, segments=12, name="HangingVine")
 
 vine_locations = [
     # Flanking waterfall
-    (-2.4, 10.2, 7.5, 3.2),
-    (2.4, 10.2, 7.5, 3.2),
-    (-3.2, 9.5, 5.2, 2.4),
-    (3.2, 9.5, 5.2, 2.4),
-    (-4.9, 8.9, 3.4, 1.45),
-    (4.9, 8.9, 3.4, 1.45),
-    (-4.5, 7.9, 2.2, 1.25),
-    (4.5, 7.9, 2.2, 1.25),
-    (-3.8, 6.9, 1.1, 0.95),
-    (3.8, 6.9, 1.1, 0.95),
+    (-3.6, 11.2, 7.5, 3.2),
+    (3.6, 11.2, 7.5, 3.2),
+    (-4.5, 10.5, 5.2, 2.4),
+    (4.5, 10.5, 5.2, 2.4),
+    (-6.9, 8.9, 3.4, 1.45),
+    (6.9, 8.9, 3.4, 1.45),
+    (-6.5, 7.9, 2.2, 1.25),
+    (6.5, 7.9, 2.2, 1.25),
+    (-5.8, 6.9, 1.1, 0.95),
+    (5.8, 6.9, 1.1, 0.95),
     # Left canyon wall
-    (-4.5, 4.2, 2.6, 1.5),
-    (-4.4, 2.4, 2.4, 1.6),
-    (-4.3, 0.6, 2.2, 1.4),
-    (-4.5, -1.2, 2.0, 1.3),
+    (-6.8, 4.2, 2.6, 1.5),
+    (-6.7, 2.4, 2.4, 1.6),
+    (-6.6, 0.6, 2.2, 1.4),
+    (-6.8, -1.2, 2.0, 1.3),
     # Right canyon wall
-    (4.5, 4.4, 2.6, 1.5),
-    (4.7, 2.4, 2.4, 1.6),
-    (4.3, 0.6, 2.2, 1.4),
-    (4.5, -1.2, 2.0, 1.3),
+    (6.8, 4.4, 2.6, 1.5),
+    (6.7, 2.4, 2.4, 1.6),
+    (6.6, 0.6, 2.2, 1.4),
+    (6.8, -1.2, 2.0, 1.3),
 ]
 for idx, (vx, vy, vz, vl) in enumerate(vine_locations):
     spawn_hanging_vine(vx, vy, vz, length=vl, name=f"Rock_Vine_{idx}")
@@ -687,12 +699,12 @@ def spawn_moss_curtain(x, y, z_top, length=1.8, width=0.45, name="MossCurtain"):
     return obj
 
 moss_curtain_locations = [
-    (-2.8, 10.0, 6.8, 2.4, 0.55),
-    (2.8, 10.0, 6.8, 2.4, 0.55),
-    (-4.6, 5.5, 3.2, 1.8, 0.50),
-    (4.6, 5.5, 3.2, 1.8, 0.50),
-    (-4.4, 1.8, 2.6, 1.6, 0.45),
-    (4.4, 1.8, 2.6, 1.6, 0.45),
+    (-3.8, 11.0, 6.8, 2.4, 0.55),
+    (3.8, 11.0, 6.8, 2.4, 0.55),
+    (-6.8, 5.5, 3.2, 1.8, 0.50),
+    (6.8, 5.5, 3.2, 1.8, 0.50),
+    (-6.6, 1.8, 2.6, 1.6, 0.45),
+    (6.6, 1.8, 2.6, 1.6, 0.45),
 ]
 for idx, (mx, my, mz, ml, mw) in enumerate(moss_curtain_locations):
     spawn_moss_curtain(mx, my, mz, length=ml, width=mw, name=f"Moss_Curtain_{idx}")
@@ -736,19 +748,19 @@ def spawn_rock_fern_rosette(x, y, z, scale=1.0, num_fronds=7, name="RockFern"):
 
 fern_rosette_locations = [
     # Flanking waterfall & lake margin
-    (-3.2, 6.6, 0.95, 1.1),
-    (3.2, 6.6, 0.95, 1.1),
-    (-4.1, 7.6, 1.85, 1.2),
-    (4.1, 7.6, 1.85, 1.2),
-    (-4.8, 8.6, 2.85, 1.0),
-    (4.8, 8.6, 2.85, 1.0),
+    (-5.2, 6.6, 0.95, 1.1),
+    (5.2, 6.6, 0.95, 1.1),
+    (-6.1, 7.6, 1.85, 1.2),
+    (6.1, 7.6, 1.85, 1.2),
+    (-6.8, 8.6, 2.85, 1.0),
+    (6.8, 8.6, 2.85, 1.0),
     # Canyon wall shelves
-    (-3.6, -0.6, 0.85, 1.05),
-    (3.6, -0.6, 0.85, 1.05),
-    (-3.5, 1.2, 0.90, 1.15),
-    (3.5, 1.0, 0.90, 1.15),
-    (-4.4, 3.2, 2.50, 1.0),
-    (4.6, 4.2, 2.60, 1.0),
+    (-5.6, -0.6, 0.85, 1.05),
+    (5.6, -0.6, 0.85, 1.05),
+    (-5.5, 1.2, 0.90, 1.15),
+    (5.5, 1.0, 0.90, 1.15),
+    (-6.4, 3.2, 2.50, 1.0),
+    (6.4, 4.2, 2.60, 1.0),
 ]
 for idx, (fx, fy, fz, fs) in enumerate(fern_rosette_locations):
     spawn_rock_fern_rosette(fx, fy, fz, scale=fs, name=f"Rock_Fern_{idx}")
@@ -794,16 +806,16 @@ def spawn_wall_cyan_spores(x, y, z, num_shrooms=5, name="WallCyanSpores"):
     return obj
 
 wall_spore_locations = [
-    (-4.8, -0.5, 2.8),
-    (-4.7, 1.8, 3.2),
-    (-4.9, 3.8, 3.5),
-    (-4.4, 6.2, 2.4),
-    (-3.0, 9.6, 6.0),
-    (4.8, -0.5, 2.8),
-    (4.7, 1.8, 3.2),
-    (4.9, 3.8, 3.5),
-    (4.4, 6.2, 2.4),
-    (3.0, 9.6, 6.0),
+    (-7.2, -0.5, 2.8),
+    (-7.1, 1.8, 3.2),
+    (-7.2, 3.8, 3.5),
+    (-6.6, 6.2, 2.4),
+    (-4.5, 11.0, 6.0),
+    (7.2, -0.5, 2.8),
+    (7.1, 1.8, 3.2),
+    (7.2, 3.8, 3.5),
+    (6.6, 6.2, 2.4),
+    (4.5, 11.0, 6.0),
 ]
 for idx, (wx, wy, wz) in enumerate(wall_spore_locations):
     spawn_wall_cyan_spores(wx, wy, wz, num_shrooms=6, name=f"Wall_Cyan_Spore_{idx}")
@@ -1121,10 +1133,10 @@ def build_stylized_parasol_mushroom(root_x, root_y, scale=1.0, lean_angle=-0.22,
     cap_obj.data.materials.append(mat_shroom_gills)
     cap_obj.parent = stem_obj
 
-# Left Side Cluster: Harmonious Tiered Parasol Mushrooms
-build_stylized_parasol_mushroom(-4.6, 3.6, scale=1.10, lean_angle=0.12, name="Left_Shroom_Large")
-build_stylized_parasol_mushroom(-3.8, 2.8, scale=0.74, lean_angle=0.10, name="Left_Shroom_Medium")
-build_stylized_parasol_mushroom(-4.9, 2.6, scale=0.48, lean_angle=0.08, name="Left_Shroom_Small")
+# Left Side Cluster: Harmonious Tiered Parasol Mushrooms (In open clearing, > 2.4m free space to rock terraces)
+build_stylized_parasol_mushroom(-3.60, 3.20, scale=1.05, lean_angle=0.10, name="Left_Shroom_Large")
+build_stylized_parasol_mushroom(-2.95, 2.45, scale=0.72, lean_angle=0.08, name="Left_Shroom_Medium")
+build_stylized_parasol_mushroom(-4.10, 2.15, scale=0.48, lean_angle=0.06, name="Left_Shroom_Small")
 
 # Broad Arching Fern/Palmate Leaves surrounding Left Mushrooms
 def spawn_broad_leaf_spray(x, y, z, scale=1.0, num_leaves=7, name="BroadLeafSpray"):
@@ -1165,8 +1177,8 @@ def spawn_broad_leaf_spray(x, y, z, scale=1.0, num_leaves=7, name="BroadLeafSpra
     mesh.update()
     obj.data.materials.append(mat_broad_leaf)
 
-spawn_broad_leaf_spray(-4.0, 2.2, 0.10, scale=1.15, name="Left_Fern_Spray_1")
-spawn_broad_leaf_spray(-4.6, 3.4, 0.12, scale=0.95, name="Left_Fern_Spray_2")
+spawn_broad_leaf_spray(-3.3, 2.1, 0.10, scale=1.15, name="Left_Fern_Spray_1")
+spawn_broad_leaf_spray(-3.9, 3.0, 0.12, scale=0.95, name="Left_Fern_Spray_2")
 # Creeping foreground ground plants advancing softly over the brown dirt boundary
 spawn_broad_leaf_spray(-2.3, -0.2, 0.08, scale=0.85, name="Path_Creeping_Leaf_L")
 spawn_broad_leaf_spray(2.3, -0.2, 0.08, scale=0.85, name="Path_Creeping_Leaf_R")
@@ -1187,7 +1199,7 @@ def spawn_glowing_stalk(x, y, z, h=0.75, name="GlowingStalk"):
     for p in tip.data.polygons:
         p.use_smooth = True
 
-for idx, (gx, gy) in enumerate([(-3.8, 2.0), (-4.5, 2.1), (-3.2, 3.1), (-4.9, 3.6)]):
+for idx, (gx, gy) in enumerate([(-3.4, 1.9), (-4.2, 2.0), (-2.8, 2.9), (-4.0, 3.5)]):
     gz = get_terrain_surface_z(gx, gy)
     spawn_glowing_stalk(gx, gy, gz, h=0.65 + idx * 0.12, name=f"Left_GlowingStalk_{idx}")
 
@@ -1322,10 +1334,10 @@ def build_stylized_lathe_mushroom(root_x, root_y, scale=1.0, lean_angle=-0.15, n
     cap_obj.data.materials.append(mat_shroom_gills)
     cap_obj.parent = stem_obj
 
-# Exactly three rounded lathe mushrooms positioned well behind/right of the bench (>1.6m clear space)
-build_stylized_lathe_mushroom(4.60, 3.60, scale=0.82, lean_angle=-0.14, name="Right_Dome_Mushroom_1")
-build_stylized_lathe_mushroom(4.10, 2.95, scale=0.62, lean_angle=-0.10, name="Right_Dome_Mushroom_2")
-build_stylized_lathe_mushroom(5.20, 4.10, scale=0.45, lean_angle=-0.16, name="Right_Dome_Mushroom_3")
+# Exactly three rounded lathe mushrooms positioned safely in the open clearing (> 1.7m clear space from bench and rocks)
+build_stylized_lathe_mushroom(4.20, 3.40, scale=0.78, lean_angle=-0.12, name="Right_Dome_Mushroom_1")
+build_stylized_lathe_mushroom(3.60, 2.70, scale=0.60, lean_angle=-0.08, name="Right_Dome_Mushroom_2")
+build_stylized_lathe_mushroom(4.75, 3.90, scale=0.45, lean_angle=-0.14, name="Right_Dome_Mushroom_3")
 
 # Tall Grass Clumps behind/around the right mushrooms
 def spawn_tall_grass_clump(x, y, z, scale=1.0, num_blades=14, name="TallGrass"):
@@ -1356,7 +1368,7 @@ def spawn_tall_grass_clump(x, y, z, scale=1.0, num_blades=14, name="TallGrass"):
     obj.data.materials.append(mat_tall_grass)
 
 tall_grass_coords = [
-    (3.9, 3.1), (4.5, 3.8), (5.0, 3.2), (4.8, 4.3),
+    (3.8, 2.6), (4.4, 3.5), (4.9, 3.1), (4.6, 4.1),
     # Foreground lateral grass tufts framing dirt path
     (-2.8, -1.0), (-3.1, -0.2), (-2.8, 0.8),
     (2.8, -1.0), (3.1, -0.2), (2.8, 0.8),
@@ -1388,7 +1400,7 @@ def spawn_bulb_plant(x, y, z, name="BulbPlant"):
         for p in bulb.data.polygons:
             p.use_smooth = True
 
-for idx, (bx, by) in enumerate([(4.8, 2.75), (5.3, 3.45), (4.5, 4.20)]):
+for idx, (bx, by) in enumerate([(4.3, 2.45), (4.9, 3.30), (4.4, 4.10)]):
     bz = get_terrain_surface_z(bx, by)
     spawn_bulb_plant(bx, by, bz, name=f"Right_BulbPlant_{idx}")
 

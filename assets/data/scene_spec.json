@@ -33,21 +33,21 @@
           "path_width_x": [-2.4, 2.4],
           "path_material": "beaten_earth",
           "bench": {
-            "position": [2.15, 0.05, -1.75],
+            "position": [2.15, 0.04, -1.65],
             "rotation_y_deg": -25.8,
             "moss_cushions": true
           },
           "border_elements": ["river_pebbles", "angular_transition_rocks"],
           "mushroom_colliders": {
             "left_cluster": [
-              {"name": "Left_Large", "pos": [-4.45, 1.45, -3.70], "radius": 0.70, "height": 2.90},
-              {"name": "Left_Medium", "pos": [-3.72, 1.00, -2.90], "radius": 0.52, "height": 2.00},
-              {"name": "Left_Small", "pos": [-4.85, 0.65, -2.65], "radius": 0.40, "height": 1.30}
+              {"name": "Left_Large", "pos": [-3.50, 1.30, -3.30], "radius": 0.65, "height": 2.70},
+              {"name": "Left_Medium", "pos": [-2.89, 0.90, -2.52], "radius": 0.48, "height": 1.90},
+              {"name": "Left_Small", "pos": [-4.07, 0.60, -2.20], "radius": 0.38, "height": 1.25}
             ],
             "right_cluster": [
-              {"name": "Right_1", "pos": [4.55, 0.90, -3.75], "radius": 0.52, "height": 1.80},
-              {"name": "Right_2", "pos": [4.07, 0.75, -3.05], "radius": 0.42, "height": 1.45},
-              {"name": "Right_3", "pos": [5.16, 0.55, -4.18], "radius": 0.35, "height": 1.10}
+              {"name": "Right_1", "pos": [4.17, 0.85, -3.53], "radius": 0.48, "height": 1.70},
+              {"name": "Right_2", "pos": [3.58, 0.70, -2.80], "radius": 0.40, "height": 1.40},
+              {"name": "Right_3", "pos": [4.73, 0.50, -3.98], "radius": 0.32, "height": 1.05}
             ]
           }
         },
@@ -68,10 +68,10 @@
             "ink_line_outline": false
         },
         "background_and_ceiling": {
-          "z_range": [-9.0, -12.0],
+          "z_range": [-9.0, -13.5],
           "continuous_u_canyon_walls": {
-            "lateral_x_range": [-6.2, 6.2],
-            "depth_z_range": [-12.5, 2.5],
+            "lateral_x_range": [-8.8, 8.8],
+            "depth_z_range": [-13.5, 4.5],
             "three_tier_terracing": true,
             "top_surface_moss": true,
             "lateral_vines_count": 18,
@@ -80,17 +80,17 @@
             "bioluminescent_wall_cyan_spores": 10
           },
           "amphitheater_tiers": {
-            "left_x_range": [-6.0, -2.4],
-            "right_x_range": [2.4, 6.0],
+            "left_x_range": [-8.5, -4.5],
+            "right_x_range": [4.5, 8.5],
             "top_surface_moss": true,
             "lateral_vines": true
           },
           "ceiling_arch": {
-            "visible_y_range": [4.0, 6.5],
+            "visible_y_range": [6.2, 8.0],
             "lateral_stalactites": {
-              "left_x_range": [-5.5, -3.4],
-              "right_x_range": [3.4, 5.5],
-              "forbidden_central_x_range": [-3.2, 3.2],
+              "left_x_range": [-6.5, -4.5],
+              "right_x_range": [4.5, 6.5],
+              "forbidden_central_x_range": [-3.5, 3.5],
               "material": "rock_shadow"
             }
           }

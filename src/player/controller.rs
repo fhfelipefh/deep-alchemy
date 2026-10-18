@@ -122,15 +122,15 @@ pub fn resolve_player_collision_sliding(
         }
 
         // Cavern perimeter boundary limits (Canyon walls and rear grotto enclosure)
-        if resolved.x < -5.0 + player_radius {
-            resolved.x = -5.0 + player_radius;
-        } else if resolved.x > 5.0 - player_radius {
-            resolved.x = 5.0 - player_radius;
+        if resolved.x < -6.8 + player_radius {
+            resolved.x = -6.8 + player_radius;
+        } else if resolved.x > 6.8 - player_radius {
+            resolved.x = 6.8 - player_radius;
         }
-        if resolved.z > 2.2 - player_radius {
-            resolved.z = 2.2 - player_radius;
-        } else if resolved.z < -12.5 + player_radius {
-            resolved.z = -12.5 + player_radius;
+        if resolved.z > 3.2 - player_radius {
+            resolved.z = 3.2 - player_radius;
+        } else if resolved.z < -13.2 + player_radius {
+            resolved.z = -13.2 + player_radius;
         }
     }
 
@@ -672,7 +672,7 @@ mod tests {
             Player,
             PlayerState::Active,
             LocomotionState::default(),
-            Transform::from_xyz(-4.5, 1.2, 0.0),
+            Transform::from_xyz(-6.3, 1.2, 0.0),
             Stamina { current: 100.0, max: 100.0 },
         )).id();
 
@@ -686,10 +686,10 @@ mod tests {
         }
 
         let player_x = app.world().get::<Transform>(player).unwrap().translation.x;
-        // Canyon wall limit is at -5.0 + player radius 0.35 = -4.65
+        // Canyon wall limit is at -6.8 + player radius 0.35 = -6.45
         assert!(
-            player_x >= -4.66,
-            "Player must be blocked by canyon wall: x={:.3} must be >= -4.66",
+            player_x >= -6.46,
+            "Player must be blocked by canyon wall: x={:.3} must be >= -6.46",
             player_x
         );
     }

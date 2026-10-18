@@ -67,7 +67,7 @@ pub fn setup_cavern_world(
     ));
 
     // --- Bioluminescent PointLights (Lateral Margins, Stalactites, Waterfall & Amphitheater) ---
-    // Left Mushroom cluster light (X = -4.0, Y = 2.6, Z = -3.2)
+    // Left Mushroom cluster light (X = -3.4, Y = 2.4, Z = -2.8)
     commands.spawn((
         PointLight {
             color: Color::srgb(0.12, 0.96, 0.88), // Electric turquoise #2be8d8
@@ -76,10 +76,10 @@ pub fn setup_cavern_world(
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(-4.0, 2.6, -3.2),
+        Transform::from_xyz(-3.4, 2.4, -2.8),
     ));
 
-    // Right Mushroom cluster light (X = 4.0, Y = 2.6, Z = -3.0)
+    // Right Mushroom cluster light (X = 4.1, Y = 2.4, Z = -3.3)
     commands.spawn((
         PointLight {
             color: Color::srgb(0.12, 0.96, 0.88),
@@ -88,7 +88,7 @@ pub fn setup_cavern_world(
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(4.0, 2.6, -3.0),
+        Transform::from_xyz(4.1, 2.4, -3.3),
     ));
 
     // Waterfall luminous foam and spray bounce light
@@ -228,52 +228,52 @@ pub fn setup_cavern_world(
     commands.spawn((
         Name::new("Collider_Mushroom_Left_Large"),
         CavernObstacle,
-        ObstacleShape::Cylinder { radius: 0.70, height: 2.90 },
-        Transform::from_xyz(-4.45, 1.45, -3.70),
+        ObstacleShape::Cylinder { radius: 0.65, height: 2.70 },
+        Transform::from_xyz(-3.50, 1.30, -3.30),
         RigidBody::Static,
-        Collider::cylinder(0.70, 2.90),
+        Collider::cylinder(0.65, 2.70),
     ));
     commands.spawn((
         Name::new("Collider_Mushroom_Left_Medium"),
         CavernObstacle,
-        ObstacleShape::Cylinder { radius: 0.52, height: 2.00 },
-        Transform::from_xyz(-3.72, 1.00, -2.90),
+        ObstacleShape::Cylinder { radius: 0.48, height: 1.90 },
+        Transform::from_xyz(-2.89, 0.90, -2.52),
         RigidBody::Static,
-        Collider::cylinder(0.52, 2.00),
+        Collider::cylinder(0.48, 1.90),
     ));
     commands.spawn((
         Name::new("Collider_Mushroom_Left_Small"),
         CavernObstacle,
-        ObstacleShape::Cylinder { radius: 0.40, height: 1.30 },
-        Transform::from_xyz(-4.85, 0.65, -2.65),
+        ObstacleShape::Cylinder { radius: 0.38, height: 1.25 },
+        Transform::from_xyz(-4.07, 0.60, -2.20),
         RigidBody::Static,
-        Collider::cylinder(0.40, 1.30),
+        Collider::cylinder(0.38, 1.25),
     ));
 
     // Static physical obstacle colliders for rooted mushrooms (Right cluster: 3 vibrant lathe dome mushrooms)
     commands.spawn((
         Name::new("Collider_Mushroom_Right_1"),
         CavernObstacle,
-        ObstacleShape::Cylinder { radius: 0.52, height: 1.80 },
-        Transform::from_xyz(4.55, 0.90, -3.75),
+        ObstacleShape::Cylinder { radius: 0.48, height: 1.70 },
+        Transform::from_xyz(4.17, 0.85, -3.53),
         RigidBody::Static,
-        Collider::cylinder(0.52, 1.80),
+        Collider::cylinder(0.48, 1.70),
     ));
     commands.spawn((
         Name::new("Collider_Mushroom_Right_2"),
         CavernObstacle,
-        ObstacleShape::Cylinder { radius: 0.42, height: 1.45 },
-        Transform::from_xyz(4.07, 0.75, -3.05),
+        ObstacleShape::Cylinder { radius: 0.40, height: 1.40 },
+        Transform::from_xyz(3.58, 0.70, -2.80),
         RigidBody::Static,
-        Collider::cylinder(0.42, 1.45),
+        Collider::cylinder(0.40, 1.40),
     ));
     commands.spawn((
         Name::new("Collider_Mushroom_Right_3"),
         CavernObstacle,
-        ObstacleShape::Cylinder { radius: 0.35, height: 1.10 },
-        Transform::from_xyz(5.16, 0.55, -4.18),
+        ObstacleShape::Cylinder { radius: 0.32, height: 1.05 },
+        Transform::from_xyz(4.73, 0.50, -3.98),
         RigidBody::Static,
-        Collider::cylinder(0.35, 1.10),
+        Collider::cylinder(0.32, 1.05),
     ));
 
     // Static physical obstacle colliders for organic rock terraces flanking the waterfall
@@ -281,7 +281,7 @@ pub fn setup_cavern_world(
         Name::new("Collider_Rock_Terrace_Left"),
         CavernObstacle,
         ObstacleShape::Cuboid { half_extents: Vec3::new(1.75, 1.25, 1.75) },
-        Transform::from_xyz(-6.6, 1.2, -7.8),
+        Transform::from_xyz(-6.8, 1.2, -6.8),
         RigidBody::Static,
         Collider::cuboid(3.5, 2.5, 3.5),
     ));
@@ -289,7 +289,7 @@ pub fn setup_cavern_world(
         Name::new("Collider_Rock_Terrace_Right"),
         CavernObstacle,
         ObstacleShape::Cuboid { half_extents: Vec3::new(1.75, 1.25, 1.75) },
-        Transform::from_xyz(6.6, 1.2, -7.8),
+        Transform::from_xyz(6.8, 1.2, -6.8),
         RigidBody::Static,
         Collider::cuboid(3.5, 2.5, 3.5),
     ));
@@ -298,26 +298,26 @@ pub fn setup_cavern_world(
     commands.spawn((
         Name::new("Collider_Canyon_Wall_Left"),
         CavernObstacle,
-        ObstacleShape::Cuboid { half_extents: Vec3::new(1.0, 4.0, 8.0) },
-        Transform::from_xyz(-5.8, 3.0, -4.5),
+        ObstacleShape::Cuboid { half_extents: Vec3::new(1.0, 4.0, 9.0) },
+        Transform::from_xyz(-8.5, 3.0, -4.5),
         RigidBody::Static,
-        Collider::cuboid(2.0, 8.0, 16.0),
+        Collider::cuboid(2.0, 8.0, 18.0),
     ));
     commands.spawn((
         Name::new("Collider_Canyon_Wall_Right"),
         CavernObstacle,
-        ObstacleShape::Cuboid { half_extents: Vec3::new(1.0, 4.0, 8.0) },
-        Transform::from_xyz(5.8, 3.0, -4.5),
+        ObstacleShape::Cuboid { half_extents: Vec3::new(1.0, 4.0, 9.0) },
+        Transform::from_xyz(8.5, 3.0, -4.5),
         RigidBody::Static,
-        Collider::cuboid(2.0, 8.0, 16.0),
+        Collider::cuboid(2.0, 8.0, 18.0),
     ));
     commands.spawn((
         Name::new("Collider_Cavern_Wall_Rear"),
         CavernObstacle,
-        ObstacleShape::Cuboid { half_extents: Vec3::new(6.0, 4.0, 1.0) },
-        Transform::from_xyz(0.0, 3.0, 2.8),
+        ObstacleShape::Cuboid { half_extents: Vec3::new(8.5, 4.0, 1.0) },
+        Transform::from_xyz(0.0, 3.0, 4.0),
         RigidBody::Static,
-        Collider::cuboid(12.0, 8.0, 2.0),
+        Collider::cuboid(17.0, 8.0, 2.0),
     ));
 
     // -------------------------------------------------------------
@@ -375,7 +375,7 @@ pub fn setup_cavern_world(
 
     // Lateral mushroom spore emitters
     commands.spawn((
-        Transform::from_xyz(-5.4, 2.5, -3.6),
+        Transform::from_xyz(-3.6, 2.2, -3.2),
         ParticleEmitter {
             spawn_timer: 0.0,
             spawn_rate: 0.12,
@@ -383,7 +383,7 @@ pub fn setup_cavern_world(
         },
     ));
     commands.spawn((
-        Transform::from_xyz(5.4, 2.5, -3.6),
+        Transform::from_xyz(4.2, 2.2, -3.4),
         ParticleEmitter {
             spawn_timer: 0.0,
             spawn_rate: 0.12,
@@ -404,14 +404,14 @@ pub fn setup_cavern_world(
             secondary_effect: AlchemicalEffectKind::Swiftness,
             harvested: false,
         },
-        Transform::from_xyz(-4.8, 0.5, -3.2),
+        Transform::from_xyz(-3.6, 0.5, -3.2),
         GlobalTransform::default(),
         Collider::cylinder(0.4, 0.8),
     ));
 
     // Thermal Geyser at travertine terrace
     commands.spawn((
-        Transform::from_xyz(-4.5, 0.5, -6.5),
+        Transform::from_xyz(-5.8, 0.5, -5.8),
         ThermalGeyser {
             eruption_timer: 0.0,
             eruption_interval: 3.5,
@@ -431,7 +431,7 @@ pub fn setup_cavern_world(
         CavernObstacle,
         ObstacleShape::Cuboid { half_extents: Vec3::new(0.8, 0.45, 0.35) },
         SceneRoot(asset_server.load("models/alchemy_props.glb#Scene0")),
-        Transform::from_xyz(2.15, 0.04, -1.75).with_rotation(Quat::from_rotation_y(-0.45)),
+        Transform::from_xyz(2.15, 0.04, -1.65).with_rotation(Quat::from_rotation_y(-0.45)),
         RigidBody::Static,
         Collider::cuboid(1.6, 0.9, 0.7),
     ));
