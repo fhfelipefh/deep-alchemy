@@ -121,16 +121,47 @@ pub fn resolve_player_collision_sliding(
             }
         }
 
-        // Cavern perimeter boundary limits (Canyon walls and rear grotto enclosure)
-        if resolved.x < -6.8 + player_radius {
-            resolved.x = -6.8 + player_radius;
-        } else if resolved.x > 6.8 - player_radius {
-            resolved.x = 6.8 - player_radius;
-        }
-        if resolved.z > 3.2 - player_radius {
-            resolved.z = 3.2 - player_radius;
-        } else if resolved.z < -13.2 + player_radius {
-            resolved.z = -13.2 + player_radius;
+        // Perimeter boundary limits (Starting Grotto, Portal Archway, and Procedural Dungeon)
+        let portal_x_limit = 2.2 - player_radius;
+
+        if resolved.z < 3.2 {
+            // Inside starting grotto amphitheater
+            let x_limit = 6.8 - player_radius;
+            resolved.x = resolved.x.clamp(-x_limit, x_limit);
+
+            let z_min = -13.2 + player_radius;
+            if resolved.z < z_min {
+                resolved.z = z_min;
+            }
+
+            // Flanking rear rock wall (outside portal opening)
+            if resolved.x.abs() > portal_x_limit && resolved.z > 3.2 - player_radius {
+                resolved.z = 3.2 - player_radius;
+            }
+        } else if resolved.z <= 5.0 {
+            // Archway portal passage connecting grotto to procedural dungeon
+            if resolved.x.abs() > portal_x_limit {
+                if prev_pos.z <= 3.2 {
+                    // Blocked by solid rear grotto wall flanking the portal opening
+                    resolved.z = 3.2 - player_radius;
+                    let x_limit = 6.8 - player_radius;
+                    resolved.x = resolved.x.clamp(-x_limit, x_limit);
+                } else if prev_pos.z > 5.0 {
+                    // Blocked by dungeon exterior wall returning outside the portal opening
+                    resolved.z = 5.0 + player_radius;
+                } else {
+                    resolved.x = resolved.x.clamp(-portal_x_limit, portal_x_limit);
+                }
+            } else {
+                resolved.x = resolved.x.clamp(-portal_x_limit, portal_x_limit);
+            }
+        } else {
+            // Inside procedural dungeon macro layout
+            let dungeon_limit = 46.0 - player_radius;
+            resolved.x = resolved.x.clamp(-dungeon_limit, dungeon_limit);
+            if resolved.z > dungeon_limit {
+                resolved.z = dungeon_limit;
+            }
         }
     }
 
@@ -691,6 +722,70 @@ mod tests {
             player_x >= -6.46,
             "Player must be blocked by canyon wall: x={:.3} must be >= -6.46",
             player_x
+        );
+    }
+
+    #[test]
+    fn test_player_traverses_portal_archway_into_dungeon() {
+        let mut app = App::new();
+        app.add_systems(Update, player_movement);
+        app.init_resource::<Time>();
+
+        // Player starting near portal opening at x = 0.0, facing south (+Z) towards dungeon
+        let player = app.world_mut().spawn((
+            Player,
+            PlayerState::Active,
+            LocomotionState::default(),
+            Transform::from_xyz(0.0, 1.2, 2.0).with_rotation(Quat::from_rotation_y(std::f32::consts::PI)),
+            Stamina { current: 100.0, max: 100.0 },
+        )).id();
+
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::KeyW); // Walk forward through the portal archway (+Z)
+        app.world_mut().insert_resource(keys);
+
+        for _ in 0..60 {
+            app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+            app.update();
+        }
+
+        let player_z = app.world().get::<Transform>(player).unwrap().translation.z;
+        assert!(
+            player_z >= 4.5,
+            "Player must pass through portal archway into dungeon: z={:.3} must be >= 4.5",
+            player_z
+        );
+    }
+
+    #[test]
+    fn test_player_blocked_by_rear_wall_outside_portal() {
+        let mut app = App::new();
+        app.add_systems(Update, player_movement);
+        app.init_resource::<Time>();
+
+        // Player starting at x = 4.0 (outside portal width 2.2), facing south (+Z) into solid rear wall
+        let player = app.world_mut().spawn((
+            Player,
+            PlayerState::Active,
+            LocomotionState::default(),
+            Transform::from_xyz(4.0, 1.2, 2.0).with_rotation(Quat::from_rotation_y(std::f32::consts::PI)),
+            Stamina { current: 100.0, max: 100.0 },
+        )).id();
+
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::KeyW); // Attempt to walk through solid rock wall (+Z)
+        app.world_mut().insert_resource(keys);
+
+        for _ in 0..60 {
+            app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+            app.update();
+        }
+
+        let player_z = app.world().get::<Transform>(player).unwrap().translation.z;
+        assert!(
+            player_z <= 2.86,
+            "Player must be blocked before solid rear wall: z={:.3} must be <= 2.86",
+            player_z
         );
     }
 }

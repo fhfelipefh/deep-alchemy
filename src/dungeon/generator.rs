@@ -1,6 +1,7 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use std::collections::{HashSet, VecDeque};
+use crate::dungeon::modular_kit::{CavernObstacle, ObstacleShape};
 
 /// Logical tile state in the primary dungeon grid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -345,26 +346,26 @@ impl DungeonGenerator {
             0 => (CanonicalPiece::Empty, 0.0),
 
             // 1 solid corner: Outer Convex Corner (smooth rounded corner)
-            1 => (CanonicalPiece::OuterCorner, 0.0),    // Top-Left
-            2 => (CanonicalPiece::OuterCorner, 90.0),   // Top-Right
-            4 => (CanonicalPiece::OuterCorner, 180.0),  // Bottom-Right
-            8 => (CanonicalPiece::OuterCorner, 270.0),  // Bottom-Left
+            1 => (CanonicalPiece::OuterCorner, 0.0),    // Top-Left (c00: -X, -Z)
+            2 => (CanonicalPiece::OuterCorner, 270.0),  // Top-Right (c10: +X, -Z)
+            4 => (CanonicalPiece::OuterCorner, 180.0),  // Bottom-Right (c11: +X, +Z)
+            8 => (CanonicalPiece::OuterCorner, 90.0),   // Bottom-Left (c01: -X, +Z)
 
             // 2 adjacent solid corners: Straight Wall Edge
-            3 => (CanonicalPiece::StraightEdge, 0.0),   // Top edge (c00, c10)
-            6 => (CanonicalPiece::StraightEdge, 90.0),  // Right edge (c10, c11)
-            12 => (CanonicalPiece::StraightEdge, 180.0), // Bottom edge (c11, c01)
-            9 => (CanonicalPiece::StraightEdge, 270.0), // Left edge (c01, c00)
+            3 => (CanonicalPiece::StraightEdge, 0.0),   // Top edge (c00, c10: -Z)
+            6 => (CanonicalPiece::StraightEdge, 270.0), // Right edge (c10, c11: +X)
+            12 => (CanonicalPiece::StraightEdge, 180.0), // Bottom edge (c11, c01: +Z)
+            9 => (CanonicalPiece::StraightEdge, 90.0),  // Left edge (c01, c00: -X)
 
             // 2 diagonal solid corners: Saddle Point (Crossing)
             5 => (CanonicalPiece::SaddleCrossing, 0.0),  // (c00, c11)
             10 => (CanonicalPiece::SaddleCrossing, 90.0), // (c10, c01)
 
             // 3 solid corners: Inner Concave Corner
-            14 => (CanonicalPiece::InnerCorner, 0.0),   // c00 is open
-            13 => (CanonicalPiece::InnerCorner, 90.0),  // c10 is open
-            11 => (CanonicalPiece::InnerCorner, 180.0), // c11 is open
-            7 => (CanonicalPiece::InnerCorner, 270.0),  // c01 is open
+            14 => (CanonicalPiece::InnerCorner, 0.0),   // c00 is open (-X, -Z)
+            13 => (CanonicalPiece::InnerCorner, 270.0), // c10 is open (+X, -Z)
+            11 => (CanonicalPiece::InnerCorner, 180.0), // c11 is open (+X, +Z)
+            7 => (CanonicalPiece::InnerCorner, 90.0),   // c01 is open (-X, +Z)
 
             // 4 solid corners: Solid Rock / Interior Pillar
             15 => (CanonicalPiece::SolidPillar, 0.0),
@@ -477,8 +478,8 @@ pub fn spawn_procedural_dungeon(
     // Instantiate physical dual-grid pieces with Avian3D physics colliders & lighting
     for cell in &dungeon.dual_cells {
         // Skip spawning dungeon kit pieces inside the handcrafted Starting Grotto cavern amphitheater
-        // (Cavern grotto encompasses X in [-28, 28], Z in [-28, 8])
-        if cell.world_pos.x.abs() < 28.0 && cell.world_pos.z > -28.0 && cell.world_pos.z < 8.0 {
+        // (Cavern grotto encompasses X in [-8.5, 8.5], Z in [-13.5, 3.5])
+        if cell.world_pos.x.abs() < 8.0 && cell.world_pos.z > -13.5 && cell.world_pos.z < 3.5 {
             continue;
         }
 
@@ -550,6 +551,8 @@ pub fn spawn_procedural_dungeon(
                 // 1. Lower Mossy Rock Base (protruding footing with physics collider)
                 let base_offset = rot * Vec3::new(0.0, 0.6, -half_tile + 0.45);
                 commands.spawn((
+                    CavernObstacle,
+                    ObstacleShape::Cuboid { half_extents: Vec3::new(config.tile_size * 0.5, 0.6, 0.45) },
                     Mesh3d(meshes.add(Cuboid::new(config.tile_size, 1.2, 0.9).mesh())),
                     MeshMaterial3d(mat_wall_moss.clone()),
                     Transform::from_translation(cell.world_pos + base_offset).with_rotation(rot),
@@ -560,6 +563,8 @@ pub fn spawn_procedural_dungeon(
                 // 2. Upper Chiseled Rock Wall (faceted stone with physics collider)
                 let wall_offset = rot * Vec3::new(0.0, 2.4, -half_tile + 0.35);
                 commands.spawn((
+                    CavernObstacle,
+                    ObstacleShape::Cuboid { half_extents: Vec3::new(config.tile_size * 0.5, 1.2, 0.375) },
                     Mesh3d(meshes.add(Cuboid::new(config.tile_size, 2.4, 0.75).mesh())),
                     MeshMaterial3d(mat_wall_stone.clone()),
                     Transform::from_translation(cell.world_pos + wall_offset).with_rotation(rot),
@@ -603,6 +608,8 @@ pub fn spawn_procedural_dungeon(
                 // 1. Lower Mossy Rock Pillar Base (faceted rock block)
                 let base_offset = rot * Vec3::new(-half_tile + 0.6, 0.6, -half_tile + 0.6);
                 commands.spawn((
+                    CavernObstacle,
+                    ObstacleShape::Cuboid { half_extents: Vec3::new(0.9, 0.6, 0.9) },
                     Mesh3d(meshes.add(Cuboid::new(1.8, 1.2, 1.8).mesh())),
                     MeshMaterial3d(mat_wall_moss.clone()),
                     Transform::from_translation(cell.world_pos + base_offset).with_rotation(rot * Quat::from_rotation_y(0.38)),
@@ -613,6 +620,8 @@ pub fn spawn_procedural_dungeon(
                 // 2. Upper Chiseled Stone Pillar Body (faceted rock block)
                 let pillar_offset = rot * Vec3::new(-half_tile + 0.6, 2.6, -half_tile + 0.6);
                 commands.spawn((
+                    CavernObstacle,
+                    ObstacleShape::Cuboid { half_extents: Vec3::new(0.7, 1.4, 0.7) },
                     Mesh3d(meshes.add(Cuboid::new(1.4, 2.8, 1.4).mesh())),
                     MeshMaterial3d(mat_wall_stone.clone()),
                     Transform::from_translation(cell.world_pos + pillar_offset).with_rotation(rot * Quat::from_rotation_y(-0.25)),
@@ -639,6 +648,8 @@ pub fn spawn_procedural_dungeon(
                 // Multi-tiered Solid Cavern Rock Formations
                 let base_pos = cell.world_pos + Vec3::new(0.0, 0.8, 0.0);
                 commands.spawn((
+                    CavernObstacle,
+                    ObstacleShape::Cuboid { half_extents: Vec3::new(config.tile_size * 0.5, 0.8, config.tile_size * 0.5) },
                     Mesh3d(meshes.add(Cuboid::new(config.tile_size, 1.6, config.tile_size).mesh())),
                     MeshMaterial3d(mat_wall_moss.clone()),
                     Transform::from_translation(base_pos),
@@ -648,6 +659,8 @@ pub fn spawn_procedural_dungeon(
 
                 let upper_pos = cell.world_pos + Vec3::new(0.0, 3.2, 0.0);
                 commands.spawn((
+                    CavernObstacle,
+                    ObstacleShape::Cuboid { half_extents: Vec3::new(config.tile_size * 0.46, 1.6, config.tile_size * 0.46) },
                     Mesh3d(meshes.add(Cuboid::new(config.tile_size * 0.92, 3.2, config.tile_size * 0.92).mesh())),
                     MeshMaterial3d(mat_wall_stone.clone()),
                     Transform::from_translation(upper_pos),
@@ -743,5 +756,15 @@ mod tests {
 
         assert_eq!(d1.primary_grid, d2.primary_grid);
         assert_ne!(d1.primary_grid, d3.primary_grid);
+    }
+
+    #[test]
+    fn test_dungeon_grotto_exit_dual_cells_walkable() {
+        let config = DungeonConfig::default();
+        let dungeon = DungeonGenerator::generate(config);
+        // At z = 4.0, x = 0.0 (directly outside grotto archway portal), the dual cell must be Empty (walkable corridor floor)
+        let exit_cell = dungeon.dual_cells.iter().find(|c| c.world_pos.x.abs() < 1.0 && (c.world_pos.z - 4.0).abs() < 1.0);
+        assert!(exit_cell.is_some(), "Dungeon must generate a dual-grid cell right at the grotto exit (z = 4.0, x = 0.0)");
+        assert_eq!(exit_cell.unwrap().piece, CanonicalPiece::Empty, "Grotto exit cell must be CanonicalPiece::Empty (paved walkable floor) to allow player passage!");
     }
 }

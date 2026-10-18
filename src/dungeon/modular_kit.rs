@@ -311,13 +311,22 @@ pub fn setup_cavern_world(
         RigidBody::Static,
         Collider::cuboid(2.0, 8.0, 18.0),
     ));
+    // Static physical obstacle colliders for rear grotto enclosure flanking portal archway
     commands.spawn((
-        Name::new("Collider_Cavern_Wall_Rear"),
+        Name::new("Collider_Cavern_Wall_Rear_Left"),
         CavernObstacle,
-        ObstacleShape::Cuboid { half_extents: Vec3::new(8.5, 4.0, 1.0) },
-        Transform::from_xyz(0.0, 3.0, 4.0),
+        ObstacleShape::Cuboid { half_extents: Vec3::new(3.15, 4.0, 1.0) },
+        Transform::from_xyz(-5.35, 3.0, 4.0),
         RigidBody::Static,
-        Collider::cuboid(17.0, 8.0, 2.0),
+        Collider::cuboid(6.3, 8.0, 2.0),
+    ));
+    commands.spawn((
+        Name::new("Collider_Cavern_Wall_Rear_Right"),
+        CavernObstacle,
+        ObstacleShape::Cuboid { half_extents: Vec3::new(3.15, 4.0, 1.0) },
+        Transform::from_xyz(5.35, 3.0, 4.0),
+        RigidBody::Static,
+        Collider::cuboid(6.3, 8.0, 2.0),
     ));
 
     // -------------------------------------------------------------

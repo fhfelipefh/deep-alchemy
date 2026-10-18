@@ -436,12 +436,23 @@ def build_continuous_u_canyon_grotto_walls():
 
         z_ground = get_terrain_surface_z(x0, y0) - 0.30
         z_ceil = get_cavern_ceiling_z(x0, y0) + 0.20
-        h_total = max(3.5, z_ceil - z_ground)
+
+        if u_frac >= 0.77 and abs(x0) < 2.4:
+            # Arched portal passage connecting grotto to procedural dungeon
+            rel_x = x0 / 2.4
+            h_arch = max(0.0, 3.8 * math.sqrt(max(0.0, 1.0 - rel_x * rel_x)))
+            z_base = z_ground + h_arch
+            h_total = max(1.2, z_ceil - z_base)
+            portal_atten = abs(x0) / 2.4
+        else:
+            z_base = z_ground
+            h_total = max(3.5, z_ceil - z_base)
+            portal_atten = 1.0
 
         col = []
         for iv in range(v_segs + 1):
             v_frac = iv / v_segs
-            curr_z = z_ground + v_frac * h_total
+            curr_z = z_base + v_frac * h_total
 
             # 3-tier stepped terracing profile
             if v_frac < 0.28:
@@ -460,7 +471,7 @@ def build_continuous_u_canyon_grotto_walls():
             else:
                 apex_atten = 1.0
                 
-            d_total = (d_tier * 0.75 + n_disp * 0.35) * apex_atten
+            d_total = (d_tier * 0.75 + n_disp * 0.35) * apex_atten * portal_atten
 
             vx = x0 + inward_nx * d_total
             vy = y0 + inward_ny * d_total
@@ -1479,6 +1490,13 @@ spawn_water_ripple_rings()
 # ==============================================================================
 output_path = os.path.abspath("assets/models/cavern_kit.glb")
 os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+# Also save the native .blend file for artists to open, sculpt, and refine manually in Blender
+blend_dir = os.path.abspath("assets/models/source_blend")
+os.makedirs(blend_dir, exist_ok=True)
+blend_path = os.path.join(blend_dir, "cavern_kit.blend")
+bpy.ops.wm.save_as_mainfile(filepath=blend_path)
+print(f">>> [BLENDER 4.5] Saved native Blender project to: {blend_path}")
 
 bpy.ops.export_scene.gltf(
     filepath=output_path,
