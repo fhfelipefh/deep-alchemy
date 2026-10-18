@@ -1,5 +1,5 @@
 use crate::{
-    player::camera::{PlayerCamera, PlayerState},
+    player::camera::{LocomotionState, Player, PlayerCamera, PlayerState},
     ui::{hud::ActiveHotbarSlot, menu::GameState},
 };
 use avian3d::prelude::*;
@@ -69,6 +69,9 @@ pub struct PotionProjectile {
 }
 
 #[derive(Component, Debug)]
+pub struct TrajectoryAimIndicator;
+
+#[derive(Component, Debug)]
 #[allow(dead_code)]
 pub struct PotionFlask {
     pub id: String,
@@ -94,11 +97,78 @@ impl Plugin for AlchemyPlugin {
             (
                 update_active_effects,
                 update_thermal_geysers,
+                update_potion_aiming
+                    .run_if(resource_exists::<ButtonInput<MouseButton>>)
+                    .run_if(resource_exists::<SpatialQueryPipeline>),
                 spawn_potion_projectile.run_if(resource_exists::<ButtonInput<MouseButton>>),
                 update_potion_projectiles.run_if(resource_exists::<SpatialQueryPipeline>),
             ),
         );
     }
+}
+
+pub fn calculate_aim_trajectory(
+    origin: Vec3,
+    initial_velocity: Vec3,
+    gravity: f32,
+    steps: usize,
+    step_time: f32,
+    spatial_query: Option<&SpatialQuery>,
+) -> Vec<Vec3> {
+    let mut points = Vec::with_capacity(steps);
+    let mut current_pos = origin;
+    let mut current_vel = initial_velocity;
+    points.push(current_pos);
+
+    for _ in 0..steps {
+        let next_vel = current_vel + Vec3::new(0.0, -gravity * step_time, 0.0);
+        let displacement = (current_vel + next_vel) * 0.5 * step_time;
+        let segment_len = displacement.length();
+
+        if let Some(sq) = spatial_query {
+            if segment_len > 1e-4 {
+                let dir = displacement / segment_len;
+                if let Some(hit) = sq.cast_ray(
+                    current_pos,
+                    Dir3::new(dir).unwrap_or(Dir3::NEG_Y),
+                    segment_len,
+                    true,
+                    &SpatialQueryFilter::default(),
+                ) {
+                    current_pos += dir * hit.distance;
+                    points.push(current_pos);
+                    break;
+                }
+            }
+        }
+
+        current_pos += displacement;
+        current_vel = next_vel;
+        points.push(current_pos);
+        if current_pos.y < -5.0 {
+            break;
+        }
+    }
+    points
+}
+
+pub fn apply_throw_inaccuracy(
+    base_direction: Vec3,
+    is_sprinting: bool,
+    time_seed: f32,
+) -> Vec3 {
+    if !is_sprinting {
+        return base_direction.normalize_or_zero();
+    }
+    let pseudo_rand_x = (time_seed * 127.1 + 311.7).sin() * 43758.547;
+    let pseudo_rand_y = (time_seed * 269.5 + 183.3).cos() * 24634.63;
+    let fract_x = (pseudo_rand_x.fract() - 0.5) * 2.0;
+    let fract_y = (pseudo_rand_y.fract() - 0.5) * 2.0;
+    let right = base_direction.cross(Vec3::Y).normalize_or_zero();
+    let up = right.cross(base_direction).normalize_or_zero();
+    let inaccuracy_amount = 0.20;
+    let perturbed = base_direction + right * (fract_x * inaccuracy_amount) + up * (fract_y * inaccuracy_amount);
+    perturbed.normalize_or_zero()
 }
 
 fn selected_potion_effects(slot: usize) -> (Color, Vec<ActiveEffect>) {
@@ -140,12 +210,97 @@ fn selected_potion_effects(slot: usize) -> (Color, Vec<ActiveEffect>) {
     )
 }
 
-fn spawn_potion_projectile(
+fn update_potion_aiming(
     game_state: Option<Res<State<GameState>>>,
     mouse: Res<ButtonInput<MouseButton>>,
     slot: Option<Res<ActiveHotbarSlot>>,
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
     player: Query<&PlayerState>,
+    spatial_query: SpatialQuery,
+    aim_indicators: Query<Entity, With<TrajectoryAimIndicator>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut commands: Commands,
+) {
+    if let Some(state) = game_state {
+        if *state.get() != GameState::InGame {
+            for entity in aim_indicators.iter() {
+                commands.entity(entity).despawn();
+            }
+            return;
+        }
+    }
+
+    let is_aiming = mouse.pressed(MouseButton::Right) && player.iter().all(|s| *s == PlayerState::Active);
+
+    for entity in aim_indicators.iter() {
+        commands.entity(entity).despawn();
+    }
+
+    if !is_aiming {
+        return;
+    }
+
+    let Ok(camera_tf) = camera.get_single() else {
+        return;
+    };
+
+    let slot_index = slot.as_deref().map(|s| s.0).unwrap_or(1);
+    let (color, _) = selected_potion_effects(slot_index);
+    let forward = *camera_tf.forward();
+    let origin = camera_tf.translation() + forward * 0.45;
+    let initial_velocity = forward * 16.0;
+    let gravity = 9.8;
+    let trajectory_points = calculate_aim_trajectory(
+        origin,
+        initial_velocity,
+        gravity,
+        45,
+        0.045,
+        Some(&spatial_query),
+    );
+
+    let sphere_mesh = meshes.add(Sphere::new(0.045).mesh().uv(8, 6));
+    let line_mat = materials.add(StandardMaterial {
+        base_color: color,
+        emissive: color.to_linear() * 1.5,
+        unlit: true,
+        ..default()
+    });
+
+    for pt in trajectory_points.iter().step_by(2) {
+        commands.spawn((
+            TrajectoryAimIndicator,
+            Mesh3d(sphere_mesh.clone()),
+            MeshMaterial3d(line_mat.clone()),
+            Transform::from_translation(*pt),
+        ));
+    }
+
+    if let Some(&impact_pt) = trajectory_points.last() {
+        let ring_mesh = meshes.add(Torus::new(0.06, 0.35).mesh());
+        let arrow_mat = materials.add(StandardMaterial {
+            base_color: color,
+            emissive: color.to_linear() * 2.5,
+            unlit: true,
+            ..default()
+        });
+        commands.spawn((
+            TrajectoryAimIndicator,
+            Mesh3d(ring_mesh),
+            MeshMaterial3d(arrow_mat),
+            Transform::from_translation(impact_pt + Vec3::new(0.0, 0.03, 0.0)),
+        ));
+    }
+}
+
+fn spawn_potion_projectile(
+    game_state: Option<Res<State<GameState>>>,
+    time: Res<Time>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    slot: Option<Res<ActiveHotbarSlot>>,
+    camera: Query<&GlobalTransform, With<PlayerCamera>>,
+    player_query: Query<(&PlayerState, Option<&LocomotionState>), With<Player>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
@@ -155,18 +310,28 @@ fn spawn_potion_projectile(
             return;
         }
     }
-    if !mouse.just_pressed(MouseButton::Left) || player.iter().any(|s| *s != PlayerState::Active) {
+    if !mouse.just_pressed(MouseButton::Left) {
+        return;
+    }
+    let Ok((player_state, locomotion_opt)) = player_query.get_single() else {
+        return;
+    };
+    if *player_state != PlayerState::Active {
         return;
     }
     let Ok(camera) = camera.get_single() else {
         return;
     };
+
+    let is_sprinting = locomotion_opt.map(|l| l.is_sprinting).unwrap_or(false);
+    let base_direction = *camera.forward();
+    let final_direction = apply_throw_inaccuracy(base_direction, is_sprinting, time.elapsed_secs());
+
     let slot_index = slot.as_deref().map(|s| s.0).unwrap_or(1);
     let (color, effects) = selected_potion_effects(slot_index);
-    let direction = *camera.forward();
-    let origin = camera.translation() + direction * 0.55;
+    let origin = camera.translation() + base_direction * 0.55;
     commands.spawn((
-        Mesh3d(meshes.add(Sphere::new(0.10).mesh().uv(12, 8))),
+        Mesh3d(meshes.add(Sphere::new(0.12).mesh().uv(12, 8))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: color,
             emissive: color.to_linear(),
@@ -175,9 +340,9 @@ fn spawn_potion_projectile(
         })),
         Transform::from_translation(origin),
         PotionProjectile {
-            velocity: direction * 15.0,
+            velocity: final_direction * 16.0,
             effects,
-            lifetime: 4.0,
+            lifetime: 4.5,
         },
     ));
 }
@@ -190,12 +355,14 @@ fn update_potion_projectiles(
     mut commands: Commands,
 ) {
     let dt = time.delta_secs();
+    let gravity = Vec3::new(0.0, -9.8, 0.0);
     for (entity, mut transform, mut projectile) in &mut projectiles {
+        projectile.velocity += gravity * dt;
         let distance = projectile.velocity.length() * dt;
         let direction = projectile.velocity.normalize_or_zero();
         let hit = spatial_query.cast_ray(
             transform.translation,
-            Dir3::new(direction).unwrap_or(Dir3::NEG_Z),
+            Dir3::new(direction).unwrap_or(Dir3::NEG_Y),
             distance,
             true,
             &SpatialQueryFilter::default(),
@@ -359,5 +526,27 @@ mod tests {
             .get::<EffectReceiverComponent>(far_entity)
             .unwrap();
         assert!(!far_recv.has_effect(AlchemicalEffectKind::ThermalHeat));
+    }
+
+    #[test]
+    fn test_aim_trajectory_calculation_generates_arc() {
+        let origin = Vec3::new(0.0, 1.5, 0.0);
+        let vel = Vec3::new(0.0, 5.0, -10.0);
+        let pts = calculate_aim_trajectory(origin, vel, 9.8, 20, 0.05, None);
+        assert!(pts.len() >= 15);
+        assert_eq!(pts[0], origin);
+        assert!(pts[pts.len() - 1].z < origin.z);
+    }
+
+    #[test]
+    fn test_sprint_throw_inaccuracy_application() {
+        let forward = Vec3::new(0.0, 0.0, -1.0);
+        let still_dir = apply_throw_inaccuracy(forward, false, 1.23);
+        assert_eq!(still_dir, forward);
+
+        let running_dir = apply_throw_inaccuracy(forward, true, 4.56);
+        assert_ne!(running_dir, forward);
+        let dot = running_dir.dot(forward);
+        assert!(dot >= 0.75, "Direction must be within 20% variance window");
     }
 }
