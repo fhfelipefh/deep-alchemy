@@ -17,6 +17,7 @@ use deep_alchemy::{
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let is_screenshot_test = args.iter().any(|arg| arg == "--screenshot-test" || arg == "--validate-frame");
+    let is_menu_screenshot = args.iter().any(|arg| arg == "--screenshot-menu");
 
     let mut app = App::new();
 
@@ -49,6 +50,9 @@ fn main() {
         info!(">>> [GATE 4] Running in --screenshot-test mode: capturing frame 30 to ./debug_output/frame_check.png");
         app.add_systems(Startup, switch_to_ingame_for_screenshot_test)
             .add_systems(Update, handle_screenshot_test_lifecycle);
+    } else if is_menu_screenshot {
+        info!(">>> [MENU SCREENSHOT] Capturing main menu frame to ./debug_output/menu_check.png");
+        app.add_systems(Update, handle_menu_screenshot_lifecycle);
     }
 
     app.run();
@@ -74,6 +78,24 @@ fn handle_screenshot_test_lifecycle(
         info!(">>> [SCREENSHOT GATE] Triggered primary_window screenshot at frame 20 -> debug_output/frame_check.png");
     } else if *counter >= 60 {
         info!(">>> [SCREENSHOT GATE] Frame 60 reached, gracefully exiting.");
+        app_exit.send(AppExit::Success);
+    }
+}
+
+fn handle_menu_screenshot_lifecycle(
+    mut commands: Commands,
+    mut counter: Local<u32>,
+    mut app_exit: EventWriter<AppExit>,
+) {
+    *counter += 1;
+    if *counter == 20 {
+        std::fs::create_dir_all("debug_output").ok();
+        commands
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk("debug_output/menu_check.png"));
+        info!(">>> [MENU SCREENSHOT] Triggered primary_window screenshot at frame 20 -> debug_output/menu_check.png");
+    } else if *counter >= 50 {
+        info!(">>> [MENU SCREENSHOT] Frame 50 reached, gracefully exiting.");
         app_exit.send(AppExit::Success);
     }
 }

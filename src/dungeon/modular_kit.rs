@@ -20,6 +20,9 @@ pub struct WaterfallBaseMesh {
     pub base_normals: Vec<[f32; 3]>,
 }
 
+#[derive(Component)]
+pub struct CavernObstacle;
+
 pub struct DungeonPlugin;
 
 impl Plugin for DungeonPlugin {
@@ -142,6 +145,54 @@ pub fn setup_cavern_world(
         Transform::from_xyz(0.0, 1.8, -8.5),
     ));
 
+    // High vaulted cavern ceiling fill light (illuminates dome & upper stalactites)
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.20, 0.45, 0.65),
+            intensity: 75000.0,
+            range: 32.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 18.0, -5.5),
+    ));
+
+    // Left high vault bioluminescent lichen node glow
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.17, 0.95, 0.88),
+            intensity: 45000.0,
+            range: 22.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(-4.5, 17.0, -7.0),
+    ));
+
+    // Right high vault bioluminescent lichen node glow
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.17, 0.95, 0.88),
+            intensity: 45000.0,
+            range: 22.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(4.5, 17.0, -7.0),
+    ));
+
+    // High ceiling apex cleft skylight glow
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.55, 0.95, 1.0),
+            intensity: 95000.0,
+            range: 36.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 21.0, -9.5),
+    ));
+
     // -------------------------------------------------------------
     // 2. MASTERWORK CAVERN KIT SCENE (.glb)
     // -------------------------------------------------------------
@@ -155,6 +206,68 @@ pub fn setup_cavern_world(
         Transform::from_xyz(0.0, 0.0, 0.0),
         RigidBody::Static,
         Collider::half_space(Vec3::Y),
+    ));
+
+    // Static physical obstacle colliders for rooted mushrooms (Left cluster: Large, Medium, Small)
+    commands.spawn((
+        Name::new("Collider_Mushroom_Left_Large"),
+        CavernObstacle,
+        Transform::from_xyz(-5.0, 1.6, -3.2),
+        RigidBody::Static,
+        Collider::cylinder(0.52, 3.0),
+    ));
+    commands.spawn((
+        Name::new("Collider_Mushroom_Left_Medium"),
+        CavernObstacle,
+        Transform::from_xyz(-4.3, 0.95, -2.4),
+        RigidBody::Static,
+        Collider::cylinder(0.38, 1.75),
+    ));
+    commands.spawn((
+        Name::new("Collider_Mushroom_Left_Small"),
+        CavernObstacle,
+        Transform::from_xyz(-5.5, 0.65, -3.8),
+        RigidBody::Static,
+        Collider::cylinder(0.28, 1.10),
+    ));
+
+    // Static physical obstacle colliders for rooted mushrooms (Right cluster: Large, Medium, Small)
+    commands.spawn((
+        Name::new("Collider_Mushroom_Right_Large"),
+        CavernObstacle,
+        Transform::from_xyz(5.0, 1.6, -3.2),
+        RigidBody::Static,
+        Collider::cylinder(0.52, 3.0),
+    ));
+    commands.spawn((
+        Name::new("Collider_Mushroom_Right_Medium"),
+        CavernObstacle,
+        Transform::from_xyz(4.3, 0.95, -2.4),
+        RigidBody::Static,
+        Collider::cylinder(0.38, 1.75),
+    ));
+    commands.spawn((
+        Name::new("Collider_Mushroom_Right_Small"),
+        CavernObstacle,
+        Transform::from_xyz(5.5, 0.65, -3.8),
+        RigidBody::Static,
+        Collider::cylinder(0.28, 1.10),
+    ));
+
+    // Static physical obstacle colliders for organic rock terraces flanking the waterfall
+    commands.spawn((
+        Name::new("Collider_Rock_Terrace_Left"),
+        CavernObstacle,
+        Transform::from_xyz(-6.6, 1.2, -7.8),
+        RigidBody::Static,
+        Collider::cuboid(3.5, 2.5, 3.5),
+    ));
+    commands.spawn((
+        Name::new("Collider_Rock_Terrace_Right"),
+        CavernObstacle,
+        Transform::from_xyz(6.6, 1.2, -7.8),
+        RigidBody::Static,
+        Collider::cuboid(3.5, 2.5, 3.5),
     ));
 
     // -------------------------------------------------------------
@@ -262,10 +375,14 @@ pub fn setup_cavern_world(
         },
     ));
 
-    // Interactive Alchemy Props Bench
+    // Masterwork Rustic Alchemy Workstation & Ingredient Bench
     commands.spawn((
+        Name::new("Alchemist_Workstation"),
+        CavernObstacle,
         SceneRoot(asset_server.load("models/alchemy_props.glb#Scene0")),
-        Transform::from_xyz(2.2, 0.0, 1.8),
+        Transform::from_xyz(3.8, 0.0, 1.2).with_rotation(Quat::from_rotation_y(-0.45)),
+        RigidBody::Static,
+        Collider::cuboid(2.2, 1.4, 1.0),
     ));
 
     info!("Masterwork Cel-Shaded Cavern Grotto initialized with Volumetric Waterfall, Organic Mushrooms, and Sobel Outlines!");
@@ -455,10 +572,15 @@ pub mod tests {
         app.add_systems(Startup, setup_cavern_world);
         app.update();
 
-        // Check PointLights spawned
+        // Check PointLights spawned (at least 9 including high ceiling vault lights)
         let mut light_query = app.world_mut().query::<&PointLight>();
         let light_count = light_query.iter(app.world()).count();
-        assert!(light_count >= 5, "Must spawn at least 5 point lights for bioluminescence and waterfall");
+        assert!(light_count >= 9, "Must spawn at least 9 point lights for bioluminescence, waterfall and high ceiling vault");
+
+        // Check CavernObstacle colliders spawned (6 mushroom stems + 2 rock terraces + 1 alchemy workstation)
+        let mut obstacle_query = app.world_mut().query::<(&CavernObstacle, &Collider, &RigidBody)>();
+        let obstacle_count = obstacle_query.iter(app.world()).count();
+        assert_eq!(obstacle_count, 9, "Must spawn 9 static colliders for mushroom stems, rock terraces and alchemy workstation");
 
         // Check ParticleEmitter spawned
         let mut emitter_query = app.world_mut().query::<&ParticleEmitter>();

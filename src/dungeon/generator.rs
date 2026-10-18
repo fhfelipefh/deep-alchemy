@@ -476,6 +476,12 @@ pub fn spawn_procedural_dungeon(
 
     // Instantiate physical dual-grid pieces with Avian3D physics colliders & lighting
     for cell in &dungeon.dual_cells {
+        // Skip spawning dungeon kit pieces inside the handcrafted Starting Grotto cavern amphitheater
+        // (Cavern grotto has radius ~11.0m centered around (0.0, -4.5))
+        if cell.world_pos.x.hypot(cell.world_pos.z + 4.5) < 11.0 {
+            continue;
+        }
+
         let rot = Quat::from_rotation_y(cell.rotation_y_deg.to_radians());
 
         match cell.piece {
@@ -513,9 +519,9 @@ pub fn spawn_procedural_dungeon(
                             ));
                         }
                         RoomType::AlchemicalShrine => {
-                            // Ancient rune pedestal with warm brazier light
+                            // Ancient rune pedestal with warm brazier light (faceted rock pedestal)
                             commands.spawn((
-                                Mesh3d(meshes.add(Cylinder::new(0.65, 1.2).mesh())),
+                                Mesh3d(meshes.add(Cuboid::new(1.1, 1.2, 1.1).mesh())),
                                 MeshMaterial3d(mat_shrine_gold.clone()),
                                 Transform::from_translation(cell.world_pos + Vec3::new(0.0, 0.6, 0.0)),
                                 PointLight {
@@ -594,24 +600,24 @@ pub fn spawn_procedural_dungeon(
                     Collider::half_space(Vec3::Y),
                 ));
 
-                // 1. Lower Mossy Rock Pillar Base
+                // 1. Lower Mossy Rock Pillar Base (faceted rock block)
                 let base_offset = rot * Vec3::new(-half_tile + 0.6, 0.6, -half_tile + 0.6);
                 commands.spawn((
-                    Mesh3d(meshes.add(Cylinder::new(1.35, 1.2).mesh())),
+                    Mesh3d(meshes.add(Cuboid::new(1.8, 1.2, 1.8).mesh())),
                     MeshMaterial3d(mat_wall_moss.clone()),
-                    Transform::from_translation(cell.world_pos + base_offset),
+                    Transform::from_translation(cell.world_pos + base_offset).with_rotation(rot * Quat::from_rotation_y(0.38)),
                     RigidBody::Static,
-                    Collider::cylinder(1.35, 1.2),
+                    Collider::cuboid(1.8, 1.2, 1.8),
                 ));
 
-                // 2. Upper Chiseled Stone Pillar Body
+                // 2. Upper Chiseled Stone Pillar Body (faceted rock block)
                 let pillar_offset = rot * Vec3::new(-half_tile + 0.6, 2.6, -half_tile + 0.6);
                 commands.spawn((
-                    Mesh3d(meshes.add(Cylinder::new(1.05, 2.8).mesh())),
+                    Mesh3d(meshes.add(Cuboid::new(1.4, 2.8, 1.4).mesh())),
                     MeshMaterial3d(mat_wall_stone.clone()),
-                    Transform::from_translation(cell.world_pos + pillar_offset),
+                    Transform::from_translation(cell.world_pos + pillar_offset).with_rotation(rot * Quat::from_rotation_y(-0.25)),
                     RigidBody::Static,
-                    Collider::cylinder(1.05, 2.8),
+                    Collider::cuboid(1.4, 2.8, 1.4),
                 ));
 
                 // 3. Embedded Glowing Quartz Node & PointLight on Corner

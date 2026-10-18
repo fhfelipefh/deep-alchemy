@@ -108,10 +108,12 @@ pub fn setup_player(
                 },
             ));
 
-            // Load Player Model (Full Body) - placed on layer 1 to isolate from 1P camera view
+            // Load Player Model (Full Body) - hidden in 1P to eliminate floating limbs and isolated on layer 1
             parent.spawn((
+                PlayerBodyScene,
                 SceneRoot(asset_server.load("models/player.glb#Scene0")),
                 Transform::from_xyz(0.0, -0.9, 0.0),
+                Visibility::Hidden,
                 RenderLayers::layer(1),
             ));
 
@@ -150,11 +152,35 @@ pub fn setup_player(
     info!("Player spawned with full-body awareness at {:?}", player_id);
 }
 
-// Ensure Head_Hat and distorted body parts get RenderLayers::layer(1) to avoid 1P clipping
+#[derive(Component)]
+pub struct PlayerBodyScene;
+
+// Ensure Head_Hat and distorted body parts get RenderLayers::layer(1) and Visibility::Hidden to avoid 1P clipping
 pub fn configure_player_model_layers(
     mut commands: Commands,
+    player_query: Query<&PlayerState, With<Player>>,
+    mut body_query: Query<(Entity, &mut Visibility, Option<&Children>), With<PlayerBodyScene>>,
     names: Query<(Entity, &Name), Added<Name>>,
 ) {
+    if let Ok(state) = player_query.get_single() {
+        let target_vis = match state {
+            PlayerState::Active => Visibility::Hidden,
+            PlayerState::Dead => Visibility::Inherited,
+        };
+
+        for (body_entity, mut vis, children) in body_query.iter_mut() {
+            if *vis != target_vis {
+                *vis = target_vis;
+            }
+            commands.entity(body_entity).insert(RenderLayers::layer(1));
+            if let Some(children) = children {
+                for child in children.iter() {
+                    commands.entity(*child).insert(RenderLayers::layer(1));
+                }
+            }
+        }
+    }
+
     for (entity, name) in names.iter() {
         let n = name.as_str();
         if n.contains("Head_Hat") || n.contains("Hat_") {

@@ -3,7 +3,7 @@ use bevy::{
     render::view::RenderLayers,
 };
 use avian3d::prelude::*;
-use super::camera::{HeadHatPart, Health, Player, PlayerCamera, PlayerState};
+use super::camera::{HeadHatPart, Health, Player, PlayerBodyScene, PlayerCamera, PlayerState};
 
 #[derive(Component)]
 pub struct DeathCamera {
@@ -17,15 +17,20 @@ pub fn check_player_death(
     mut player_query: Query<(Entity, &mut PlayerState, &Health, &Transform), With<Player>>,
     camera_query: Query<Entity, With<PlayerCamera>>,
     head_parts: Query<Entity, With<HeadHatPart>>,
+    mut body_scenes: Query<(Entity, &mut Visibility), With<PlayerBodyScene>>,
 ) {
     for (player_entity, mut state, health, tf) in player_query.iter_mut() {
         if *state == PlayerState::Active && health.current <= 0.0 {
             *state = PlayerState::Dead;
             info!("Player has died! Activating Ragdoll & 3rd-Person Death Camera");
 
-            // 1. Make Head & Fedora visible to main camera layer
+            // 1. Make Head, Body and Fedora visible to death camera
             for head_entity in head_parts.iter() {
                 commands.entity(head_entity).insert(RenderLayers::layer(0));
+            }
+            for (body_entity, mut vis) in body_scenes.iter_mut() {
+                *vis = Visibility::Inherited;
+                commands.entity(body_entity).insert(RenderLayers::layer(0));
             }
 
             // 2. Enable Dynamic Ragdoll physics on Player

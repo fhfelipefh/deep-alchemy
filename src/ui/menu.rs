@@ -86,6 +86,15 @@ pub struct FovValueText;
 #[derive(Component)]
 pub struct VolumeValueText;
 
+#[derive(Component)]
+pub struct MenuSpore {
+    pub speed: f32,
+    pub sway_phase: f32,
+    pub sway_freq: f32,
+    pub base_x: f32,
+    pub current_y: f32,
+}
+
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub enum MenuButtonAction {
     StartOrResume,
@@ -99,19 +108,30 @@ pub enum MenuButtonAction {
     Quit,
 }
 
-// Visual Palette: Nordic Dark Fantasy & Alchemical Gold
-pub const COLOR_BG_PANEL: Color = Color::srgba(0.06, 0.08, 0.12, 0.94);
-pub const COLOR_BORDER_GOLD: Color = Color::srgba(0.80, 0.68, 0.38, 0.90);
-pub const COLOR_BORDER_MUTED: Color = Color::srgba(0.45, 0.40, 0.30, 0.70);
+// Visual Palette: Cel-Shaded Alchemical Fantasy & Bioluminescent Cyan
+pub const COLOR_TITLE_MAJESTIC: Color = Color::srgba(0.92, 0.98, 1.00, 1.00); // Majestic white with cyan reflection
+pub const COLOR_TITLE_GLOW: Color = Color::srgba(0.25, 0.92, 1.00, 0.90);     // Bioluminescent cyan #40e0ff
+pub const COLOR_DIVIDER_GLOW: Color = Color::srgba(0.20, 0.88, 1.00, 0.85);   // Glowing ornamental line
+pub const COLOR_DIVIDER_ACCENT: Color = Color::srgba(0.85, 0.72, 0.35, 0.90); // Alchemical gold accent
 
-pub const COLOR_BTN_NORMAL: Color = Color::srgba(0.12, 0.16, 0.22, 0.95);
-pub const COLOR_BTN_HOVER: Color = Color::srgba(0.22, 0.35, 0.45, 1.0);
-pub const COLOR_BTN_PRESSED: Color = Color::srgba(0.38, 0.28, 0.16, 1.0);
+// Floating mystical plate buttons
+pub const COLOR_BTN_NORMAL: Color = Color::srgba(0.04, 0.08, 0.15, 0.78);
+pub const COLOR_BTN_HOVER: Color = Color::srgba(0.00, 0.88, 1.00, 0.40); // Translucent vibrant cyan #00f2fe @ 40%
+pub const COLOR_BTN_PRESSED: Color = Color::srgba(0.08, 0.45, 0.62, 0.85);
 
-pub const COLOR_TEXT_GOLD: Color = Color::srgba(0.96, 0.84, 0.45, 1.0);
-pub const COLOR_TEXT_LIGHT: Color = Color::srgba(0.92, 0.90, 0.85, 1.0);
-pub const COLOR_TEXT_MUTED: Color = Color::srgba(0.70, 0.68, 0.62, 0.85);
-pub const COLOR_TEXT_ACCENT: Color = Color::srgba(0.40, 0.85, 0.85, 1.0);
+pub const COLOR_BTN_BORDER_NORMAL: Color = Color::srgba(0.18, 0.35, 0.48, 0.85); // Ink contour with soft cyan rim
+pub const COLOR_BTN_BORDER_HOVER: Color = Color::srgba(0.28, 0.96, 1.00, 1.00);   // Radiant cyan border
+pub const COLOR_BTN_BORDER_PRESSED: Color = Color::srgba(0.48, 1.00, 1.00, 1.00);
+
+// Legacy palette aliases preserved for test compatibility
+pub const COLOR_BG_PANEL: Color = Color::srgba(0.02, 0.04, 0.08, 0.60);
+pub const COLOR_BORDER_GOLD: Color = Color::srgba(0.28, 0.96, 1.00, 0.90);
+pub const COLOR_BORDER_MUTED: Color = Color::srgba(0.18, 0.35, 0.48, 0.85);
+
+pub const COLOR_TEXT_GOLD: Color = Color::srgba(0.96, 0.86, 0.48, 1.0);
+pub const COLOR_TEXT_LIGHT: Color = Color::srgba(0.92, 0.97, 1.0, 1.0);
+pub const COLOR_TEXT_MUTED: Color = Color::srgba(0.60, 0.72, 0.82, 0.80);
+pub const COLOR_TEXT_ACCENT: Color = Color::srgba(0.25, 0.92, 1.0, 1.0);
 
 pub struct MenuPlugin;
 
@@ -128,6 +148,7 @@ impl Plugin for MenuPlugin {
                     handle_menu_button_interactions,
                     update_menu_subview_visibility,
                     update_settings_labels,
+                    update_menu_spores,
                     apply_camera_fov,
                     apply_window_settings,
                     apply_default_font_to_unassigned_texts,
@@ -186,7 +207,7 @@ pub fn setup_menu_ui(
         .map(|s| s.load("fonts/DejaVuSans.ttf"))
         .unwrap_or_default();
 
-    // Menu Root overlay covering entire viewport
+    // Menu Root overlay covering entire viewport with smooth atmospheric dimming
     commands
         .spawn((
             MenuRoot,
@@ -196,62 +217,110 @@ pub fn setup_menu_ui(
                 position_type: PositionType::Absolute,
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
+                overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.02, 0.03, 0.05, 0.75)),
+            BackgroundColor(Color::srgba(0.01, 0.02, 0.04, 0.52)),
             Visibility::Inherited,
             ZIndex(100),
         ))
         .with_children(|root| {
-            // Central Menu Card
+            // -------------------------------------------------------------
+            // Floating Spore Particles (42 bioluminescent drifting spores)
+            // -------------------------------------------------------------
+            for i in 0..42 {
+                let seed = ((i as f32 * 19.7).sin() * 43758.5453).fract().abs();
+                let seed2 = ((i as f32 * 31.3).cos() * 23421.6312).fract().abs();
+                let base_x = (i as f32 * 2.38 + seed * 8.0) % 94.0 + 3.0;
+                let start_y = (i as f32 * 2.45 + seed2 * 20.0) % 100.0;
+                let speed = 2.0 + seed * 3.5;
+                let size = if i % 3 == 0 { 4.5 } else if i % 2 == 0 { 3.2 } else { 2.4 };
+                let color = if i % 3 == 0 {
+                    Color::srgba(0.18, 0.95, 0.90, 0.65) // Bioluminescent cyan
+                } else if i % 4 == 0 {
+                    Color::srgba(0.96, 0.82, 0.35, 0.50) // Alchemical golden spore
+                } else {
+                    Color::srgba(0.35, 0.88, 1.0, 0.45) // Soft crystalline cyan
+                };
+
+                root.spawn((
+                    MenuSpore {
+                        speed,
+                        sway_phase: seed * 6.28,
+                        sway_freq: 0.8 + seed2 * 0.9,
+                        base_x,
+                        current_y: start_y,
+                    },
+                    Node {
+                        position_type: PositionType::Absolute,
+                        width: Val::Px(size),
+                        height: Val::Px(size),
+                        left: Val::Percent(base_x),
+                        top: Val::Percent(start_y),
+                        ..default()
+                    },
+                    BorderRadius::all(Val::Px(size * 0.5)),
+                    BackgroundColor(color),
+                ));
+            }
+
+            // -------------------------------------------------------------
+            // Central Cel-Shaded Menu Panel (Translucent plate - NO solid yellow box)
+            // -------------------------------------------------------------
             root.spawn((
                 Node {
-                    width: Val::Px(540.0),
+                    width: Val::Px(520.0),
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
-                    padding: UiRect::axes(Val::Px(32.0), Val::Px(28.0)),
+                    padding: UiRect::axes(Val::Px(28.0), Val::Px(24.0)),
                     border: UiRect::all(Val::Px(2.0)),
                     row_gap: Val::Px(16.0),
                     ..default()
                 },
-                BackgroundColor(COLOR_BG_PANEL),
-                BorderColor(COLOR_BORDER_GOLD),
+                BorderRadius::all(Val::Px(12.0)),
+                BackgroundColor(Color::srgba(0.02, 0.04, 0.08, 0.60)),
+                BorderColor(Color::srgba(0.18, 0.38, 0.48, 0.75)),
             ))
             .with_children(|card| {
-                // Header Title
+                // Majestic Title: "ALQUIMIA PROFUNDA" (PT-BR)
                 card.spawn((
-                    Text::new("DEEP ALCHEMY"),
+                    Text::new("ALQUIMIA PROFUNDA"),
                     TextFont {
                         font: font_handle.clone(),
-                        font_size: 32.0,
+                        font_size: 40.0,
                         ..default()
                     },
-                    TextColor(COLOR_TEXT_GOLD),
+                    TextColor(COLOR_TITLE_MAJESTIC),
                     Node::default(),
                 ));
 
-                // Subtitle
-                card.spawn((
-                    Text::new("EXPLORAÇÃO & ALQUIMIA EM 1ª PESSOA"),
-                    TextFont {
-                        font: font_handle.clone(),
-                        font_size: 13.0,
-                        ..default()
-                    },
-                    TextColor(COLOR_TEXT_MUTED),
-                    Node::default(),
-                ));
-
-                // Divider Line
+                // Ornamental Divider Line with Glowing Accent (No Subtitle)
                 card.spawn((
                     Node {
-                        width: Val::Percent(90.0),
-                        height: Val::Px(1.5),
-                        margin: UiRect::vertical(Val::Px(4.0)),
+                        width: Val::Px(400.0),
+                        height: Val::Px(2.0),
+                        margin: UiRect::vertical(Val::Px(6.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
                         ..default()
                     },
-                    BackgroundColor(COLOR_BORDER_GOLD),
-                ));
+                    BackgroundColor(COLOR_DIVIDER_GLOW),
+                ))
+                .with_children(|divider| {
+                    divider.spawn((
+                        Text::new("✦  ⚗  ✦"),
+                        TextFont {
+                            font: font_handle.clone(),
+                            font_size: 13.0,
+                            ..default()
+                        },
+                        TextColor(COLOR_TITLE_GLOW),
+                        Node {
+                            margin: UiRect::all(Val::Px(-8.0)),
+                            ..default()
+                        },
+                    ));
+                });
 
                 // -------------------------------------------------------------
                 // Subview 1: MAIN MENU
@@ -437,9 +506,9 @@ pub fn setup_menu_ui(
                     ));
 
                     let controls_list = [
-                        ("[W, A, S, D]", "Movimentação em 1ª Pessoa"),
+                        ("[W, A, S, D]", "Movimentação em 1ª PESSOA"),
                         ("[Shift]", "Correr (Consome Estamina)"),
-                        ("[Mouse]", "Olhar / Direção da Câmera"),
+                        ("[Mouse]", "Olhar / Direção da Visão"),
                         ("[E]", "Colher Ingrediente / Interagir"),
                         ("[Botão Direito]", "Segurar Prop com Física"),
                         ("[ESC]", "Pausar / Menu & Liberar Mouse"),
@@ -504,15 +573,17 @@ fn spawn_menu_button<T: Component>(
         Button,
         action,
         Node {
-            width: Val::Px(340.0),
-            height: Val::Px(44.0),
+            width: Val::Px(360.0),
+            height: Val::Px(48.0),
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
-            border: UiRect::all(Val::Px(1.5)),
+            border: UiRect::all(Val::Px(2.5)),
+            margin: UiRect::vertical(Val::Px(4.0)),
             ..default()
         },
+        BorderRadius::all(Val::Px(6.0)),
         BackgroundColor(COLOR_BTN_NORMAL),
-        BorderColor(COLOR_BORDER_MUTED),
+        BorderColor(COLOR_BTN_BORDER_NORMAL),
     ));
 
     btn.with_children(|b| {
@@ -707,19 +778,30 @@ pub fn handle_global_shortcuts(
 
 pub fn handle_menu_button_interactions(
     mut interaction_query: Query<
-        (&Interaction, &MenuButtonAction, &mut BackgroundColor, &mut BorderColor),
+        (
+            &Interaction,
+            &MenuButtonAction,
+            &mut BackgroundColor,
+            &mut BorderColor,
+            Option<&mut Node>,
+            Option<&Children>,
+        ),
         (Changed<Interaction>, With<Button>),
     >,
+    mut text_query: Query<&mut Text>,
     mut next_state: ResMut<NextState<GameState>>,
     mut nav: ResMut<MenuNavigation>,
     mut settings: ResMut<GameSettings>,
     mut exit_events: EventWriter<AppExit>,
 ) {
-    for (interaction, action, mut bg, mut border) in interaction_query.iter_mut() {
+    for (interaction, action, mut bg, mut border, node_opt, children_opt) in interaction_query.iter_mut() {
         match *interaction {
             Interaction::Pressed => {
                 *bg = BackgroundColor(COLOR_BTN_PRESSED);
-                *border = BorderColor(COLOR_BORDER_GOLD);
+                *border = BorderColor(COLOR_BTN_BORDER_PRESSED);
+                if let Some(mut node) = node_opt {
+                    node.width = Val::Px(356.0);
+                }
 
                 match action {
                     MenuButtonAction::StartOrResume => {
@@ -756,13 +838,58 @@ pub fn handle_menu_button_interactions(
             }
             Interaction::Hovered => {
                 *bg = BackgroundColor(COLOR_BTN_HOVER);
-                *border = BorderColor(COLOR_BORDER_GOLD);
+                *border = BorderColor(COLOR_BTN_BORDER_HOVER);
+                if let Some(mut node) = node_opt {
+                    node.width = Val::Px(376.0);
+                }
+                if let Some(children) = children_opt {
+                    for child in children.iter() {
+                        if let Ok(mut text) = text_query.get_mut(*child) {
+                            let raw = text.0.trim_matches(|c| c == '>' || c == '<' || c == ' ' || c == '✦' || c == '⚗');
+                            text.0 = format!("> {} <", raw);
+                        }
+                    }
+                }
             }
             Interaction::None => {
                 *bg = BackgroundColor(COLOR_BTN_NORMAL);
-                *border = BorderColor(COLOR_BORDER_MUTED);
+                *border = BorderColor(COLOR_BTN_BORDER_NORMAL);
+                if let Some(mut node) = node_opt {
+                    node.width = Val::Px(360.0);
+                }
+                if let Some(children) = children_opt {
+                    for child in children.iter() {
+                        if let Ok(mut text) = text_query.get_mut(*child) {
+                            let raw = text.0.trim_matches(|c| c == '>' || c == '<' || c == ' ' || c == '✦' || c == '⚗');
+                            text.0 = raw.to_string();
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+pub fn update_menu_spores(
+    time: Res<Time>,
+    current_state: Option<Res<State<GameState>>>,
+    mut spores: Query<(&mut MenuSpore, &mut Node)>,
+) {
+    if let Some(state) = current_state {
+        if *state.get() != GameState::MainMenu {
+            return;
+        }
+    }
+    let dt = time.delta_secs();
+    let elapsed = time.elapsed_secs();
+    for (mut spore, mut node) in spores.iter_mut() {
+        spore.current_y -= spore.speed * dt;
+        if spore.current_y < -5.0 {
+            spore.current_y = 105.0;
+        }
+        let sway = (elapsed * spore.sway_freq + spore.sway_phase).sin() * 2.2;
+        node.left = Val::Percent((spore.base_x + sway).clamp(0.5, 99.5));
+        node.top = Val::Percent(spore.current_y);
     }
 }
 
@@ -1186,5 +1313,35 @@ mod tests {
         let win_menu = app.world().get::<Window>(win).unwrap();
         assert_eq!(win_menu.cursor_options.grab_mode, CursorGrabMode::None);
         assert_eq!(win_menu.cursor_options.visible, true);
+    }
+
+    #[test]
+    fn test_menu_spores_drift() {
+        let mut app = App::new();
+        app.add_systems(Update, update_menu_spores);
+
+        let spore = app.world_mut().spawn((
+            MenuSpore {
+                speed: 10.0,
+                sway_phase: 0.0,
+                sway_freq: 1.0,
+                base_x: 50.0,
+                current_y: 80.0,
+            },
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Percent(50.0),
+                top: Val::Percent(80.0),
+                ..default()
+            },
+        )).id();
+
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_millis(500));
+        app.insert_resource(time);
+        app.update();
+
+        let updated_spore = app.world().get::<MenuSpore>(spore).unwrap();
+        assert!(updated_spore.current_y < 80.0, "Spore must drift upward over time");
     }
 }
