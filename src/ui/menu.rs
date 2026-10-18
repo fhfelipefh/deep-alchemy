@@ -38,6 +38,40 @@ impl Default for MenuNavigation {
     }
 }
 
+/// RTX Quality presets targeting different hardware tiers and framerates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RtxQuality {
+    #[default]
+    Off,
+    Low,
+    Medium,
+    Ultra,
+}
+
+impl RtxQuality {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Off => Self::Low,
+            Self::Low => Self::Medium,
+            Self::Medium => Self::Ultra,
+            Self::Ultra => Self::Off,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Off => "DESATIVADO (60+ FPS)",
+            Self::Low => "BAIXO (ALVO 30 FPS)",
+            Self::Medium => "MÉDIO (EQUILIBRADO)",
+            Self::Ultra => "ULTRA (RAY-TRACING)",
+        }
+    }
+
+    pub fn is_enabled(self) -> bool {
+        self != Self::Off
+    }
+}
+
 /// User configurable game settings for display, controls, and audio.
 #[derive(Resource, Debug, Clone)]
 pub struct GameSettings {
@@ -45,6 +79,7 @@ pub struct GameSettings {
     pub mouse_sensitivity: f32,
     pub fov_degrees: f32,
     pub master_volume: f32,
+    pub rtx_quality: RtxQuality,
     pub rtx_enabled: bool,
 }
 
@@ -55,6 +90,7 @@ impl Default for GameSettings {
             mouse_sensitivity: 0.0022,
             fov_degrees: 75.0,
             master_volume: 0.8,
+            rtx_quality: RtxQuality::Off,
             rtx_enabled: false,
         }
     }
@@ -466,7 +502,7 @@ pub fn setup_menu_ui(
                             .with_children(|btn| {
                                 btn.spawn((
                                     RtxButtonText,
-                                    Text::new("DESATIVADO (PERFORMANCE)"),
+                                    Text::new("DESATIVADO (60+ FPS)"),
                                     TextFont {
                                         font: font_handle.clone(),
                                         font_size: 12.0,
@@ -864,7 +900,8 @@ pub fn handle_menu_button_interactions(
                         settings.fullscreen = !settings.fullscreen;
                     }
                     MenuButtonAction::ToggleRtx => {
-                        settings.rtx_enabled = !settings.rtx_enabled;
+                        settings.rtx_quality = settings.rtx_quality.next();
+                        settings.rtx_enabled = settings.rtx_quality.is_enabled();
                     }
                     MenuButtonAction::AdjustSensitivity(delta) => {
                         settings.mouse_sensitivity =
@@ -1005,11 +1042,7 @@ pub fn update_settings_labels(
     }
 
     for mut txt in rtx_txt.iter_mut() {
-        txt.0 = if settings.rtx_enabled {
-            "ATIVADO (RAY-TRACING ULTRA)".to_string()
-        } else {
-            "DESATIVADO (PERFORMANCE)".to_string()
-        };
+        txt.0 = settings.rtx_quality.label().to_string();
     }
 
     for mut txt in sens_txt.iter_mut() {
@@ -1030,38 +1063,87 @@ pub fn apply_rtx_settings(
     mut commands: Commands,
     camera_query: Query<Entity, With<PlayerCamera>>,
     ssao_query: Query<Entity, (With<PlayerCamera>, With<bevy::pbr::ScreenSpaceAmbientOcclusion>)>,
-    mut point_lights: Query<&mut PointLight>,
+    mut ambient_light: Option<ResMut<AmbientLight>>,
     mut dir_lights: Query<&mut DirectionalLight>,
+    mut key_point_lights: Query<&mut PointLight, With<crate::dungeon::modular_kit::KeyShadowLight>>,
+    mut all_point_lights: Query<&mut PointLight, Without<crate::dungeon::modular_kit::KeyShadowLight>>,
 ) {
     if !settings.is_changed() {
         return;
     }
 
-    for mut light in point_lights.iter_mut() {
-        light.shadows_enabled = settings.rtx_enabled;
-        if settings.rtx_enabled {
-            light.shadow_depth_bias = 0.08;
+    // 1. Ambient Light Fill (eliminates pitch-black voids, gives rich twilight blue tone)
+    if let Some(ref mut ambient) = ambient_light {
+        match settings.rtx_quality {
+            RtxQuality::Off => {
+                ambient.brightness = 480.0;
+                ambient.color = Color::srgb(0.10, 0.20, 0.32);
+            }
+            RtxQuality::Low => {
+                ambient.brightness = 740.0;
+                ambient.color = Color::srgb(0.12, 0.22, 0.35);
+            }
+            RtxQuality::Medium => {
+                ambient.brightness = 780.0;
+                ambient.color = Color::srgb(0.13, 0.24, 0.36);
+            }
+            RtxQuality::Ultra => {
+                ambient.brightness = 840.0;
+                ambient.color = Color::srgb(0.14, 0.25, 0.38);
+            }
+        }
+    }
+
+    // 2. Directional Skylight Shadows (fast cascaded shadow map for all active RTX modes)
+    for mut light in dir_lights.iter_mut() {
+        light.shadows_enabled = settings.rtx_quality.is_enabled();
+        if settings.rtx_quality.is_enabled() {
+            light.shadow_depth_bias = 0.04;
             light.shadow_normal_bias = 0.6;
         }
     }
 
-    for mut light in dir_lights.iter_mut() {
-        light.shadows_enabled = settings.rtx_enabled;
+    // 3. Point Lights (Only KeyShadowLights cast shadow in Medium/Ultra; never in Off or Low)
+    let enable_key_point_shadows = matches!(settings.rtx_quality, RtxQuality::Medium | RtxQuality::Ultra);
+    for mut light in key_point_lights.iter_mut() {
+        light.shadows_enabled = enable_key_point_shadows;
+        if enable_key_point_shadows {
+            light.shadow_depth_bias = 0.08;
+            light.shadow_normal_bias = 0.6;
+        }
+    }
+    // All other fill point lights never cast shadows to maintain high framerate
+    for mut light in all_point_lights.iter_mut() {
+        light.shadows_enabled = false;
     }
 
-    if settings.rtx_enabled {
-        for cam_entity in camera_query.iter() {
-            commands.entity(cam_entity).insert((
-                bevy::pbr::ScreenSpaceAmbientOcclusion::default(),
-                bevy::pbr::ShadowFilteringMethod::Gaussian,
-            ));
+    // 4. Camera SSAO and Shadow Filtering
+    match settings.rtx_quality {
+        RtxQuality::Off => {
+            for cam_entity in ssao_query.iter() {
+                commands.entity(cam_entity).remove::<(
+                    bevy::pbr::ScreenSpaceAmbientOcclusion,
+                    bevy::pbr::ShadowFilteringMethod,
+                )>();
+            }
         }
-    } else {
-        for cam_entity in ssao_query.iter() {
-            commands.entity(cam_entity).remove::<(
-                bevy::pbr::ScreenSpaceAmbientOcclusion,
-                bevy::pbr::ShadowFilteringMethod,
-            )>();
+        RtxQuality::Low => {
+            // Low: fast 2x2 hardware shadow filtering + SSAO for smooth 30-45+ FPS
+            for cam_entity in camera_query.iter() {
+                commands.entity(cam_entity).insert((
+                    bevy::pbr::ScreenSpaceAmbientOcclusion::default(),
+                    bevy::pbr::ShadowFilteringMethod::Hardware2x2,
+                ));
+            }
+        }
+        RtxQuality::Medium | RtxQuality::Ultra => {
+            // Medium/Ultra: Gaussian soft shadow filtering + SSAO
+            for cam_entity in camera_query.iter() {
+                commands.entity(cam_entity).insert((
+                    bevy::pbr::ScreenSpaceAmbientOcclusion::default(),
+                    bevy::pbr::ShadowFilteringMethod::Gaussian,
+                ));
+            }
         }
     }
 }
@@ -1291,6 +1373,7 @@ mod tests {
 
         let settings = app.world().resource::<GameSettings>();
         assert_eq!(settings.fullscreen, true);
+        assert_eq!(settings.rtx_quality, RtxQuality::Low);
         assert_eq!(settings.rtx_enabled, true);
         assert!((settings.mouse_sensitivity - 0.0032).abs() < 1e-5);
         assert_eq!(settings.fov_degrees, 85.0);
@@ -1338,7 +1421,7 @@ mod tests {
         let vol_text = app.world_mut().spawn((VolumeValueText, Text::new(""))).id();
 
         app.world_mut().resource_mut::<GameSettings>().fullscreen = true;
-        app.world_mut().resource_mut::<GameSettings>().rtx_enabled = true;
+        app.world_mut().resource_mut::<GameSettings>().rtx_quality = RtxQuality::Low;
         app.world_mut().resource_mut::<GameSettings>().mouse_sensitivity = 0.0035;
         app.world_mut().resource_mut::<GameSettings>().fov_degrees = 90.0;
         app.world_mut().resource_mut::<GameSettings>().master_volume = 0.65;
@@ -1346,7 +1429,7 @@ mod tests {
         app.update();
 
         assert_eq!(app.world().get::<Text>(fs_text).unwrap().0, "ATIVADO (TELA CHEIA)");
-        assert_eq!(app.world().get::<Text>(rtx_text).unwrap().0, "ATIVADO (RAY-TRACING ULTRA)");
+        assert_eq!(app.world().get::<Text>(rtx_text).unwrap().0, "BAIXO (ALVO 30 FPS)");
         assert_eq!(app.world().get::<Text>(sens_text).unwrap().0, "0.0035");
         assert_eq!(app.world().get::<Text>(fov_text).unwrap().0, "90°");
         assert_eq!(app.world().get::<Text>(vol_text).unwrap().0, "65%");
@@ -1356,29 +1439,60 @@ mod tests {
     fn test_apply_rtx_settings() {
         let mut app = App::new();
         app.init_resource::<GameSettings>();
+        app.insert_resource(AmbientLight {
+            color: Color::srgb(0.1, 0.2, 0.3),
+            brightness: 480.0,
+        });
         app.add_systems(Update, apply_rtx_settings);
 
         let cam = app.world_mut().spawn(PlayerCamera).id();
-        let light = app.world_mut().spawn(PointLight {
+        let dir_light = app.world_mut().spawn(DirectionalLight {
+            shadows_enabled: false,
+            ..default()
+        }).id();
+        let key_light = app.world_mut().spawn((
+            PointLight {
+                shadows_enabled: false,
+                ..default()
+            },
+            crate::dungeon::modular_kit::KeyShadowLight,
+        )).id();
+        let fill_light = app.world_mut().spawn(PointLight {
             shadows_enabled: false,
             ..default()
         }).id();
 
-        // Enable RTX
-        app.world_mut().resource_mut::<GameSettings>().rtx_enabled = true;
+        // 1. Test Low RTX (Target 30 FPS): directional shadow ON, point light cubemaps OFF, SSAO ON
+        app.world_mut().resource_mut::<GameSettings>().rtx_quality = RtxQuality::Low;
         app.update();
 
-        assert!(app.world().get::<PointLight>(light).unwrap().shadows_enabled);
+        assert!(app.world().get::<DirectionalLight>(dir_light).unwrap().shadows_enabled);
+        assert!(!app.world().get::<PointLight>(key_light).unwrap().shadows_enabled);
+        assert!(!app.world().get::<PointLight>(fill_light).unwrap().shadows_enabled);
         assert!(app.world().get::<bevy::pbr::ScreenSpaceAmbientOcclusion>(cam).is_some());
-        assert!(app.world().get::<bevy::pbr::ShadowFilteringMethod>(cam).is_some());
+        assert_eq!(*app.world().get::<bevy::pbr::ShadowFilteringMethod>(cam).unwrap(), bevy::pbr::ShadowFilteringMethod::Hardware2x2);
+        assert_eq!(app.world().resource::<AmbientLight>().brightness, 740.0);
 
-        // Disable RTX
-        app.world_mut().resource_mut::<GameSettings>().rtx_enabled = false;
+        // 2. Test Medium RTX: directional ON, key point lights ON, fill lights OFF
+        app.world_mut().resource_mut::<GameSettings>().rtx_quality = RtxQuality::Medium;
         app.update();
 
-        assert!(!app.world().get::<PointLight>(light).unwrap().shadows_enabled);
+        assert!(app.world().get::<DirectionalLight>(dir_light).unwrap().shadows_enabled);
+        assert!(app.world().get::<PointLight>(key_light).unwrap().shadows_enabled);
+        assert!(!app.world().get::<PointLight>(fill_light).unwrap().shadows_enabled);
+        assert_eq!(*app.world().get::<bevy::pbr::ShadowFilteringMethod>(cam).unwrap(), bevy::pbr::ShadowFilteringMethod::Gaussian);
+        assert_eq!(app.world().resource::<AmbientLight>().brightness, 780.0);
+
+        // 3. Test Off: all shadows OFF, SSAO removed, ambient reduced
+        app.world_mut().resource_mut::<GameSettings>().rtx_quality = RtxQuality::Off;
+        app.update();
+
+        assert!(!app.world().get::<DirectionalLight>(dir_light).unwrap().shadows_enabled);
+        assert!(!app.world().get::<PointLight>(key_light).unwrap().shadows_enabled);
+        assert!(!app.world().get::<PointLight>(fill_light).unwrap().shadows_enabled);
         assert!(app.world().get::<bevy::pbr::ScreenSpaceAmbientOcclusion>(cam).is_none());
         assert!(app.world().get::<bevy::pbr::ShadowFilteringMethod>(cam).is_none());
+        assert_eq!(app.world().resource::<AmbientLight>().brightness, 480.0);
     }
 
     #[test]

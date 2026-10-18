@@ -14,6 +14,9 @@ use crate::{
 #[derive(Component)]
 pub struct WaterfallMarker;
 
+#[derive(Component)]
+pub struct KeyShadowLight;
+
 #[derive(Component, Clone)]
 pub struct WaterfallBaseMesh {
     pub base_positions: Vec<[f32; 3]>,
@@ -51,23 +54,59 @@ pub fn setup_cavern_world(
     // 1. ATMOSPHERE & LIGHTING (RICH NIGHT BLUE - NO PITCH BLACK #000000)
     // -------------------------------------------------------------
     commands.insert_resource(AmbientLight {
-        color: Color::srgb(0.08, 0.16, 0.26), // Deep fantasy night blue
-        brightness: 340.0,
+        color: Color::srgb(0.10, 0.20, 0.32), // Deep fantasy night blue
+        brightness: 480.0,
     });
 
     // Soft skylight beam descending from the upper fissure over the waterfall
     commands.spawn((
         DirectionalLight {
-            color: Color::srgb(0.72, 0.90, 1.0),
-            illuminance: 4800.0,
+            color: Color::srgb(0.75, 0.92, 1.0),
+            illuminance: 6200.0,
             shadows_enabled: false,
             ..default()
         },
         Transform::from_xyz(1.5, 22.0, -4.5).looking_at(Vec3::new(0.0, 1.2, -8.5), Vec3::Y),
     ));
 
+    // Pathway entrance ambient lantern/crystal light (X = 0.0, Y = 1.8, Z = 0.8) - warms the path and bench!
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.96, 0.84, 0.48), // Warm alchemical golden glow
+            intensity: 36000.0,
+            range: 15.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 1.8, 0.8),
+    ));
+
+    // Foreground Bench & Grass Accent Light (X = 2.8, Y = 1.3, Z = -0.5)
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.20, 0.94, 0.88), // Bioluminescent turquoise rim light
+            intensity: 26000.0,
+            range: 11.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(2.8, 1.3, -0.5),
+    ));
+
+    // Back cliff illuminator directly behind waterfall (X = 0.0, Y = 5.5, Z = -11.2) - shines through the water!
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.25, 0.70, 0.98), // Radiant azure backlight
+            intensity: 85000.0,
+            range: 28.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 5.5, -11.2),
+    ));
+
     // --- Bioluminescent PointLights (Lateral Margins, Stalactites, Waterfall & Amphitheater) ---
-    // Left Mushroom cluster light (X = -3.4, Y = 2.4, Z = -2.8)
+    // Left Mushroom cluster light (X = -3.4, Y = 2.4, Z = -2.8) - Key Shadow Light
     commands.spawn((
         PointLight {
             color: Color::srgb(0.12, 0.96, 0.88), // Electric turquoise #2be8d8
@@ -77,6 +116,7 @@ pub fn setup_cavern_world(
             ..default()
         },
         Transform::from_xyz(-3.4, 2.4, -2.8),
+        KeyShadowLight,
     ));
 
     // Right Mushroom cluster light (X = 4.1, Y = 2.4, Z = -3.3)
@@ -91,7 +131,7 @@ pub fn setup_cavern_world(
         Transform::from_xyz(4.1, 2.4, -3.3),
     ));
 
-    // Waterfall luminous foam and spray bounce light
+    // Waterfall luminous foam and spray bounce light - Key Shadow Light
     commands.spawn((
         PointLight {
             color: Color::srgb(0.35, 0.90, 1.0),
@@ -101,6 +141,7 @@ pub fn setup_cavern_world(
             ..default()
         },
         Transform::from_xyz(0.0, 1.8, -10.2),
+        KeyShadowLight,
     ));
 
     // Upper waterfall cleft / skylight glow
@@ -337,13 +378,15 @@ pub fn setup_cavern_world(
     commands.spawn((
         Mesh3d(meshes.add(waterfall_mesh)),
         MeshMaterial3d(water_materials.add(WaterMaterial {
-            base_color: LinearRgba::new(0.12, 0.82, 0.92, 0.45), // Radiant crystalline turquoise
-            deep_color: LinearRgba::new(0.03, 0.28, 0.45, 0.60), // Deep azure
-            foam_color: LinearRgba::new(0.92, 0.97, 1.0, 0.88), // Soft aerated froth
-            params: Vec4::new(0.0, 1.4, 1.0, 1.0), // z = 1.0 (waterfall mode), w = 1.0 (natural bloom)
+            base_color: LinearRgba::new(0.12, 0.82, 0.92, 0.35), // Radiant crystalline turquoise
+            deep_color: LinearRgba::new(0.03, 0.28, 0.45, 0.48), // Deep azure
+            foam_color: LinearRgba::new(0.92, 0.97, 1.0, 0.65), // Soft aerated froth
+            params: Vec4::new(0.0, 1.4, 1.0, 0.45), // z = 1.0 (waterfall mode), w = 0.45 (calibrated bloom)
         })),
         WaterfallMarker,
         waterfall_base,
+        bevy::pbr::NotShadowCaster,
+        bevy::pbr::NotShadowReceiver,
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));
 
@@ -351,11 +394,13 @@ pub fn setup_cavern_world(
     commands.spawn((
         Mesh3d(meshes.add(create_water_disk_mesh(5.85, 64))),
         MeshMaterial3d(water_materials.add(WaterMaterial {
-            base_color: LinearRgba::new(0.08, 0.72, 0.85, 0.40), // Crystalline clear water
-            deep_color: LinearRgba::new(0.02, 0.20, 0.30, 0.60), // Deep turquoise
-            foam_color: LinearRgba::new(0.92, 0.98, 1.0, 0.85), // Soft white foam
-            params: Vec4::new(0.0, 1.0, 0.0, 0.9), // z = 0.0 (lake mode), w = 0.9 (natural bloom)
+            base_color: LinearRgba::new(0.08, 0.72, 0.85, 0.28), // Crystalline clear water
+            deep_color: LinearRgba::new(0.02, 0.20, 0.30, 0.45), // Deep turquoise
+            foam_color: LinearRgba::new(0.92, 0.98, 1.0, 0.65), // Soft white foam
+            params: Vec4::new(0.0, 1.0, 0.0, 0.45), // z = 0.0 (lake mode), w = 0.45 (calibrated bloom)
         })),
+        bevy::pbr::NotShadowCaster,
+        bevy::pbr::NotShadowReceiver,
         Transform::from_xyz(0.0, 0.18, -8.5),
     ));
 

@@ -90,7 +90,7 @@ fn fragment(
         let fluid_body = mix(deep_water, shallow_cyan, smoothstep(0.22, 0.78, filament_metric * 0.65 + v_macro * 0.35));
         
         // Composite froth softly into the water body
-        let surface_color = mix(fluid_body, aerated_white, total_froth * 0.82);
+        let surface_color = mix(fluid_body, aerated_white, total_froth * 0.65);
 
         // Natural Fresnel Specular Glisten & Shimmer
         let V = normalize(view.world_position.xyz - in.world_position.xyz);
@@ -99,18 +99,18 @@ fn fragment(
         let fresnel = pow(1.0 - NdotV, 3.0); // Glancing specular glisten
         
         // Subtle water glisten highlight on high-speed filaments
-        let glisten = pow(filament_metric * (1.0 - spray_noise * 0.5), 3.0) * 0.40;
-        let specular_highlight = vec3<f32>(0.85, 0.96, 1.0) * (fresnel * 0.38 + glisten);
+        let glisten = pow(filament_metric * (1.0 - spray_noise * 0.5), 3.0) * 0.28;
+        let specular_highlight = vec3<f32>(0.85, 0.96, 1.0) * (fresnel * 0.25 + glisten);
 
         // Gentle, calibrated Bloom emission on froth crests (subtle sheen, NO nuclear blowout!)
-        let ambient_froth_glow = aerated_white * (total_froth * bloom_boost * 0.28);
+        let ambient_froth_glow = aerated_white * (total_froth * bloom_boost * 0.12);
 
         // Translucency & Realistic Alpha:
-        // Real falling water is translucent (alpha ~ 0.35 to 0.58), showing the cliff and rocks behind it.
-        // Aerated froth ribbons add localized opacity.
-        let base_alpha = mix(0.38, 0.55, aeration_depth * 0.5 + fresnel * 0.35);
+        // Real falling water is translucent, revealing the cliff and cavern rocks behind it.
+        // Aerated froth ribbons add localized accent.
+        let base_alpha = mix(0.18, 0.32, aeration_depth * 0.4 + fresnel * 0.20);
         let entry_dissolve = smoothstep(0.02, 0.25, in.world_position.y);
-        let final_alpha = clamp((base_alpha + total_froth * 0.42) * entry_dissolve, 0.12, 0.88);
+        let final_alpha = clamp((base_alpha + total_froth * 0.25) * entry_dissolve, 0.08, 0.58);
 
         return vec4<f32>(surface_color + specular_highlight + ambient_froth_glow, final_alpha);
     } else {
@@ -158,14 +158,14 @@ fn fragment(
         let V = normalize(view.world_position.xyz - in.world_position.xyz);
         let N = normalize(in.world_normal);
         let lake_fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
-        let lake_specular = vec3<f32>(0.85, 0.96, 1.0) * (lake_fresnel * 0.35);
+        let lake_specular = vec3<f32>(0.85, 0.96, 1.0) * (lake_fresnel * 0.28);
 
         // Soft calibrated glow on froth and ripple crests
-        let lake_glow = froth_white * (lake_froth * bloom_boost * 0.22);
+        let lake_glow = froth_white * (lake_froth * bloom_boost * 0.15);
 
-        // Crystal-clear translucent lake body (rocks and floor clearly visible through water!)
-        let clear_water_alpha = mix(0.40, 0.25, depth_metric);
-        let lake_alpha = clamp(clear_water_alpha + lake_froth * 0.55 + lake_fresnel * 0.22, 0.18, 0.88);
+        // Crystal-clear translucent lake body (submerged boulders and floor clearly visible through water!)
+        let clear_water_alpha = mix(0.28, 0.15, depth_metric);
+        let lake_alpha = clamp(clear_water_alpha + lake_froth * 0.40 + lake_fresnel * 0.15, 0.10, 0.60);
 
         return vec4<f32>(col_rgb + lake_specular + lake_glow, lake_alpha);
     }
