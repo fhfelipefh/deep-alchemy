@@ -54,6 +54,11 @@ pub struct HotbarSlotUi {
     pub slot_index: usize, // 1..=5
 }
 
+#[derive(Component)]
+pub struct PotionSlotIcon {
+    pub slot_index: usize, // 1..=5
+}
+
 pub const COLOR_BORDER_GOLD: Color = Color::srgb(0.83, 0.69, 0.22); // #d4af37
 pub const COLOR_BORDER_ACTIVE: Color = Color::srgb(1.0, 0.88, 0.40); // Bright Gold
 pub const COLOR_BG_DARK: Color = Color::srgba(0.04, 0.06, 0.09, 0.88);
@@ -185,13 +190,21 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
             ))
             .with_children(|hotbar| {
                 for slot_num in 1..=5 {
+                    let potion_texture = match slot_num {
+                        1 => "textures/ui/flask_green.png",
+                        2 => "textures/ui/flask_red.png",
+                        3 => "textures/ui/flask_yellow.png",
+                        4 => "textures/ui/flask_blue.png",
+                        5 => "textures/ui/flask_white.png",
+                        _ => "textures/ui/flask_green.png",
+                    };
+
                     hotbar.spawn((
                         HotbarSlotUi { slot_index: slot_num },
                         Node {
                             width: Val::Px(54.0),
                             height: Val::Px(54.0),
-                            flex_direction: FlexDirection::Column,
-                            justify_content: JustifyContent::SpaceBetween,
+                            justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
                             padding: UiRect::all(Val::Px(3.0)),
                             border: UiRect::all(if slot_num == 1 { Val::Px(2.5) } else { Val::Px(1.0) }),
@@ -201,7 +214,7 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                         BorderColor(if slot_num == 1 { COLOR_BORDER_ACTIVE } else { COLOR_BORDER_GOLD }),
                     ))
                     .with_children(|slot| {
-                        // Slot number tag (top-left aligned feel)
+                        // Slot number tag (top-left aligned tag)
                         slot.spawn((
                             Text::new(format!("{slot_num}")),
                             TextFont {
@@ -210,19 +223,27 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 ..default()
                             },
                             TextColor(if slot_num == 1 { COLOR_BORDER_ACTIVE } else { COLOR_BORDER_GOLD }),
-                        ));
-
-                        // Empty slot interior: player just awoke after falling into the cave with empty hands.
-                        // Potions will be placed here once crafted at the alchemy workbench.
-                        slot.spawn((
                             Node {
-                                width: Val::Px(34.0),
-                                height: Val::Px(34.0),
-                                border: UiRect::all(Val::Px(1.0)),
+                                position_type: PositionType::Absolute,
+                                left: Val::Px(5.0),
+                                top: Val::Px(2.0),
                                 ..default()
                             },
-                            BackgroundColor(Color::srgba(0.04, 0.05, 0.08, 0.45)),
-                            BorderColor(Color::srgba(0.35, 0.38, 0.45, 0.25)),
+                        ));
+
+                        // Alchemical Potion Flask Icon (unique shape, color, and stopper per slot)
+                        slot.spawn((
+                            PotionSlotIcon { slot_index: slot_num },
+                            ImageNode::new(asset_server.load(potion_texture)),
+                            Node {
+                                width: Val::Px(38.0),
+                                height: Val::Px(38.0),
+                                margin: UiRect {
+                                    top: Val::Px(4.0),
+                                    ..default()
+                                },
+                                ..default()
+                            },
                         ));
                     });
                 }
@@ -356,6 +377,12 @@ pub mod tests {
         // 4. Verify crosshair dot exists
         let mut crosshair_query = app.world_mut().query::<&CrosshairDot>();
         assert_eq!(crosshair_query.iter(app.world()).count(), 1, "Crosshair reticle must exist");
+
+        // 5. Verify all 5 stylized alchemical potion icons spawned (slots 1..=5)
+        let mut potion_query = app.world_mut().query::<&PotionSlotIcon>();
+        let mut found_potions: Vec<usize> = potion_query.iter(app.world()).map(|p| p.slot_index).collect();
+        found_potions.sort();
+        assert_eq!(found_potions, vec![1, 2, 3, 4, 5], "Hotbar must contain potion icons for slots 1 through 5");
     }
 
     #[test]

@@ -33,11 +33,23 @@
           "path_width_x": [-2.4, 2.4],
           "path_material": "beaten_earth",
           "bench": {
-            "position": [2.65, 0.05, -2.10],
-            "rotation_y_deg": -28.6,
+            "position": [2.15, 0.05, -1.75],
+            "rotation_y_deg": -25.8,
             "moss_cushions": true
           },
-          "border_elements": ["river_pebbles", "angular_transition_rocks"]
+          "border_elements": ["river_pebbles", "angular_transition_rocks"],
+          "mushroom_colliders": {
+            "left_cluster": [
+              {"name": "Left_Large", "pos": [-4.45, 1.45, -3.70], "radius": 0.70, "height": 2.90},
+              {"name": "Left_Medium", "pos": [-3.72, 1.00, -2.90], "radius": 0.52, "height": 2.00},
+              {"name": "Left_Small", "pos": [-4.85, 0.65, -2.65], "radius": 0.40, "height": 1.30}
+            ],
+            "right_cluster": [
+              {"name": "Right_1", "pos": [4.55, 0.90, -3.75], "radius": 0.52, "height": 1.80},
+              {"name": "Right_2", "pos": [4.07, 0.75, -3.05], "radius": 0.42, "height": 1.45},
+              {"name": "Right_3", "pos": [5.16, 0.55, -4.18], "radius": 0.35, "height": 1.10}
+            ]
+          }
         },
         "midground": {
           "z_range": [-4.0, -9.0],

@@ -477,8 +477,8 @@ pub fn spawn_procedural_dungeon(
     // Instantiate physical dual-grid pieces with Avian3D physics colliders & lighting
     for cell in &dungeon.dual_cells {
         // Skip spawning dungeon kit pieces inside the handcrafted Starting Grotto cavern amphitheater
-        // (Cavern grotto has radius ~11.0m centered around (0.0, -4.5))
-        if cell.world_pos.x.hypot(cell.world_pos.z + 4.5) < 11.0 {
+        // (Cavern grotto encompasses X in [-28, 28], Z in [-28, 8])
+        if cell.world_pos.x.abs() < 28.0 && cell.world_pos.z > -28.0 && cell.world_pos.z < 8.0 {
             continue;
         }
 

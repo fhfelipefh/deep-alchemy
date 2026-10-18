@@ -75,6 +75,9 @@ def generate_roi_crops(input_path, output_dir="debug_output/crops"):
         "ceiling_arch_stalactites": (0, 0, w, int(h * 0.40)),
         "central_waterfall_lagoon": (int(w * 0.25), int(h * 0.20), int(w * 0.75), int(h * 0.85)),
         "foreground_dirt_and_bench": (0, int(h * 0.60), w, h),
+        "hotbar_potions": (int(w * 0.32), int(h * 0.86), int(w * 0.68), h),
+        "left_mushrooms": (0, int(h * 0.30), int(w * 0.35), int(h * 0.85)),
+        "right_mushrooms": (int(w * 0.65), int(h * 0.30), w, int(h * 0.85)),
     }
     
     generated = {}

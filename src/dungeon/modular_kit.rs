@@ -222,46 +222,46 @@ pub fn setup_cavern_world(
     commands.spawn((
         Name::new("Collider_Mushroom_Left_Large"),
         CavernObstacle,
-        Transform::from_xyz(-4.2, 1.6, -3.2),
+        Transform::from_xyz(-4.45, 1.45, -3.70),
         RigidBody::Static,
-        Collider::cylinder(0.52, 3.0),
+        Collider::cylinder(0.70, 2.90),
     ));
     commands.spawn((
         Name::new("Collider_Mushroom_Left_Medium"),
         CavernObstacle,
-        Transform::from_xyz(-3.4, 0.95, -2.4),
+        Transform::from_xyz(-3.72, 1.00, -2.90),
         RigidBody::Static,
-        Collider::cylinder(0.38, 1.75),
+        Collider::cylinder(0.52, 2.00),
     ));
     commands.spawn((
         Name::new("Collider_Mushroom_Left_Small"),
         CavernObstacle,
-        Transform::from_xyz(-4.8, 0.65, -2.6),
+        Transform::from_xyz(-4.85, 0.65, -2.65),
         RigidBody::Static,
-        Collider::cylinder(0.28, 1.10),
+        Collider::cylinder(0.40, 1.30),
     ));
 
-    // Static physical obstacle colliders for rooted mushrooms (Right cluster: 3 vibrant dome mushrooms)
+    // Static physical obstacle colliders for rooted mushrooms (Right cluster: 3 vibrant lathe dome mushrooms)
     commands.spawn((
         Name::new("Collider_Mushroom_Right_1"),
         CavernObstacle,
-        Transform::from_xyz(4.2, 1.4, -3.2),
+        Transform::from_xyz(4.55, 0.90, -3.75),
         RigidBody::Static,
-        Collider::cylinder(0.48, 2.6),
+        Collider::cylinder(0.52, 1.80),
     ));
     commands.spawn((
         Name::new("Collider_Mushroom_Right_2"),
         CavernObstacle,
-        Transform::from_xyz(3.6, 0.95, -2.5),
+        Transform::from_xyz(4.07, 0.75, -3.05),
         RigidBody::Static,
-        Collider::cylinder(0.38, 1.75),
+        Collider::cylinder(0.42, 1.45),
     ));
     commands.spawn((
         Name::new("Collider_Mushroom_Right_3"),
         CavernObstacle,
-        Transform::from_xyz(5.0, 0.65, -3.8),
+        Transform::from_xyz(5.16, 0.55, -4.18),
         RigidBody::Static,
-        Collider::cylinder(0.28, 1.10),
+        Collider::cylinder(0.35, 1.10),
     ));
 
     // Static physical obstacle colliders for organic rock terraces flanking the waterfall
@@ -385,12 +385,12 @@ pub fn setup_cavern_world(
         },
     ));
 
-    // Masterwork Rustic Mossy Wooden Bench (lower right on grass, angled toward lagoon)
+    // Masterwork Rustic Mossy Wooden Bench (lower right on grass, moved forward & left with zero mushroom collision)
     commands.spawn((
         Name::new("Rustic_Mossy_Bench"),
         CavernObstacle,
         SceneRoot(asset_server.load("models/alchemy_props.glb#Scene0")),
-        Transform::from_xyz(2.65, 0.04, -2.1).with_rotation(Quat::from_rotation_y(-0.50)),
+        Transform::from_xyz(2.15, 0.04, -1.75).with_rotation(Quat::from_rotation_y(-0.45)),
         RigidBody::Static,
         Collider::cuboid(1.6, 0.9, 0.7),
     ));
