@@ -27,14 +27,14 @@ pub fn spawn_particles(
     time: Res<Time>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut emitters: Query<(&mut ParticleEmitter, &Transform)>,
+    mut emitters: Query<(&mut ParticleEmitter, Option<&GlobalTransform>, &Transform)>,
 ) {
     let dt = time.delta_secs();
-    for (mut emitter, tf) in emitters.iter_mut() {
+    for (mut emitter, global_tf, tf) in emitters.iter_mut() {
         emitter.spawn_timer += dt;
         if emitter.spawn_timer >= emitter.spawn_rate {
             emitter.spawn_timer = 0.0;
-            let pos = tf.translation;
+            let pos = global_tf.map(|g| g.translation()).unwrap_or(tf.translation);
             match emitter.particle_type {
                 ParticleType::Steam => {
                     let vel = Vec3::new(

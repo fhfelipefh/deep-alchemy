@@ -60,10 +60,10 @@ mat_glowing_tip = create_pbr_material("M_Glowing_Tip", (0.20, 0.95, 0.92), rough
 mat_shroom_vibrant_cap = create_pbr_material("M_Shroom_Vibrant_Cap", (0.04, 0.88, 0.90), roughness=0.18, emission=(0.06, 0.96, 0.94), emission_strength=2.6)
 mat_tall_grass = create_pbr_material("M_Tall_Grass", (0.16, 0.50, 0.22), roughness=0.72)
 mat_glow_bulb = create_pbr_material("M_Glow_Bulb", (0.15, 0.95, 0.90), roughness=0.15, emission=(0.15, 0.98, 0.92), emission_strength=3.0)
-mat_dandelion_stem = create_pbr_material("M_Dandelion_Stem", (0.18, 0.42, 0.10), roughness=0.78)
-mat_dandelion_leaf = create_pbr_material("M_Dandelion_Leaf", (0.24, 0.58, 0.12), roughness=0.72)
-mat_dandelion_flower = create_pbr_material("M_Dandelion_Flower", (0.95, 0.72, 0.08), roughness=0.38, emission=(0.80, 0.42, 0.03), emission_strength=0.55)
-mat_dandelion_seed = create_pbr_material("M_Dandelion_Seed", (0.92, 0.98, 0.94), roughness=0.48)
+mat_dandelion_stem = create_pbr_material("M_Dandelion_Stem", (0.20, 0.52, 0.16), roughness=0.75)
+mat_dandelion_leaf = create_pbr_material("M_Dandelion_Leaf", (0.18, 0.48, 0.14), roughness=0.72)
+mat_dandelion_flower = create_pbr_material("M_Dandelion_Flower", (1.0, 0.85, 0.12), roughness=0.62, emission=(0.96, 0.76, 0.12), emission_strength=0.82)
+mat_dandelion_seed = create_pbr_material("M_Dandelion_Seed", (0.95, 0.98, 1.0), roughness=0.75, emission=(0.35, 0.48, 0.55), emission_strength=0.35)
 mat_moss_wet = create_pbr_material("M_Wet_Moss", (0.06, 0.30, 0.12), roughness=0.92)
 mat_moss_lime = create_pbr_material("M_Lime_Moss", (0.22, 0.62, 0.18), roughness=0.84)
 mat_moss_fringes = create_pbr_material("M_Moss_Fringes", (0.11, 0.40, 0.16), roughness=0.88)
@@ -1378,61 +1378,154 @@ def spawn_glowing_stalk(x, y, z, h=0.75, name="GlowingStalk"):
         p.use_smooth = True
 
 def spawn_dandelion(x, y, z, height=0.82, bloom=True, seed_head=False, name="Dandelion"):
-    bm = bmesh.new(); rings = []
+    bm = bmesh.new()
+    rings = []
     for i in range(13):
         t = i / 12.0
         center = Vector((x + 0.07 * math.sin(t * math.pi), y, z + height * t))
         radius = 0.028 * (1.0 - 0.25 * t)
-        rings.append([bm.verts.new((center.x + math.cos(math.tau*j/10)*radius,
-                                    center.y + math.sin(math.tau*j/10)*radius, center.z)) for j in range(10)])
+        rings.append([bm.verts.new((center.x + math.cos(math.tau * j / 10) * radius,
+                                    center.y + math.sin(math.tau * j / 10) * radius, center.z)) for j in range(10)])
     for i in range(12):
         for j in range(10):
-            bm.faces.new((rings[i][j], rings[i][(j+1)%10], rings[i+1][(j+1)%10], rings[i+1][j]))
+            bm.faces.new((rings[i][j], rings[i][(j + 1) % 10], rings[i + 1][(j + 1) % 10], rings[i + 1][j]))
 
     for li in range(5):
         a = li * math.tau / 5.0
-        left=[]; right=[]
+        left = []
+        right = []
         for k in range(7):
-            t = k / 6.0; length = 0.42 * t; width = math.sin(t * math.pi) * 0.055
-            cx, cy, cz = x + math.cos(a)*length, y + math.sin(a)*length, z + 0.02
-            px, py = -math.sin(a)*width, math.cos(a)*width
-            left.append(bm.verts.new((cx-px, cy-py, cz))); right.append(bm.verts.new((cx+px, cy+py, cz)))
-        for k in range(6): 
-            f = bm.faces.new((left[k], right[k], right[k+1], left[k+1]))
+            t = k / 6.0
+            length = 0.42 * t
+            width = math.sin(t * math.pi) * 0.055
+            cx = x + math.cos(a) * length
+            cy = y + math.sin(a) * length
+            cz = z + 0.02
+            px = -math.sin(a) * width
+            py = math.cos(a) * width
+            left.append(bm.verts.new((cx - px, cy - py, cz)))
+            right.append(bm.verts.new((cx + px, cy + py, cz)))
+        for k in range(6):
+            f = bm.faces.new((left[k], right[k], right[k + 1], left[k + 1]))
             f.material_index = 1
 
     top_ring = rings[-1]
     head = Vector((x + 0.07 * math.sin(math.pi), y, z + height))
-    center_v = bm.verts.new(head)
+
+    bract_rim = []
+    rim_count = 14
+    for j in range(rim_count):
+        a = math.tau * j / rim_count
+        rv = bm.verts.new(head + Vector((math.cos(a) * 0.052, math.sin(a) * 0.052, 0.010)))
+        bract_rim.append(rv)
+
     for j in range(10):
-        f = bm.faces.new((top_ring[j], top_ring[(j+1)%10], center_v))
-        f.material_index = 0
+        rj0 = int(j * rim_count / 10)
+        rj1 = int((j + 1) * rim_count / 10) % rim_count
+        f_cup = bm.faces.new((top_ring[j], top_ring[(j + 1) % 10], bract_rim[rj1], bract_rim[rj0]))
+        f_cup.material_index = 1
+
+    for j in range(rim_count):
+        a = math.tau * j / rim_count
+        tip_pos = head + Vector((math.cos(a) * 0.072, math.sin(a) * 0.072, -0.012))
+        tip_v = bm.verts.new(tip_pos)
+        f_bract = bm.faces.new((bract_rim[j], bract_rim[(j + 1) % rim_count], tip_v))
+        f_bract.material_index = 1
 
     if bloom:
+        floret_layers = [
+            (32, 0.038, 0.155, 0.012, 0.024, 0.016, 0.022, 0.0),
+            (24, 0.028, 0.115, 0.018, 0.038, 0.048, 0.018, 0.5),
+            (16, 0.018, 0.072, 0.025, 0.052, 0.066, 0.014, 0.25),
+        ]
+        for count, r_base, r_tip, z_base, z_mid, z_tip, width, phase in floret_layers:
+            r_mid = (r_base + r_tip) * 0.52
+            for i in range(count):
+                a = math.tau * (i + phase) / count
+                ca = math.cos(a)
+                sa = math.sin(a)
+                pa_x = -sa * (width * 0.5)
+                pa_y = ca * (width * 0.5)
 
-        for i in range(24):
-            a = math.tau * i / 24.0
-            p_base_l = head + Vector((math.cos(a - 0.10) * 0.025, math.sin(a - 0.10) * 0.025, 0.005))
-            p_base_r = head + Vector((math.cos(a + 0.10) * 0.025, math.sin(a + 0.10) * 0.025, 0.005))
-            p_mid_l = head + Vector((math.cos(a - 0.06) * 0.08, math.sin(a - 0.06) * 0.08, 0.025))
-            p_mid_r = head + Vector((math.cos(a + 0.06) * 0.08, math.sin(a + 0.06) * 0.08, 0.025))
-            p_tip = head + Vector((math.cos(a) * 0.14, math.sin(a) * 0.14, 0.020))
-            vl1 = bm.verts.new(p_base_l); vr1 = bm.verts.new(p_base_r)
-            vl2 = bm.verts.new(p_mid_l); vr2 = bm.verts.new(p_mid_r)
-            vt = bm.verts.new(p_tip)
-            f1 = bm.faces.new((vl1, vr1, vr2, vl2)); f1.material_index = 2
-            f2 = bm.faces.new((vl2, vr2, vt)); f2.material_index = 2
+                p_base_l = head + Vector((ca * r_base - pa_x * 0.6, sa * r_base - pa_y * 0.6, z_base))
+                p_base_r = head + Vector((ca * r_base + pa_x * 0.6, sa * r_base + pa_y * 0.6, z_base))
+                p_mid_l = head + Vector((ca * r_mid - pa_x, sa * r_mid - pa_y, z_mid))
+                p_mid_r = head + Vector((ca * r_mid + pa_x, sa * r_mid + pa_y, z_mid))
+                p_tip = head + Vector((ca * r_tip, sa * r_tip, z_tip))
+
+                vl1 = bm.verts.new(p_base_l)
+                vr1 = bm.verts.new(p_base_r)
+                vl2 = bm.verts.new(p_mid_l)
+                vr2 = bm.verts.new(p_mid_r)
+                vt = bm.verts.new(p_tip)
+
+                f1 = bm.faces.new((vl1, vr1, vr2, vl2))
+                f1.material_index = 2
+                f2 = bm.faces.new((vl2, vr2, vt))
+                f2.material_index = 2
+
+                thick = Vector((0.0, 0.0, -0.0022))
+                vl1_b = bm.verts.new(p_base_l + thick)
+                vr1_b = bm.verts.new(p_base_r + thick)
+                vl2_b = bm.verts.new(p_mid_l + thick)
+                vr2_b = bm.verts.new(p_mid_r + thick)
+                vt_b = bm.verts.new(p_tip + thick)
+
+                f1_b = bm.faces.new((vl2_b, vr2_b, vr1_b, vl1_b))
+                f1_b.material_index = 2
+                f2_b = bm.faces.new((vt_b, vr2_b, vl2_b))
+                f2_b.material_index = 2
+
+        dome_rings = 4
+        dome_segs = 16
+        dome_r = 0.038
+        dome_grid = []
+        for ir in range(dome_rings + 1):
+            u = ir / dome_rings
+            ring_radius = dome_r * math.sin(u * math.pi * 0.5)
+            curr_z = 0.026 + 0.016 * math.cos(u * math.pi * 0.5)
+            row = []
+            for ia in range(dome_segs):
+                ang = math.tau * ia / dome_segs
+                row.append(bm.verts.new(head + Vector((math.cos(ang) * ring_radius, math.sin(ang) * ring_radius, curr_z))))
+            dome_grid.append(row)
+
+        for ir in range(dome_rings):
+            for ia in range(dome_segs):
+                ia_next = (ia + 1) % dome_segs
+                fd = bm.faces.new((dome_grid[ir][ia], dome_grid[ir][ia_next], dome_grid[ir + 1][ia_next], dome_grid[ir + 1][ia]))
+                fd.material_index = 2
 
     if seed_head:
+        seed_count = 52
+        golden_angle = math.pi * (3.0 - math.sqrt(5.0))
+        for i in range(seed_count):
+            t = (i + 0.5) / seed_count
+            incl = math.acos(1.0 - 1.85 * t)
+            azim = golden_angle * i
+            dir_v = Vector((math.sin(incl) * math.cos(azim), math.sin(incl) * math.sin(azim), math.cos(incl))).normalized()
+            p_stalk_base = head + dir_v * 0.032
+            p_stalk_tip = head + dir_v * 0.175
 
-        for i in range(24):
-            a = math.tau * i / 24.0
-            length = 0.22 + (i % 4) * 0.04
-            p_tip = head + Vector((math.cos(a) * length, math.sin(a) * length, 0.08 + (i % 3) * 0.03))
-            p_base_1 = head + Vector((math.cos(a) * 0.015, math.sin(a) * 0.015, 0.0))
-            p_base_2 = head + Vector((math.cos(a + 0.2) * 0.015, math.sin(a + 0.2) * 0.015, 0.0))
-            v1 = bm.verts.new(p_base_1); v2 = bm.verts.new(p_base_2); vt = bm.verts.new(p_tip)
-            f = bm.faces.new((v1, v2, vt)); f.material_index = 3
+            v_sb = bm.verts.new(p_stalk_base)
+            v_st = bm.verts.new(p_stalk_tip)
+            ortho_u = dir_v.cross(Vector((0.0, 0.0, 1.0)) if abs(dir_v.z) < 0.9 else Vector((1.0, 0.0, 0.0))).normalized()
+            ortho_v = dir_v.cross(ortho_u).normalized()
+
+            v_s1 = bm.verts.new(p_stalk_base + ortho_u * 0.003)
+            f_stalk = bm.faces.new((v_sb, v_s1, v_st))
+            f_stalk.material_index = 0
+
+            pappus_spokes = 8
+            spoke_r = 0.038
+            for ps in range(pappus_spokes):
+                pang = math.tau * ps / pappus_spokes
+                p_spoke_tip = p_stalk_tip + (ortho_u * math.cos(pang) + ortho_v * math.sin(pang)) * spoke_r + dir_v * 0.012
+                v_pt = bm.verts.new(p_spoke_tip)
+                pang_next = math.tau * (ps + 0.5) / pappus_spokes
+                v_pw = bm.verts.new(p_stalk_tip + (ortho_u * math.cos(pang_next) + ortho_v * math.sin(pang_next)) * (spoke_r * 0.4))
+                fp = bm.faces.new((v_st, v_pt, v_pw))
+                fp.material_index = 3
 
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     mesh = bpy.data.meshes.new(f"{name}_Mesh")
@@ -1440,7 +1533,7 @@ def spawn_dandelion(x, y, z, height=0.82, bloom=True, seed_head=False, name="Dan
     bpy.context.collection.objects.link(obj)
     bm.to_mesh(mesh)
     bm.free()
-    for poly in mesh.polygons: 
+    for poly in mesh.polygons:
         poly.use_smooth = True
     mesh.update()
     obj.data.materials.append(mat_dandelion_stem)

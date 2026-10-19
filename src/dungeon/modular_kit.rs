@@ -30,6 +30,12 @@ pub struct CavernObstacle;
 #[derive(Component)]
 pub struct TallGrassClump;
 
+#[derive(Component)]
+pub struct MushroomCap;
+
+#[derive(Component)]
+pub struct MushroomSporeAttached;
+
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub enum ObstacleShape {
     Cylinder { radius: f32, height: f32 },
@@ -53,6 +59,7 @@ impl Plugin for DungeonPlugin {
                 animate_waterfall_mesh,
                 mark_imported_tall_grass,
                 keep_tall_grass_clear_of_obstacles,
+                attach_mushroom_spore_emitters,
             ),
         );
     }
@@ -65,6 +72,43 @@ pub fn mark_imported_tall_grass(
     for (entity, name) in &named_entities {
         if name.as_str().contains("TallGrass") {
             commands.entity(entity).insert(TallGrassClump);
+        }
+    }
+}
+
+pub fn attach_mushroom_spore_emitters(
+    mut commands: Commands,
+    mushroom_caps: Query<
+        (Entity, Option<&Name>),
+        (
+            Or<(With<MushroomCap>, With<Name>)>,
+            Without<MushroomSporeAttached>,
+        ),
+    >,
+) {
+    for (entity, name_opt) in &mushroom_caps {
+        let is_target = if let Some(name) = name_opt {
+            let s = name.as_str();
+            (s.contains("Cap") && (s.contains("Shroom") || s.contains("Mushroom")))
+                || s.starts_with("Mushroom_Cap")
+        } else {
+            true
+        };
+
+        if is_target {
+            commands
+                .entity(entity)
+                .insert((MushroomCap, MushroomSporeAttached))
+                .with_children(|parent| {
+                    parent.spawn((
+                        Transform::from_xyz(0.0, -0.06, 0.0),
+                        ParticleEmitter {
+                            spawn_timer: 0.0,
+                            spawn_rate: 0.22,
+                            particle_type: ParticleType::GlowSpore,
+                        },
+                    ));
+                });
         }
     }
 }
@@ -610,22 +654,6 @@ pub fn setup_cavern_world(
         ));
     }
 
-    for (mx, my, mz) in [
-        (-3.53, 1.95, -3.65),
-        (-2.90, 1.35, -2.76),
-        (4.15, 1.45, -3.75),
-        (3.58, 1.10, -2.95),
-    ] {
-        commands.spawn((
-            Transform::from_xyz(mx, my, mz),
-            ParticleEmitter {
-                spawn_timer: 0.0,
-                spawn_rate: 0.22,
-                particle_type: ParticleType::GlowSpore,
-            },
-        ));
-    }
-
     commands.spawn((
         Interactable {
             label: "Cyan Parasol Mushroom",
@@ -1002,5 +1030,52 @@ pub mod tests {
         assert!(mesh.indices().is_some());
         assert_eq!(base.base_positions.len(), (16 + 1) * (24 + 1));
         assert_eq!(base.base_normals.len(), (16 + 1) * (24 + 1));
+    }
+
+    #[test]
+    fn test_mushroom_cap_spore_emitter_dynamic_attachment_and_repositioning() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_systems(Update, attach_mushroom_spore_emitters);
+
+        let shroom = app
+            .world_mut()
+            .spawn((
+                Name::new("Left_Shroom_Large_Cap"),
+                Transform::from_xyz(-3.5, 2.0, -3.5),
+            ))
+            .id();
+
+        app.update();
+
+        let mut query = app.world_mut().query::<(&ParticleEmitter, &Parent)>();
+        let attached = query.iter(app.world()).any(|(emitter, parent)| {
+            parent.get() == shroom && emitter.particle_type == ParticleType::GlowSpore
+        });
+        assert!(
+            attached,
+            "Must dynamically attach GlowSpore particle emitter to newly spawned mushroom cap"
+        );
+
+        let mut tf_query = app.world_mut().query::<&mut Transform>();
+        if let Ok(mut tf) = tf_query.get_mut(app.world_mut(), shroom) {
+            tf.translation = Vec3::new(10.0, 4.0, 10.0);
+        }
+
+        let new_shroom = app
+            .world_mut()
+            .spawn((MushroomCap, Transform::from_xyz(5.0, 3.0, 5.0)))
+            .id();
+
+        app.update();
+
+        let mut query = app.world_mut().query::<(&ParticleEmitter, &Parent)>();
+        let attached_new = query.iter(app.world()).any(|(emitter, parent)| {
+            parent.get() == new_shroom && emitter.particle_type == ParticleType::GlowSpore
+        });
+        assert!(
+            attached_new,
+            "Must dynamically attach GlowSpore emitter to newly added MushroomCap"
+        );
     }
 }
