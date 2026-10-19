@@ -831,11 +831,10 @@ def spawn_moss_patch(x, y, z, scale=1.0, variant=0, name="WetMossPatch"):
         for poly in frond.data.polygons: poly.use_smooth=True
 
 for idx, args in enumerate([
-    (-4.65,10.9,5.3,1.25,0), (-3.75,11.2,6.1,.90,1), (4.55,10.8,5.0,1.30,2),
-    (3.70,11.1,6.2,.82,0), (-5.2,9.8,3.8,.72,2), (5.15,9.7,3.9,.78,1)]):
+    (-5.60,11.8,5.3,1.25,0), (-4.40,12.6,6.1,.90,1), (5.50,11.8,5.0,1.30,2),
+    (4.40,12.6,6.2,.82,0), (-6.50,10.8,3.8,.72,2), (6.50,10.8,3.9,.78,1)]):
     spawn_moss_patch(*args, name=f"Waterfall_Back_Moss_{idx}")
 
-# Bioluminescent Cyan Wall Spores / Miniature bracket fungi on shaded rock faces
 def spawn_wall_cyan_spores(x, y, z, num_shrooms=5, name="WallCyanSpores"):
     bm = bmesh.new()
     rng = random.Random(int((abs(x) + abs(y) + abs(z)) * 100))
@@ -880,12 +879,12 @@ wall_spore_locations = [
     (-7.1, 1.8, 3.2),
     (-7.2, 3.8, 3.5),
     (-6.6, 6.2, 2.4),
-    (-4.5, 11.0, 6.0),
+    (-5.6, 11.8, 6.0),
     (7.2, -0.5, 2.8),
     (7.1, 1.8, 3.2),
     (7.2, 3.8, 3.5),
     (6.6, 6.2, 2.4),
-    (4.5, 11.0, 6.0),
+    (5.6, 11.8, 6.0),
 ]
 for idx, (wx, wy, wz) in enumerate(wall_spore_locations):
     spawn_wall_cyan_spores(wx, wy, wz, num_shrooms=6, name=f"Wall_Cyan_Spore_{idx}")
@@ -1270,7 +1269,6 @@ def spawn_glowing_stalk(x, y, z, h=0.75, name="GlowingStalk"):
         p.use_smooth = True
 
 def spawn_dandelion(x, y, z, height=0.82, bloom=True, seed_head=False, name="Dandelion"):
-    # A continuous tapered tube keeps the stem physically connected to the head.
     bm = bmesh.new(); rings = []
     for i in range(13):
         t = i / 12.0
@@ -1281,45 +1279,67 @@ def spawn_dandelion(x, y, z, height=0.82, bloom=True, seed_head=False, name="Dan
     for i in range(12):
         for j in range(10):
             bm.faces.new((rings[i][j], rings[i][(j+1)%10], rings[i+1][(j+1)%10], rings[i+1][j]))
-    mesh = bpy.data.meshes.new(f"{name}_StemMesh")
-    stem = bpy.data.objects.new(f"{name}_Stem", mesh); bpy.context.collection.objects.link(stem)
-    bm.to_mesh(mesh); bm.free(); mesh.materials.append(mat_dandelion_stem)
-    for poly in mesh.polygons: poly.use_smooth = True
-
-    # Five low serrated leaf blades identify the rosette at the base.
+    
+    # Five low serrated leaf blades identify the rosette at the base
     for li in range(5):
         a = li * math.tau / 5.0
-        lb = bmesh.new(); left=[]; right=[]
+        left=[]; right=[]
         for k in range(7):
             t = k / 6.0; length = 0.42 * t; width = math.sin(t * math.pi) * 0.055
             cx, cy, cz = x + math.cos(a)*length, y + math.sin(a)*length, z + 0.02
             px, py = -math.sin(a)*width, math.cos(a)*width
-            left.append(lb.verts.new((cx-px, cy-py, cz))); right.append(lb.verts.new((cx+px, cy+py, cz)))
-        for k in range(6): lb.faces.new((left[k], right[k], right[k+1], left[k+1]))
-        lm = bpy.data.meshes.new(f"{name}_LeafMesh_{li}"); lo = bpy.data.objects.new(f"{name}_Leaf_{li}", lm)
-        bpy.context.collection.objects.link(lo); lb.to_mesh(lm); lb.free(); lm.materials.append(mat_dandelion_leaf); lo.parent = stem
+            left.append(bm.verts.new((cx-px, cy-py, cz))); right.append(bm.verts.new((cx+px, cy+py, cz)))
+        for k in range(6): 
+            f = bm.faces.new((left[k], right[k], right[k+1], left[k+1]))
+            f.material_index = 1
 
-    head = Vector((x + 0.07, y, z + height))
+    # Stem tip receptacle disk seamlessly closing top ring
+    top_ring = rings[-1]
+    head = Vector((x + 0.07 * math.sin(math.pi), y, z + height))
+    center_v = bm.verts.new(head)
+    for j in range(10):
+        f = bm.faces.new((top_ring[j], top_ring[(j+1)%10], center_v))
+        f.material_index = 0
+
     if bloom:
-        bpy.ops.mesh.primitive_uv_sphere_add(segments=12, ring_count=8, radius=0.07, location=head)
-        center = bpy.context.object; center.name=f"{name}_FlowerCenter"; center.data.materials.append(mat_dandelion_flower); center.parent=stem
+        # Flower head and petals built directly off receptacle
         for i in range(24):
             a = math.tau * i / 24.0
-            bpy.ops.mesh.primitive_uv_sphere_add(segments=8, ring_count=5, radius=1.0,
-                location=head + Vector((math.cos(a)*0.10, math.sin(a)*0.10, 0.018)))
-            petal=bpy.context.object; petal.name=f"{name}_RayFloret_{i}"; petal.scale=(0.025,0.10,0.016)
-            petal.rotation_euler[2]=a-math.pi/2; petal.data.materials.append(mat_dandelion_flower); petal.parent=stem
+            p_base_l = head + Vector((math.cos(a - 0.10) * 0.025, math.sin(a - 0.10) * 0.025, 0.005))
+            p_base_r = head + Vector((math.cos(a + 0.10) * 0.025, math.sin(a + 0.10) * 0.025, 0.005))
+            p_mid_l = head + Vector((math.cos(a - 0.06) * 0.08, math.sin(a - 0.06) * 0.08, 0.025))
+            p_mid_r = head + Vector((math.cos(a + 0.06) * 0.08, math.sin(a + 0.06) * 0.08, 0.025))
+            p_tip = head + Vector((math.cos(a) * 0.14, math.sin(a) * 0.14, 0.020))
+            vl1 = bm.verts.new(p_base_l); vr1 = bm.verts.new(p_base_r)
+            vl2 = bm.verts.new(p_mid_l); vr2 = bm.verts.new(p_mid_r)
+            vt = bm.verts.new(p_tip)
+            f1 = bm.faces.new((vl1, vr1, vr2, vl2)); f1.material_index = 2
+            f2 = bm.faces.new((vl2, vr2, vt)); f2.material_index = 2
+
     if seed_head:
-        bpy.ops.mesh.primitive_uv_sphere_add(segments=12, ring_count=8, radius=0.095, location=head)
-        c=bpy.context.object; c.name=f"{name}_SeedHead"; c.data.materials.append(mat_dandelion_seed); c.parent=stem
-        for i in range(30):
-            a=math.tau*i/30.0; length=0.30 + (i%4)*0.055
-            tip=head+Vector((math.cos(a)*length, math.sin(a)*length, 0.10+(i%3)*0.045))
-            bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.005, depth=(tip-head).length, location=(head+tip)*0.5)
-            filament=bpy.context.object; filament.name=f"{name}_SeedFilament_{i}"
-            filament.rotation_euler=Vector((0,0,1)).rotation_difference(tip-head).to_euler(); filament.data.materials.append(mat_dandelion_seed); filament.parent=stem
-            bpy.ops.mesh.primitive_uv_sphere_add(segments=6, ring_count=4, radius=0.018, location=tip)
-            tuft=bpy.context.object; tuft.name=f"{name}_SeedTuft_{i}"; tuft.data.materials.append(mat_dandelion_seed); tuft.parent=stem
+        # Pappus seed filaments directly emerging from receptacle center
+        for i in range(24):
+            a = math.tau * i / 24.0
+            length = 0.22 + (i % 4) * 0.04
+            p_tip = head + Vector((math.cos(a) * length, math.sin(a) * length, 0.08 + (i % 3) * 0.03))
+            p_base_1 = head + Vector((math.cos(a) * 0.015, math.sin(a) * 0.015, 0.0))
+            p_base_2 = head + Vector((math.cos(a + 0.2) * 0.015, math.sin(a + 0.2) * 0.015, 0.0))
+            v1 = bm.verts.new(p_base_1); v2 = bm.verts.new(p_base_2); vt = bm.verts.new(p_tip)
+            f = bm.faces.new((v1, v2, vt)); f.material_index = 3
+
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new(f"{name}_Mesh")
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    bm.to_mesh(mesh)
+    bm.free()
+    for poly in mesh.polygons: 
+        poly.use_smooth = True
+    mesh.update()
+    obj.data.materials.append(mat_dandelion_stem)
+    obj.data.materials.append(mat_dandelion_leaf)
+    obj.data.materials.append(mat_dandelion_flower)
+    obj.data.materials.append(mat_dandelion_seed)
 
 for idx, (dx, dy, dh, bloom, seed_head) in enumerate([
     (-3.4,1.9,0.72,True,False), (-4.2,2.0,0.88,True,False), (-2.8,2.9,0.66,True,False),
@@ -1570,74 +1590,8 @@ for idx, (bx, by) in enumerate([(4.3, 2.45), (4.9, 3.30), (4.4, 4.10)]):
     spawn_bulb_plant(bx, by, bz, name=f"Right_BulbPlant_{idx}")
 
 # ==============================================================================
-# 7. WATERFALL IMPACT FROTH BILLOWS & STYLIZED SURFACE RIPPLE RINGS
+# 7. WATERFALL IMPACT FROTH & RIPPLES (Handled dynamically in Bevy runtime engine)
 # ==============================================================================
-def spawn_waterfall_impact_froth_billows():
-    """
-    Creates the puffy billowing cloud of impact froth at the base of the waterfall,
-    matching the artwork's white/cyan splash foam cushions.
-    """
-    foam_puffs = [
-        (0.0, 8.5, 0.12, 0.55, 0.45, 0.28),
-        (-0.6, 8.4, 0.10, 0.48, 0.40, 0.24),
-        (0.6, 8.4, 0.10, 0.48, 0.40, 0.24),
-        (-1.1, 8.3, 0.08, 0.42, 0.36, 0.20),
-        (1.1, 8.3, 0.08, 0.42, 0.36, 0.20),
-        (-0.3, 8.2, 0.09, 0.45, 0.38, 0.22),
-        (0.3, 8.2, 0.09, 0.45, 0.38, 0.22),
-    ]
-    for idx, (fx, fy, fz, fsx, fsy, fsz) in enumerate(foam_puffs):
-        bpy.ops.mesh.primitive_uv_sphere_add(segments=20, ring_count=14, radius=1.0, location=(fx, fy, fz))
-        puff = bpy.context.active_object
-        puff.name = f"Waterfall_Foam_Billow_{idx}"
-        puff.scale = (fsx, fsy, fsz)
-        bpy.ops.object.transform_apply(scale=True)
-        puff.data.materials.append(mat_water_foam_billow)
-        for p in puff.data.polygons:
-            p.use_smooth = True
-
-spawn_waterfall_impact_froth_billows()
-
-def spawn_water_ripple_rings():
-    """
-    Creates concentric stylized turquoise ripple rings radiating across the pool.
-    """
-    ring_radii = [1.8, 3.2, 4.4]
-    lake_cx = 0.0
-    lake_cy = 8.5
-    
-    for idx, rad in enumerate(ring_radii):
-        bm = bmesh.new()
-        segs = 64
-        w = 0.065
-        z_ring = 0.06
-        for iseg in range(segs + 1):
-            ang = (iseg / float(segs)) * math.pi * 2.0
-            r_in = rad - w * 0.5
-            r_out = rad + w * 0.5
-            v_in = bm.verts.new((lake_cx + math.cos(ang) * r_in, lake_cy + math.sin(ang) * r_in, z_ring))
-            v_out = bm.verts.new((lake_cx + math.cos(ang) * r_out, lake_cy + math.sin(ang) * r_out, z_ring))
-            
-        bm.verts.ensure_lookup_table()
-        for iseg in range(segs):
-            i0_in = iseg * 2
-            i0_out = iseg * 2 + 1
-            i1_in = (iseg + 1) * 2
-            i1_out = (iseg + 1) * 2 + 1
-            bm.faces.new((bm.verts[i0_in], bm.verts[i1_in], bm.verts[i1_out], bm.verts[i0_out]))
-            
-        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-        mesh = bpy.data.meshes.new(f"Water_Ripple_Ring_{idx}_Mesh")
-        obj = bpy.data.objects.new(f"Water_Ripple_Ring_{idx}", mesh)
-        bpy.context.collection.objects.link(obj)
-        bm.to_mesh(mesh)
-        bm.free()
-        for p in mesh.polygons:
-            p.use_smooth = True
-        mesh.update()
-        obj.data.materials.append(mat_water_ripple_ring)
-
-spawn_water_ripple_rings()
 
 # ==============================================================================
 # 8. EXPORT COMPLETE GLB MODEL
