@@ -7,6 +7,7 @@ pub fn resolve_player_collision_sliding(
     desired_pos: Vec3,
     prev_pos: Vec3,
     player_radius: f32,
+    is_grounded: bool,
     obstacles: &[(&Transform, ObstacleShape)],
 ) -> Vec3 {
     let mut resolved = desired_pos;
@@ -194,10 +195,12 @@ pub fn resolve_player_collision_sliding(
         }
     }
 
-    if highest_support_y > resolved.y {
-        resolved.y = highest_support_y;
-    } else if resolved.y > highest_support_y && (resolved.y - highest_support_y) <= STEP_OFFSET {
-        resolved.y = highest_support_y;
+    if is_grounded {
+        if highest_support_y > resolved.y {
+            resolved.y = highest_support_y;
+        } else if resolved.y > highest_support_y && (resolved.y - highest_support_y) <= STEP_OFFSET {
+            resolved.y = highest_support_y;
+        }
     }
 
     resolved
@@ -308,19 +311,19 @@ pub fn player_movement(
         move_dir.y = 0.0;
         let is_moving = move_dir.length_squared() > 0.0001;
 
-        locomotion.is_crouching = keys.pressed(KeyCode::ControlLeft);
+        let wish_dir = if is_moving {
+            Vec2::new(move_dir.x, move_dir.z).normalize()
+        } else {
+            Vec2::ZERO
+        };
 
-        if keys.just_pressed(KeyCode::Space) && locomotion.is_grounded && !locomotion.is_crouching {
-            locomotion.vertical_velocity = 5.2;
-            locomotion.is_grounded = false;
-        }
+        locomotion.is_crouching = keys.pressed(KeyCode::ControlLeft);
 
         let can_sprint = !locomotion.is_crouching && stamina.current > 5.0 && is_moving;
         let is_sprinting = keys.pressed(KeyCode::ShiftLeft) && can_sprint;
         locomotion.is_sprinting = is_sprinting;
 
         if is_sprinting {
-
             locomotion.current_speed = 7.0;
             stamina.current = (stamina.current - 20.0 * dt).max(0.0);
             locomotion.stamina_regen_delay_timer = 1.0;
@@ -336,6 +339,34 @@ pub fn player_movement(
 
         if !is_sprinting && locomotion.stamina_regen_delay_timer <= 0.0 {
             stamina.current = (stamina.current + 15.0 * dt).min(stamina.max);
+        }
+
+        if locomotion.is_grounded {
+            if is_moving {
+                locomotion.horizontal_velocity = wish_dir * locomotion.current_speed;
+            } else {
+                locomotion.horizontal_velocity = Vec2::ZERO;
+            }
+
+            if keys.just_pressed(KeyCode::Space) && !locomotion.is_crouching {
+                locomotion.vertical_velocity = 5.2;
+                locomotion.is_grounded = false;
+            }
+        } else {
+            let drag = (1.0 - 0.05 * dt).clamp(0.0, 1.0);
+            locomotion.horizontal_velocity *= drag;
+
+            if is_moving {
+                let current_mag = locomotion.horizontal_velocity.length();
+                let max_air_speed = current_mag.max(locomotion.current_speed);
+                let air_accel = 12.0;
+                locomotion.horizontal_velocity += wish_dir * air_accel * dt;
+                let new_mag = locomotion.horizontal_velocity.length();
+                if new_mag > max_air_speed && new_mag > 1e-4 {
+                    locomotion.horizontal_velocity =
+                        locomotion.horizontal_velocity / new_mag * max_air_speed;
+                }
+            }
         }
 
         if !locomotion.is_grounded {
@@ -378,18 +409,33 @@ pub fn player_movement(
             }
         }
 
-        if is_moving {
-            let vel = move_dir.normalize() * locomotion.current_speed * dt;
+        let h_speed_sq = locomotion.horizontal_velocity.length_squared();
+        if h_speed_sq > 0.0001 {
+            let prev_pos = tf.translation;
+            let vel = Vec3::new(
+                locomotion.horizontal_velocity.x * dt,
+                0.0,
+                locomotion.horizontal_velocity.y * dt,
+            );
             let desired_pos = tf.translation + vel;
             let player_radius = 0.38;
             tf.translation = resolve_player_collision_sliding(
                 desired_pos,
                 tf.translation,
                 player_radius,
+                locomotion.is_grounded,
                 &obstacle_list,
             );
 
-            let bob_freq = if is_sprinting { 14.0 } else { 8.0 };
+            let actual_dx = tf.translation.x - prev_pos.x;
+            let actual_dz = tf.translation.z - prev_pos.z;
+            if dt > 1e-5 {
+                locomotion.horizontal_velocity = Vec2::new(actual_dx / dt, actual_dz / dt);
+            }
+        }
+
+        let bob_freq = if is_sprinting { 14.0 } else { 8.0 };
+        if locomotion.is_grounded && is_moving {
             locomotion.head_bob_timer += dt * bob_freq;
         } else {
             locomotion.head_bob_timer = 0.0;
@@ -1055,6 +1101,79 @@ mod tests {
             player_tf.translation.z <= -1.0,
             "Player must step over low rock and reach past it: z={:.3} must be <= -1.0",
             player_tf.translation.z
+        );
+    }
+
+    #[test]
+    fn test_sprint_jump_air_momentum_preservation() {
+        let mut app = App::new();
+        app.add_systems(Update, player_movement);
+        app.init_resource::<Time>();
+
+        let player = app
+            .world_mut()
+            .spawn((
+                Player,
+                PlayerState::Active,
+                LocomotionState::default(),
+                Transform::from_xyz(0.0, 1.2, 0.0),
+                Stamina {
+                    current: 100.0,
+                    max: 100.0,
+                },
+            ))
+            .id();
+
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::KeyW);
+        keys.press(KeyCode::ShiftLeft);
+        keys.press(KeyCode::Space);
+        app.world_mut().insert_resource(keys.clone());
+
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_millis(16));
+        app.update();
+
+        let loco = app.world().get::<LocomotionState>(player).unwrap();
+        assert!(
+            loco.vertical_velocity > 0.0,
+            "Vertical velocity must be positive on takeoff: Vy={:.2}",
+            loco.vertical_velocity
+        );
+        assert!(
+            !loco.is_grounded,
+            "Player must be airborne on takeoff"
+        );
+        let h_speed = loco.horizontal_velocity.length();
+        assert!(
+            h_speed >= 6.8 && h_speed <= 7.1,
+            "Horizontal speed on takeoff must equal sprint speed (7.0): speed={:.2}",
+            h_speed
+        );
+
+        keys.release(KeyCode::KeyW);
+        keys.release(KeyCode::ShiftLeft);
+        keys.release(KeyCode::Space);
+        *app.world_mut().resource_mut::<ButtonInput<KeyCode>>() = keys.clone();
+
+        for _ in 0..5 {
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
+            app.update();
+        }
+
+        let airborne_loco = app.world().get::<LocomotionState>(player).unwrap();
+        assert!(
+            !airborne_loco.is_grounded,
+            "Player must still be airborne"
+        );
+        let air_speed = airborne_loco.horizontal_velocity.length();
+        assert!(
+            air_speed >= 6.5,
+            "Horizontal air momentum must be conserved even after releasing inputs: air_speed={:.2}",
+            air_speed
         );
     }
 }

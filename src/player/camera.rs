@@ -41,6 +41,7 @@ pub struct LocomotionState {
     pub stamina_regen_delay_timer: f32,
     pub head_bob_timer: f32,
     pub current_speed: f32,
+    pub horizontal_velocity: Vec2,
 }
 
 impl Default for LocomotionState {
@@ -53,6 +54,7 @@ impl Default for LocomotionState {
             stamina_regen_delay_timer: 0.0,
             head_bob_timer: 0.0,
             current_speed: 4.2,
+            horizontal_velocity: Vec2::ZERO,
         }
     }
 }
