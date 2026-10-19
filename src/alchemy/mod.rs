@@ -88,7 +88,7 @@ pub struct GlassShardParticle {
     pub lifetime: f32,
     pub max_lifetime: f32,
     pub ground_y: f32,
-    pub bounce_count: u32,
+    pub settled: bool,
 }
 
 #[derive(Component, Debug)]
@@ -521,8 +521,8 @@ pub fn update_potion_projectiles(
 
                 for i in 0..16 {
                     let phi = (i as f32) * (std::f32::consts::TAU / 16.0) + (i as f32 * 1.7).sin() * 0.25;
-                    let radial_speed = 2.2 + 2.0 * ((i as f32 * 2.3).sin().abs());
-                    let normal_speed = 3.0 + 2.5 * ((i as f32 * 3.1).cos().abs());
+                    let radial_speed = 0.40 + 0.45 * ((i as f32 * 2.3).sin().abs());
+                    let normal_speed = 0.20 + 0.30 * ((i as f32 * 3.1).cos().abs());
                     let shard_vel = tangent * (phi.cos() * radial_speed)
                         + bitangent * (phi.sin() * radial_speed)
                         + impact_normal * normal_speed;
@@ -531,13 +531,13 @@ pub fn update_potion_projectiles(
                         GlassShardParticle {
                             velocity: shard_vel,
                             lifetime: 0.0,
-                            max_lifetime: 1.6 + 0.6 * ((i as f32 * 1.9).sin().abs()),
+                            max_lifetime: 3.5 + 0.8 * ((i as f32 * 1.9).sin().abs()),
                             ground_y: impact_point.y,
-                            bounce_count: 0,
+                            settled: false,
                         },
                         Mesh3d(shard_mesh.clone()),
                         MeshMaterial3d(shard_mat.clone()),
-                        Transform::from_translation(impact_point + impact_normal * 0.04)
+                        Transform::from_translation(impact_point + impact_normal * 0.02)
                             .with_rotation(Quat::from_rotation_y(phi)),
                     ));
                 }
@@ -600,7 +600,7 @@ fn update_glass_shards(
     mut commands: Commands,
 ) {
     let dt = time.delta_secs();
-    let gravity = Vec3::new(0.0, -14.0, 0.0);
+    let gravity = Vec3::new(0.0, -26.0, 0.0);
     for (entity, mut shard, mut transform, mat_handle) in shards.iter_mut() {
         shard.lifetime += dt;
         if shard.lifetime >= shard.max_lifetime {
@@ -608,21 +608,30 @@ fn update_glass_shards(
             continue;
         }
 
-        shard.velocity += gravity * dt;
-        transform.translation += shard.velocity * dt;
+        if !shard.settled {
+            shard.velocity += gravity * dt;
+            transform.translation += shard.velocity * dt;
 
-        let spin = Quat::from_euler(EulerRot::XYZ, dt * 8.0, dt * 11.0, dt * 6.0);
-        transform.rotation = transform.rotation * spin;
+            let spin = Quat::from_euler(EulerRot::XYZ, dt * 4.0, dt * 6.0, dt * 3.0);
+            transform.rotation = transform.rotation * spin;
 
-        if transform.translation.y <= shard.ground_y && shard.velocity.y < 0.0 && shard.bounce_count < 3 {
-            shard.velocity.y = -shard.velocity.y * 0.40;
-            shard.velocity.x *= 0.65;
-            shard.velocity.z *= 0.65;
-            shard.bounce_count += 1;
+            if transform.translation.y <= shard.ground_y && shard.velocity.y < 0.0 {
+                transform.translation.y = shard.ground_y;
+                shard.velocity.y = 0.0;
+                shard.velocity.x *= 0.15;
+                shard.velocity.z *= 0.15;
+                shard.settled = true;
+            }
+        } else {
+            let friction = (1.0 - 14.0 * dt).max(0.0);
+            shard.velocity.x *= friction;
+            shard.velocity.z *= friction;
+            transform.translation.x += shard.velocity.x * dt;
+            transform.translation.z += shard.velocity.z * dt;
             transform.translation.y = shard.ground_y;
         }
 
-        let fade_time = 0.5;
+        let fade_time = 0.8;
         if shard.max_lifetime - shard.lifetime < fade_time {
             let remaining = (shard.max_lifetime - shard.lifetime) / fade_time;
             if let Some(mat) = materials.get_mut(&mat_handle.0) {
@@ -1292,11 +1301,11 @@ mod tests {
             .world_mut()
             .spawn((
                 GlassShardParticle {
-                    velocity: Vec3::new(1.0, -5.0, 0.0),
+                    velocity: Vec3::new(0.3, -8.0, 0.0),
                     lifetime: 0.0,
-                    max_lifetime: 1.5,
+                    max_lifetime: 3.0,
                     ground_y: 0.0,
-                    bounce_count: 0,
+                    settled: false,
                 },
                 MeshMaterial3d(mat_handle.clone()),
                 Transform::from_xyz(0.0, -0.01, 0.0),
@@ -1312,7 +1321,7 @@ mod tests {
         schedule.run(app.world_mut());
 
         let shard = app.world().get::<GlassShardParticle>(shard_entity).unwrap();
-        assert!(shard.velocity.y > 0.0);
-        assert_eq!(shard.bounce_count, 1);
+        assert_eq!(shard.velocity.y, 0.0);
+        assert!(shard.settled);
     }
 }
