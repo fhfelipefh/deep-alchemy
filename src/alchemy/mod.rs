@@ -479,13 +479,15 @@ pub fn update_potion_projectiles(
                 commands.entity(entity).despawn();
 
                 let rotation = Quat::from_rotation_arc(Vec3::Y, impact_normal);
-                let puddle_mesh = meshes.add(create_irregular_puddle_mesh(0.72, 24));
+                let puddle_mesh = meshes.add(create_irregular_puddle_mesh(1.05, 32));
                 let puddle_mat = materials.add(StandardMaterial {
-                    base_color: projectile.color.with_alpha(0.78),
-                    emissive: projectile.color.to_linear() * 0.4,
-                    perceptual_roughness: 0.08,
-                    metallic: 0.12,
-                    reflectance: 0.90,
+                    base_color: projectile.color.with_alpha(0.88),
+                    emissive: projectile.color.to_linear() * 1.5,
+                    perceptual_roughness: 0.04,
+                    metallic: 0.18,
+                    reflectance: 0.98,
+                    cull_mode: None,
+                    double_sided: true,
                     alpha_mode: AlphaMode::Blend,
                     ..default()
                 });
@@ -498,19 +500,10 @@ pub fn update_potion_projectiles(
                     },
                     Mesh3d(puddle_mesh),
                     MeshMaterial3d(puddle_mat),
-                    Transform::from_translation(impact_point + impact_normal * 0.012).with_rotation(rotation),
+                    Transform::from_translation(impact_point + impact_normal * 0.022)
+                        .with_rotation(rotation)
+                        .with_scale(Vec3::new(0.15, 1.0, 0.15)),
                 ));
-
-                let shard_mesh = meshes.add(create_glass_shard_mesh(0.045));
-                let shard_mat = materials.add(StandardMaterial {
-                    base_color: Color::srgba(0.92, 0.96, 1.0, 0.75),
-                    emissive: LinearRgba::new(0.2, 0.25, 0.3, 1.0),
-                    perceptual_roughness: 0.08,
-                    metallic: 0.05,
-                    reflectance: 0.95,
-                    alpha_mode: AlphaMode::Blend,
-                    ..default()
-                });
 
                 let tangent = if impact_normal.y.abs() < 0.9 {
                     impact_normal.cross(Vec3::Y).normalize()
@@ -521,23 +514,37 @@ pub fn update_potion_projectiles(
 
                 for i in 0..16 {
                     let phi = (i as f32) * (std::f32::consts::TAU / 16.0) + (i as f32 * 1.7).sin() * 0.25;
-                    let radial_speed = 0.40 + 0.45 * ((i as f32 * 2.3).sin().abs());
-                    let normal_speed = 0.20 + 0.30 * ((i as f32 * 3.1).cos().abs());
+                    let radial_speed = 1.2 + 1.2 * ((i as f32 * 2.3).sin().abs());
+                    let normal_speed = 0.5 + 0.6 * ((i as f32 * 3.1).cos().abs());
                     let shard_vel = tangent * (phi.cos() * radial_speed)
                         + bitangent * (phi.sin() * radial_speed)
                         + impact_normal * normal_speed;
+
+                    let shard_scale = 0.10 + 0.08 * ((i as f32 * 2.1).sin().abs());
+                    let shard_mesh = meshes.add(create_glass_shard_mesh(shard_scale));
+                    let shard_mat = materials.add(StandardMaterial {
+                        base_color: Color::srgb(0.85, 0.95, 1.0),
+                        emissive: LinearRgba::new(0.60, 0.85, 1.10, 1.0),
+                        perceptual_roughness: 0.08,
+                        metallic: 0.20,
+                        reflectance: 0.98,
+                        cull_mode: None,
+                        double_sided: true,
+                        alpha_mode: AlphaMode::Opaque,
+                        ..default()
+                    });
 
                     commands.spawn((
                         GlassShardParticle {
                             velocity: shard_vel,
                             lifetime: 0.0,
-                            max_lifetime: 3.5 + 0.8 * ((i as f32 * 1.9).sin().abs()),
-                            ground_y: impact_point.y,
+                            max_lifetime: 60.0 + 15.0 * ((i as f32 * 1.9).sin().abs()),
+                            ground_y: impact_point.y + 0.038,
                             settled: false,
                         },
-                        Mesh3d(shard_mesh.clone()),
-                        MeshMaterial3d(shard_mat.clone()),
-                        Transform::from_translation(impact_point + impact_normal * 0.02)
+                        Mesh3d(shard_mesh),
+                        MeshMaterial3d(shard_mat),
+                        Transform::from_translation(impact_point + impact_normal * 0.040)
                             .with_rotation(Quat::from_rotation_y(phi)),
                     ));
                 }
@@ -573,23 +580,27 @@ fn update_potion_puddles(
         let fade_start = 50.0;
         let fade_duration = puddle.max_lifetime - fade_start;
         let alpha = if puddle.elapsed <= fade_start {
-            0.78
+            0.88
         } else {
             let progress = (puddle.elapsed - fade_start) / fade_duration;
-            (0.78 * (1.0 - progress)).max(0.0)
+            (0.88 * (1.0 - progress)).max(0.0)
         };
 
         if let Some(mat) = materials.get_mut(&mat_handle.0) {
             mat.base_color = puddle.color.with_alpha(alpha);
         }
 
-        let scale_shrink = if puddle.elapsed > fade_start {
+        let spread_duration = 0.38;
+        let scale_spread = if puddle.elapsed < spread_duration {
+            let t = (puddle.elapsed / spread_duration).clamp(0.0, 1.0);
+            0.15 + 0.85 * (1.0 - (1.0 - t).powi(3))
+        } else if puddle.elapsed > fade_start {
             let progress = (puddle.elapsed - fade_start) / fade_duration;
             1.0 - progress * 0.12
         } else {
             1.0
         };
-        transform.scale = Vec3::splat(scale_shrink);
+        transform.scale = Vec3::new(scale_spread, 1.0, scale_spread);
     }
 }
 
@@ -621,6 +632,8 @@ fn update_glass_shards(
                 shard.velocity.x *= 0.15;
                 shard.velocity.z *= 0.15;
                 shard.settled = true;
+                let flat_rot = Quat::from_rotation_y(transform.rotation.to_euler(EulerRot::YXZ).0);
+                transform.rotation = flat_rot;
             }
         } else {
             let friction = (1.0 - 14.0 * dt).max(0.0);
@@ -631,11 +644,11 @@ fn update_glass_shards(
             transform.translation.y = shard.ground_y;
         }
 
-        let fade_time = 0.8;
+        let fade_time = 3.0;
         if shard.max_lifetime - shard.lifetime < fade_time {
             let remaining = (shard.max_lifetime - shard.lifetime) / fade_time;
             if let Some(mat) = materials.get_mut(&mat_handle.0) {
-                mat.base_color = Color::srgba(0.92, 0.96, 1.0, 0.75 * remaining.clamp(0.0, 1.0));
+                mat.base_color = Color::srgba(0.88, 0.94, 1.0, 0.85 * remaining.clamp(0.0, 1.0));
             }
         }
     }
@@ -807,22 +820,27 @@ pub fn create_irregular_puddle_mesh(base_radius: f32, segments: usize) -> Mesh {
 
 pub fn create_glass_shard_mesh(scale: f32) -> Mesh {
     let positions: Vec<[f32; 3]> = vec![
-        [0.0, scale * 1.4, 0.0],
-        [-scale * 0.7, -scale * 0.3, -scale * 0.5],
-        [scale * 0.8, -scale * 0.2, -scale * 0.3],
-        [scale * 0.1, -scale * 0.5, scale * 0.7],
+        [0.0, scale * 0.9, 0.0],
+        [-scale * 0.75, 0.0, -scale * 0.5],
+        [scale * 0.85, 0.0, -scale * 0.25],
+        [scale * 0.15, 0.0, scale * 0.75],
+        [0.0, scale * 0.35, scale * 0.2],
     ];
     let normals: Vec<[f32; 3]> = vec![
         [0.0, 1.0, 0.0],
-        [-0.7, -0.3, -0.5],
-        [0.8, -0.2, -0.3],
-        [0.1, -0.5, 0.7],
+        [-0.8, 0.2, -0.5],
+        [0.85, 0.2, -0.25],
+        [0.15, 0.2, 0.8],
+        [0.0, 0.9, 0.3],
     ];
     let indices: Vec<u32> = vec![
         0, 1, 2,
-        0, 2, 3,
+        0, 2, 4,
+        0, 4, 3,
         0, 3, 1,
-        1, 3, 2,
+        1, 4, 2,
+        1, 3, 4,
+        1, 2, 3,
     ];
 
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
@@ -1223,7 +1241,7 @@ mod tests {
         let color = Color::srgb(0.95, 0.12, 0.16);
         let mut materials = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
         let mat_handle = materials.add(StandardMaterial {
-            base_color: color.with_alpha(0.78),
+            base_color: color.with_alpha(0.88),
             ..default()
         });
 
@@ -1251,7 +1269,7 @@ mod tests {
         schedule.run(app.world_mut());
 
         let mat_30s = app.world().resource::<Assets<StandardMaterial>>().get(&mat_handle).unwrap();
-        assert_eq!(mat_30s.base_color.to_srgba().alpha, 0.78);
+        assert_eq!(mat_30s.base_color.to_srgba().alpha, 0.88);
 
         let mut time2 = Time::<()>::default();
         time2.advance_by(std::time::Duration::from_secs(32));
@@ -1259,7 +1277,7 @@ mod tests {
         schedule.run(app.world_mut());
 
         let mat_62s = app.world().resource::<Assets<StandardMaterial>>().get(&mat_handle).unwrap();
-        assert!(mat_62s.base_color.to_srgba().alpha < 0.78);
+        assert!(mat_62s.base_color.to_srgba().alpha < 0.88);
         assert!(mat_62s.base_color.to_srgba().alpha > 0.0);
 
         let mut time3 = Time::<()>::default();
@@ -1303,7 +1321,7 @@ mod tests {
                 GlassShardParticle {
                     velocity: Vec3::new(0.3, -8.0, 0.0),
                     lifetime: 0.0,
-                    max_lifetime: 3.0,
+                    max_lifetime: 65.0,
                     ground_y: 0.0,
                     settled: false,
                 },
@@ -1323,5 +1341,88 @@ mod tests {
         let shard = app.world().get::<GlassShardParticle>(shard_entity).unwrap();
         assert_eq!(shard.velocity.y, 0.0);
         assert!(shard.settled);
+
+        let mut time2 = Time::<()>::default();
+        time2.advance_by(std::time::Duration::from_secs(30));
+        app.insert_resource(time2);
+        schedule.run(app.world_mut());
+        assert!(app.world().get_entity(shard_entity).is_ok());
+    }
+
+    #[test]
+    fn test_potion_shards_persist_on_ground_longer_than_50s_and_puddle_spreads() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(bevy::asset::AssetPlugin::default());
+        app.init_resource::<Assets<StandardMaterial>>();
+
+        let color = Color::srgb(0.2, 0.8, 0.9);
+        let puddle_mat = app
+            .world_mut()
+            .resource_mut::<Assets<StandardMaterial>>()
+            .add(StandardMaterial::default());
+
+        let puddle_entity = app
+            .world_mut()
+            .spawn((
+                PotionPuddle {
+                    color,
+                    elapsed: 0.0,
+                    max_lifetime: 75.0,
+                },
+                MeshMaterial3d(puddle_mat),
+                Transform::from_xyz(0.0, 0.0, 0.0).with_scale(Vec3::new(0.15, 1.0, 0.15)),
+            ))
+            .id();
+
+        let mut shard_materials = Vec::new();
+        {
+            let mut materials = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
+            for _ in 0..16 {
+                shard_materials.push(materials.add(StandardMaterial::default()));
+            }
+        }
+
+        let mut shard_entities = Vec::new();
+        for (i, shard_mat) in shard_materials.into_iter().enumerate() {
+            let entity = app
+                .world_mut()
+                .spawn((
+                    GlassShardParticle {
+                        velocity: Vec3::ZERO,
+                        lifetime: 0.0,
+                        max_lifetime: 60.0 + (i as f32),
+                        ground_y: 0.0,
+                        settled: true,
+                    },
+                    MeshMaterial3d(shard_mat),
+                    Transform::from_xyz(0.1 * i as f32, 0.0, 0.1 * i as f32),
+                ))
+                .id();
+            shard_entities.push(entity);
+        }
+
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_millis(400));
+        app.insert_resource(time);
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems((update_potion_puddles, update_glass_shards));
+        schedule.run(app.world_mut());
+
+        let tf = app.world().get::<Transform>(puddle_entity).unwrap();
+        assert_eq!(tf.scale.x, 1.0);
+        assert_eq!(tf.scale.z, 1.0);
+
+        let mut time2 = Time::<()>::default();
+        time2.advance_by(std::time::Duration::from_secs(50));
+        app.insert_resource(time2);
+        schedule.run(app.world_mut());
+
+        for shard_id in shard_entities {
+            assert!(app.world().get_entity(shard_id).is_ok());
+            let shard = app.world().get::<GlassShardParticle>(shard_id).unwrap();
+            assert!(shard.settled);
+        }
     }
 }

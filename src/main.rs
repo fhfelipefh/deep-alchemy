@@ -77,9 +77,30 @@ fn handle_screenshot_test_lifecycle(
     mut counter: Local<u32>,
     mut app_exit: EventWriter<AppExit>,
     mut player_query: Query<&mut Transform, With<deep_alchemy::player::camera::Player>>,
+    shards: Query<(&Transform, &deep_alchemy::alchemy::GlassShardParticle), Without<deep_alchemy::player::camera::Player>>,
 ) {
     *counter += 1;
-    if *counter == 20 {
+    if *counter == 2 {
+        commands.spawn((
+            Transform::from_xyz(0.0, 2.0, -3.2),
+            deep_alchemy::alchemy::PotionProjectile {
+                velocity: Vec3::new(0.0, -16.0, 0.0),
+                effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                    kind: deep_alchemy::alchemy::AlchemicalEffectKind::ThermalHeat,
+                    duration: 6.0,
+                    elapsed: 0.0,
+                    magnitude: 35.0,
+                }],
+                lifetime: 5.0,
+                color: Color::srgb(0.98, 0.22, 0.28),
+                slot: 1,
+            },
+        ));
+    } else if *counter == 20 {
+        info!(">>> [DEBUG] Glass shard count at frame 20: {}", shards.iter().count());
+        for (tf, shard) in shards.iter() {
+            info!(">>> [DEBUG] Glass shard pos: {:?}, settled: {}, ground_y: {}", tf.translation, shard.settled, shard.ground_y);
+        }
         std::fs::create_dir_all("debug_output").ok();
         commands
             .spawn(Screenshot::primary_window())
