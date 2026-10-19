@@ -89,6 +89,7 @@ pub struct GlassShardParticle {
     pub max_lifetime: f32,
     pub ground_y: f32,
     pub settled: bool,
+    pub color: Color,
 }
 
 #[derive(Component, Debug)]
@@ -479,16 +480,17 @@ pub fn update_potion_projectiles(
                 commands.entity(entity).despawn();
 
                 let rotation = Quat::from_rotation_arc(Vec3::Y, impact_normal);
-                let puddle_mesh = meshes.add(create_irregular_puddle_mesh(1.05, 32));
+                let puddle_mesh = meshes.add(create_irregular_puddle_mesh(1.15, 32));
                 let puddle_mat = materials.add(StandardMaterial {
-                    base_color: projectile.color.with_alpha(0.88),
-                    emissive: projectile.color.to_linear() * 1.5,
+                    base_color: projectile.color.with_alpha(0.92),
+                    emissive: projectile.color.to_linear() * 1.8,
                     perceptual_roughness: 0.04,
-                    metallic: 0.18,
+                    metallic: 0.15,
                     reflectance: 0.98,
                     cull_mode: None,
                     double_sided: true,
                     alpha_mode: AlphaMode::Blend,
+                    depth_bias: 500.0,
                     ..default()
                 });
 
@@ -500,7 +502,7 @@ pub fn update_potion_projectiles(
                     },
                     Mesh3d(puddle_mesh),
                     MeshMaterial3d(puddle_mat),
-                    Transform::from_translation(impact_point + impact_normal * 0.022)
+                    Transform::from_translation(impact_point + impact_normal * 0.055)
                         .with_rotation(rotation)
                         .with_scale(Vec3::new(0.15, 1.0, 0.15)),
                 ));
@@ -512,40 +514,56 @@ pub fn update_potion_projectiles(
                 };
                 let bitangent = impact_normal.cross(tangent).normalize();
 
+                let c = projectile.color.to_srgba();
+                let stain_base = Color::srgb(
+                    c.red * 0.78 + 0.18,
+                    c.green * 0.78 + 0.18,
+                    c.blue * 0.78 + 0.18,
+                );
+                let stain_emissive = projectile.color.to_linear() * 1.6;
+
                 for i in 0..16 {
-                    let phi = (i as f32) * (std::f32::consts::TAU / 16.0) + (i as f32 * 1.7).sin() * 0.25;
-                    let radial_speed = 1.2 + 1.2 * ((i as f32 * 2.3).sin().abs());
-                    let normal_speed = 0.5 + 0.6 * ((i as f32 * 3.1).cos().abs());
+                    let angle_noise = (i as f32 * 4.37).sin() * 0.35;
+                    let phi = (i as f32) * (std::f32::consts::TAU / 16.0) + angle_noise;
+                    let radial_speed = 0.8 + 1.4 * ((i as f32 * 2.3).sin().abs());
+                    let normal_speed = 0.4 + 0.7 * ((i as f32 * 3.1).cos().abs());
                     let shard_vel = tangent * (phi.cos() * radial_speed)
                         + bitangent * (phi.sin() * radial_speed)
                         + impact_normal * normal_speed;
 
-                    let shard_scale = 0.10 + 0.08 * ((i as f32 * 2.1).sin().abs());
-                    let shard_mesh = meshes.add(create_glass_shard_mesh(shard_scale));
+                    let shard_scale = 0.08 + 0.09 * ((i as f32 * 1.7).sin().abs());
+                    let shard_mesh = meshes.add(create_glass_shard_mesh(shard_scale, i));
                     let shard_mat = materials.add(StandardMaterial {
-                        base_color: Color::srgb(0.85, 0.95, 1.0),
-                        emissive: LinearRgba::new(0.60, 0.85, 1.10, 1.0),
-                        perceptual_roughness: 0.08,
-                        metallic: 0.20,
+                        base_color: stain_base,
+                        emissive: stain_emissive,
+                        perceptual_roughness: 0.10,
+                        metallic: 0.18,
                         reflectance: 0.98,
                         cull_mode: None,
                         double_sided: true,
                         alpha_mode: AlphaMode::Opaque,
+                        depth_bias: 1000.0,
                         ..default()
                     });
+
+                    let rot_x = (i as f32 * 1.9).sin() * 0.35;
+                    let rot_y = phi + (i as f32 * 2.8).cos() * 1.2;
+                    let rot_z = (i as f32 * 3.4).sin() * 0.35;
+                    let shard_rot = Quat::from_euler(EulerRot::XYZ, rot_x, rot_y, rot_z);
 
                     commands.spawn((
                         GlassShardParticle {
                             velocity: shard_vel,
                             lifetime: 0.0,
                             max_lifetime: 60.0 + 15.0 * ((i as f32 * 1.9).sin().abs()),
-                            ground_y: impact_point.y + 0.038,
+                            ground_y: impact_point.y + 0.052,
                             settled: false,
+                            color: projectile.color,
                         },
                         Mesh3d(shard_mesh),
                         MeshMaterial3d(shard_mat),
-                        Transform::from_translation(impact_point + impact_normal * 0.040)
-                            .with_rotation(Quat::from_rotation_y(phi)),
+                        Transform::from_translation(impact_point + impact_normal * 0.055)
+                            .with_rotation(shard_rot),
                     ));
                 }
 
@@ -648,7 +666,15 @@ fn update_glass_shards(
         if shard.max_lifetime - shard.lifetime < fade_time {
             let remaining = (shard.max_lifetime - shard.lifetime) / fade_time;
             if let Some(mat) = materials.get_mut(&mat_handle.0) {
-                mat.base_color = Color::srgba(0.88, 0.94, 1.0, 0.85 * remaining.clamp(0.0, 1.0));
+                let c = shard.color.to_srgba();
+                let stain_base = Color::srgba(
+                    c.red * 0.78 + 0.18,
+                    c.green * 0.78 + 0.18,
+                    c.blue * 0.78 + 0.18,
+                    0.95 * remaining.clamp(0.0, 1.0),
+                );
+                mat.base_color = stain_base;
+                mat.emissive = shard.color.to_linear() * (1.6 * remaining.clamp(0.0, 1.0));
             }
         }
     }
@@ -789,64 +815,188 @@ pub fn create_flat_circle_mesh(radius: f32, segments: usize) -> Mesh {
 }
 
 pub fn create_irregular_puddle_mesh(base_radius: f32, segments: usize) -> Mesh {
-    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(segments + 2);
-    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(segments + 2);
-    let mut indices: Vec<u32> = Vec::with_capacity(segments * 3);
+    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(segments * 3 + 1);
+    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(segments * 3 + 1);
+    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(segments * 3 + 1);
+    let mut indices: Vec<u32> = Vec::with_capacity(segments * 18);
 
-    positions.push([0.0, 0.0, 0.0]);
+    positions.push([0.0, 0.028, 0.0]);
     normals.push([0.0, 1.0, 0.0]);
+    uvs.push([0.5, 0.5]);
 
     for i in 0..segments {
-        let theta = i as f32 / segments as f32 * std::f32::consts::TAU;
-        let perturbation = 1.0 + 0.22 * (theta * 3.0).sin() + 0.15 * (theta * 5.0 + 0.8).cos() + 0.09 * (theta * 7.0).sin();
-        let r = base_radius * perturbation;
-        let x = r * theta.cos();
-        let z = r * theta.sin();
-        positions.push([x, 0.0, z]);
-        normals.push([0.0, 1.0, 0.0]);
+        let theta = (i as f32 / segments as f32) * std::f32::consts::TAU;
+        let perturbation = 1.0
+            + 0.22 * (theta * 3.0).sin()
+            + 0.15 * (theta * 5.0 + 0.8).cos()
+            + 0.09 * (theta * 7.0).sin();
+        let r_mid = base_radius * perturbation * 0.62;
+        let x = r_mid * theta.cos();
+        let z = r_mid * theta.sin();
+        positions.push([x, 0.022, z]);
+        let norm = Vec3::new(theta.cos() * 0.12, 0.98, theta.sin() * 0.12).normalize();
+        normals.push([norm.x, norm.y, norm.z]);
+        uvs.push([0.5 + (x / (base_radius * 2.4)), 0.5 + (z / (base_radius * 2.4))]);
     }
 
     for i in 0..segments {
-        let curr = (i + 1) as u32;
-        let next = ((i + 1) % segments + 1) as u32;
-        indices.extend_from_slice(&[0, curr, next]);
+        let theta = (i as f32 / segments as f32) * std::f32::consts::TAU;
+        let perturbation = 1.0
+            + 0.22 * (theta * 3.0).sin()
+            + 0.15 * (theta * 5.0 + 0.8).cos()
+            + 0.09 * (theta * 7.0).sin();
+        let r_rim = base_radius * perturbation;
+        let x = r_rim * theta.cos();
+        let z = r_rim * theta.sin();
+        positions.push([x, 0.012, z]);
+        let norm = Vec3::new(theta.cos() * 0.25, 0.95, theta.sin() * 0.25).normalize();
+        normals.push([norm.x, norm.y, norm.z]);
+        uvs.push([0.5 + (x / (base_radius * 2.4)), 0.5 + (z / (base_radius * 2.4))]);
+    }
+
+    for i in 0..segments {
+        let theta = (i as f32 / segments as f32) * std::f32::consts::TAU;
+        let perturbation = 1.0
+            + 0.22 * (theta * 3.0).sin()
+            + 0.15 * (theta * 5.0 + 0.8).cos()
+            + 0.09 * (theta * 7.0).sin();
+        let r_skirt = base_radius * perturbation * 1.02;
+        let x = r_skirt * theta.cos();
+        let z = r_skirt * theta.sin();
+        positions.push([x, -0.065, z]);
+        normals.push([theta.cos(), 0.0, theta.sin()]);
+        uvs.push([0.5 + (x / (base_radius * 2.4)), 0.5 + (z / (base_radius * 2.4))]);
+    }
+
+    let mid_start = 1 as u32;
+    let rim_start = (1 + segments) as u32;
+    let skirt_start = (1 + segments * 2) as u32;
+    let seg_u32 = segments as u32;
+
+    for i in 0..seg_u32 {
+        let next_i = (i + 1) % seg_u32;
+
+        let curr_mid = mid_start + i;
+        let next_mid = mid_start + next_i;
+        indices.extend_from_slice(&[0, next_mid, curr_mid]);
+
+        let curr_rim = rim_start + i;
+        let next_rim = rim_start + next_i;
+        indices.extend_from_slice(&[curr_mid, next_mid, next_rim]);
+        indices.extend_from_slice(&[curr_mid, next_rim, curr_rim]);
+
+        let curr_skirt = skirt_start + i;
+        let next_skirt = skirt_start + next_i;
+        indices.extend_from_slice(&[curr_rim, next_rim, next_skirt]);
+        indices.extend_from_slice(&[curr_rim, next_skirt, curr_skirt]);
     }
 
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
         .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
         .with_inserted_indices(Indices::U32(indices))
 }
 
-pub fn create_glass_shard_mesh(scale: f32) -> Mesh {
-    let positions: Vec<[f32; 3]> = vec![
-        [0.0, scale * 0.9, 0.0],
-        [-scale * 0.75, 0.0, -scale * 0.5],
-        [scale * 0.85, 0.0, -scale * 0.25],
-        [scale * 0.15, 0.0, scale * 0.75],
-        [0.0, scale * 0.35, scale * 0.2],
-    ];
-    let normals: Vec<[f32; 3]> = vec![
-        [0.0, 1.0, 0.0],
-        [-0.8, 0.2, -0.5],
-        [0.85, 0.2, -0.25],
-        [0.15, 0.2, 0.8],
-        [0.0, 0.9, 0.3],
-    ];
-    let indices: Vec<u32> = vec![
-        0, 1, 2,
-        0, 2, 4,
-        0, 4, 3,
-        0, 3, 1,
-        1, 4, 2,
-        1, 3, 4,
-        1, 2, 3,
-    ];
-
-    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
-        .with_inserted_indices(Indices::U32(indices))
+pub fn create_glass_shard_mesh(scale: f32, shard_type: usize) -> Mesh {
+    match shard_type % 3 {
+        0 => {
+            let positions: Vec<[f32; 3]> = vec![
+                [0.0, scale * 0.28, -scale * 0.85],
+                [scale * 0.22, 0.0, -scale * 0.15],
+                [scale * 0.08, 0.0, scale * 0.95],
+                [-scale * 0.16, 0.0, scale * 0.35],
+                [-scale * 0.24, 0.0, -scale * 0.40],
+                [0.0, scale * 0.08, 0.0],
+            ];
+            let normals: Vec<[f32; 3]> = vec![
+                [0.0, 0.95, -0.30],
+                [0.85, 0.40, -0.20],
+                [0.25, 0.80, 0.50],
+                [-0.75, 0.50, 0.40],
+                [-0.85, 0.40, -0.30],
+                [0.0, 1.0, 0.0],
+            ];
+            let indices: Vec<u32> = vec![
+                0, 1, 5,
+                1, 2, 5,
+                2, 3, 5,
+                3, 4, 5,
+                4, 0, 5,
+                0, 5, 1,
+                1, 5, 2,
+                2, 5, 3,
+                3, 5, 4,
+                4, 5, 0,
+            ];
+            Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+                .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+                .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+                .with_inserted_indices(Indices::U32(indices))
+        }
+        1 => {
+            let positions: Vec<[f32; 3]> = vec![
+                [-scale * 0.65, 0.0, -scale * 0.55],
+                [scale * 0.70, 0.0, -scale * 0.35],
+                [scale * 0.20, 0.0, scale * 0.75],
+                [-scale * 0.40, 0.0, scale * 0.35],
+                [0.0, scale * 0.18, 0.0],
+            ];
+            let normals: Vec<[f32; 3]> = vec![
+                [-0.65, 0.55, -0.50],
+                [0.70, 0.55, -0.35],
+                [0.20, 0.80, 0.55],
+                [-0.50, 0.70, 0.35],
+                [0.0, 1.0, 0.0],
+            ];
+            let indices: Vec<u32> = vec![
+                4, 0, 1,
+                4, 1, 2,
+                4, 2, 3,
+                4, 3, 0,
+                0, 2, 1,
+                0, 3, 2,
+            ];
+            Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+                .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+                .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+                .with_inserted_indices(Indices::U32(indices))
+        }
+        _ => {
+            let positions: Vec<[f32; 3]> = vec![
+                [-scale * 0.45, scale * 0.22, -scale * 0.35],
+                [scale * 0.45, scale * 0.22, -scale * 0.35],
+                [scale * 0.35, scale * 0.22, scale * 0.45],
+                [-scale * 0.35, scale * 0.22, scale * 0.45],
+                [-scale * 0.55, 0.0, -scale * 0.45],
+                [scale * 0.55, 0.0, -scale * 0.45],
+                [scale * 0.45, 0.0, scale * 0.55],
+                [-scale * 0.45, 0.0, scale * 0.55],
+            ];
+            let normals: Vec<[f32; 3]> = vec![
+                [0.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [-0.6, -0.5, -0.6],
+                [0.6, -0.5, -0.6],
+                [0.6, -0.5, 0.6],
+                [-0.6, -0.5, 0.6],
+            ];
+            let indices: Vec<u32> = vec![
+                0, 1, 2, 0, 2, 3,
+                4, 6, 5, 4, 7, 6,
+                0, 5, 1, 0, 4, 5,
+                1, 6, 2, 1, 5, 6,
+                2, 7, 3, 2, 6, 7,
+                3, 4, 0, 3, 7, 4,
+            ];
+            Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+                .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+                .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+                .with_inserted_indices(Indices::U32(indices))
+        }
+    }
 }
 
 fn update_active_effects(time: Res<Time>, mut receivers: Query<&mut EffectReceiverComponent>) {
@@ -1324,6 +1474,7 @@ mod tests {
                     max_lifetime: 65.0,
                     ground_y: 0.0,
                     settled: false,
+                    color: Color::srgb(0.85, 0.95, 1.0),
                 },
                 MeshMaterial3d(mat_handle.clone()),
                 Transform::from_xyz(0.0, -0.01, 0.0),
@@ -1394,6 +1545,7 @@ mod tests {
                         max_lifetime: 60.0 + (i as f32),
                         ground_y: 0.0,
                         settled: true,
+                        color: Color::srgb(0.85, 0.95, 1.0),
                     },
                     MeshMaterial3d(shard_mat),
                     Transform::from_xyz(0.1 * i as f32, 0.0, 0.1 * i as f32),
@@ -1423,6 +1575,28 @@ mod tests {
             assert!(app.world().get_entity(shard_id).is_ok());
             let shard = app.world().get::<GlassShardParticle>(shard_id).unwrap();
             assert!(shard.settled);
+            assert_eq!(shard.color, Color::srgb(0.85, 0.95, 1.0));
+        }
+    }
+
+    #[test]
+    fn test_volumetric_puddle_mesh_skirt_and_normals() {
+        let puddle = create_irregular_puddle_mesh(1.10, 32);
+        assert!(puddle.count_vertices() >= 97);
+        let positions = puddle.attribute(Mesh::ATTRIBUTE_POSITION).unwrap();
+        if let bevy::render::mesh::VertexAttributeValues::Float32x3(pts) = positions {
+            assert!(pts[0][1] > 0.02);
+            let has_skirt = pts.iter().any(|p| p[1] < -0.05);
+            assert!(has_skirt);
+        }
+    }
+
+    #[test]
+    fn test_glass_shard_archetypes() {
+        for shard_type in 0..3 {
+            let shard = create_glass_shard_mesh(0.12, shard_type);
+            assert!(shard.count_vertices() >= 5);
         }
     }
 }
+
