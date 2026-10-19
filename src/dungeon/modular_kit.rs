@@ -610,22 +610,21 @@ pub fn setup_cavern_world(
         ));
     }
 
-    commands.spawn((
-        Transform::from_xyz(-3.6, 2.2, -3.2),
-        ParticleEmitter {
-            spawn_timer: 0.0,
-            spawn_rate: 0.12,
-            particle_type: ParticleType::GlowSpore,
-        },
-    ));
-    commands.spawn((
-        Transform::from_xyz(4.2, 2.2, -3.4),
-        ParticleEmitter {
-            spawn_timer: 0.0,
-            spawn_rate: 0.12,
-            particle_type: ParticleType::GlowSpore,
-        },
-    ));
+    for (mx, my, mz) in [
+        (-3.53, 1.95, -3.65),
+        (-2.90, 1.35, -2.76),
+        (4.15, 1.45, -3.75),
+        (3.58, 1.10, -2.95),
+    ] {
+        commands.spawn((
+            Transform::from_xyz(mx, my, mz),
+            ParticleEmitter {
+                spawn_timer: 0.0,
+                spawn_rate: 0.22,
+                particle_type: ParticleType::GlowSpore,
+            },
+        ));
+    }
 
     commands.spawn((
         Interactable {
