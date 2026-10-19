@@ -13,6 +13,14 @@ pub fn resolve_player_collision_sliding(
     let attempted_move = Vec2::new(desired_pos.x - prev_pos.x, desired_pos.z - prev_pos.z);
     let is_moving = attempted_move.length_squared() > 1e-6;
 
+    const STEP_OFFSET: f32 = 0.40;
+    const PLAYER_BASE_HEIGHT: f32 = 1.2;
+
+    let player_feet = (prev_pos.y - PLAYER_BASE_HEIGHT).max(0.0);
+    let step_max_feet = player_feet + STEP_OFFSET;
+
+    let mut highest_support_y = PLAYER_BASE_HEIGHT;
+
     for _ in 0..3 {
         for (tf, shape) in obstacles {
             match shape {
@@ -22,7 +30,7 @@ pub fn resolve_player_collision_sliding(
                     let obs_bottom = obs_y - half_h;
                     let obs_top = obs_y + half_h;
 
-                    if resolved.y - 1.15 > obs_top || resolved.y + 0.65 < obs_bottom {
+                    if obs_top < player_feet - STEP_OFFSET || obs_bottom > resolved.y + 0.65 {
                         continue;
                     }
 
@@ -33,34 +41,40 @@ pub fn resolve_player_collision_sliding(
                     let min_dist = *radius + player_radius;
 
                     if dist < min_dist {
-                        let normal = if dist > 1e-4 {
-                            diff / dist
+                        if obs_top <= step_max_feet {
+                            let support = obs_top + PLAYER_BASE_HEIGHT;
+                            if support > highest_support_y {
+                                highest_support_y = support;
+                            }
                         } else {
-                            Vec2::new(1.0, 0.0)
-                        };
-                        let penetration = min_dist - dist;
-                        resolved.x += normal.x * penetration;
-                        resolved.z += normal.y * penetration;
+                            let normal = if dist > 1e-4 {
+                                diff / dist
+                            } else {
+                                Vec2::new(1.0, 0.0)
+                            };
+                            let penetration = min_dist - dist;
+                            resolved.x += normal.x * penetration;
+                            resolved.z += normal.y * penetration;
 
-                        if is_moving {
-                            let dot = attempted_move.dot(normal);
-                            if dot < 0.0 {
-
-                                let slide = attempted_move - normal * dot;
-                                let slid_target = Vec2::new(prev_pos.x, prev_pos.z) + slide;
-                                let re_diff = slid_target - center;
-                                let re_dist = re_diff.length();
-                                if re_dist >= min_dist {
-                                    resolved.x = slid_target.x;
-                                    resolved.z = slid_target.y;
-                                } else {
-                                    let re_norm = if re_dist > 1e-4 {
-                                        re_diff / re_dist
+                            if is_moving {
+                                let dot = attempted_move.dot(normal);
+                                if dot < 0.0 {
+                                    let slide = attempted_move - normal * dot;
+                                    let slid_target = Vec2::new(prev_pos.x, prev_pos.z) + slide;
+                                    let re_diff = slid_target - center;
+                                    let re_dist = re_diff.length();
+                                    if re_dist >= min_dist {
+                                        resolved.x = slid_target.x;
+                                        resolved.z = slid_target.y;
                                     } else {
-                                        normal
-                                    };
-                                    resolved.x = center.x + re_norm.x * min_dist;
-                                    resolved.z = center.y + re_norm.y * min_dist;
+                                        let re_norm = if re_dist > 1e-4 {
+                                            re_diff / re_dist
+                                        } else {
+                                            normal
+                                        };
+                                        resolved.x = center.x + re_norm.x * min_dist;
+                                        resolved.z = center.y + re_norm.y * min_dist;
+                                    }
                                 }
                             }
                         }
@@ -71,7 +85,7 @@ pub fn resolve_player_collision_sliding(
                     let obs_bottom = obs_y - half_extents.y;
                     let obs_top = obs_y + half_extents.y;
 
-                    if resolved.y - 1.15 > obs_top || resolved.y + 0.65 < obs_bottom {
+                    if obs_top < player_feet - STEP_OFFSET || obs_bottom > resolved.y + 0.65 {
                         continue;
                     }
 
@@ -90,34 +104,39 @@ pub fn resolve_player_collision_sliding(
                     let clamped_z = local_z.clamp(-hz, hz);
 
                     let inside_box = local_x.abs() < hx && local_z.abs() < hz;
+                    let to_player = Vec2::new(local_x - clamped_x, local_z - clamped_z);
+                    let dist = to_player.length();
 
-                    if inside_box {
-                        let d_px = hx - local_x;
-                        let d_nx = local_x - (-hx);
-                        let d_pz = hz - local_z;
-                        let d_nz = local_z - (-hz);
+                    if inside_box || dist < player_radius {
+                        if obs_top <= step_max_feet {
+                            let support = obs_top + PLAYER_BASE_HEIGHT;
+                            if support > highest_support_y {
+                                highest_support_y = support;
+                            }
+                        } else if inside_box {
+                            let d_px = hx - local_x;
+                            let d_nx = local_x - (-hx);
+                            let d_pz = hz - local_z;
+                            let d_nz = local_z - (-hz);
 
-                        let min_d = d_px.min(d_nx).min(d_pz).min(d_nz);
-                        let mut push_local = Vec2::new(local_x, local_z);
+                            let min_d = d_px.min(d_nx).min(d_pz).min(d_nz);
+                            let mut push_local = Vec2::new(local_x, local_z);
 
-                        if min_d == d_px {
-                            push_local.x = hx + player_radius;
-                        } else if min_d == d_nx {
-                            push_local.x = -hx - player_radius;
-                        } else if min_d == d_pz {
-                            push_local.y = hz + player_radius;
+                            if min_d == d_px {
+                                push_local.x = hx + player_radius;
+                            } else if min_d == d_nx {
+                                push_local.x = -hx - player_radius;
+                            } else if min_d == d_pz {
+                                push_local.y = hz + player_radius;
+                            } else {
+                                push_local.y = -hz - player_radius;
+                            }
+
+                            let cos_b = rot_y.cos();
+                            let sin_b = rot_y.sin();
+                            resolved.x = tf.translation.x + push_local.x * cos_b - push_local.y * sin_b;
+                            resolved.z = tf.translation.z + push_local.x * sin_b + push_local.y * cos_b;
                         } else {
-                            push_local.y = -hz - player_radius;
-                        }
-
-                        let cos_b = rot_y.cos();
-                        let sin_b = rot_y.sin();
-                        resolved.x = tf.translation.x + push_local.x * cos_b - push_local.y * sin_b;
-                        resolved.z = tf.translation.z + push_local.x * sin_b + push_local.y * cos_b;
-                    } else {
-                        let to_player = Vec2::new(local_x - clamped_x, local_z - clamped_z);
-                        let dist = to_player.length();
-                        if dist < player_radius {
                             let local_norm = if dist > 1e-4 {
                                 to_player / dist
                             } else {
@@ -141,7 +160,6 @@ pub fn resolve_player_collision_sliding(
         let portal_x_limit = 2.2 - player_radius;
 
         if resolved.z < 3.2 {
-
             let x_limit = 6.8 - player_radius;
             resolved.x = resolved.x.clamp(-x_limit, x_limit);
 
@@ -154,15 +172,12 @@ pub fn resolve_player_collision_sliding(
                 resolved.z = 3.2 - player_radius;
             }
         } else if resolved.z <= 5.0 {
-
             if resolved.x.abs() > portal_x_limit {
                 if prev_pos.z <= 3.2 {
-
                     resolved.z = 3.2 - player_radius;
                     let x_limit = 6.8 - player_radius;
                     resolved.x = resolved.x.clamp(-x_limit, x_limit);
                 } else if prev_pos.z > 5.0 {
-
                     resolved.z = 5.0 + player_radius;
                 } else {
                     resolved.x = resolved.x.clamp(-portal_x_limit, portal_x_limit);
@@ -171,13 +186,18 @@ pub fn resolve_player_collision_sliding(
                 resolved.x = resolved.x.clamp(-portal_x_limit, portal_x_limit);
             }
         } else {
-
             let dungeon_limit = 46.0 - player_radius;
             resolved.x = resolved.x.clamp(-dungeon_limit, dungeon_limit);
             if resolved.z > dungeon_limit {
                 resolved.z = dungeon_limit;
             }
         }
+    }
+
+    if highest_support_y > resolved.y {
+        resolved.y = highest_support_y;
+    } else if resolved.y > highest_support_y && (resolved.y - highest_support_y) <= STEP_OFFSET {
+        resolved.y = highest_support_y;
     }
 
     resolved
@@ -319,10 +339,40 @@ pub fn player_movement(
         }
 
         if !locomotion.is_grounded {
+            let mut landing_y = 1.2;
+            let p_xz = Vec2::new(tf.translation.x, tf.translation.z);
+            for (obs_tf, shape) in &obstacle_list {
+                match shape {
+                    ObstacleShape::Cylinder { radius, height } => {
+                        let center = Vec2::new(obs_tf.translation.x, obs_tf.translation.z);
+                        if (p_xz - center).length() <= *radius + 0.38 {
+                            let top = obs_tf.translation.y + height * 0.5 + 1.2;
+                            if top <= tf.translation.y + 0.1 && top > landing_y {
+                                landing_y = top;
+                            }
+                        }
+                    }
+                    ObstacleShape::Cuboid { half_extents } => {
+                        let (_, rot_y, _) = obs_tf.rotation.to_euler(EulerRot::YXZ);
+                        let diff_world = p_xz - Vec2::new(obs_tf.translation.x, obs_tf.translation.z);
+                        let cos_r = (-rot_y).cos();
+                        let sin_r = (-rot_y).sin();
+                        let lx = diff_world.x * cos_r - diff_world.y * sin_r;
+                        let lz = diff_world.x * sin_r + diff_world.y * cos_r;
+                        if lx.abs() <= half_extents.x + 0.38 && lz.abs() <= half_extents.z + 0.38 {
+                            let top = obs_tf.translation.y + half_extents.y + 1.2;
+                            if top <= tf.translation.y + 0.1 && top > landing_y {
+                                landing_y = top;
+                            }
+                        }
+                    }
+                }
+            }
+
             locomotion.vertical_velocity -= 18.0 * dt;
             tf.translation.y += locomotion.vertical_velocity * dt;
-            if tf.translation.y <= 1.2 {
-                tf.translation.y = 1.2;
+            if tf.translation.y <= landing_y {
+                tf.translation.y = landing_y;
                 locomotion.vertical_velocity = 0.0;
                 locomotion.is_grounded = true;
             }
@@ -957,6 +1007,54 @@ mod tests {
             player_z <= 2.86,
             "Player must be blocked before solid rear wall: z={:.3} must be <= 2.86",
             player_z
+        );
+    }
+
+    #[test]
+    fn test_collision_step_offset_allows_walking_over_small_rock() {
+        let mut app = App::new();
+        app.add_systems(Update, player_movement);
+        app.init_resource::<Time>();
+
+        let player = app
+            .world_mut()
+            .spawn((
+                Player,
+                PlayerState::Active,
+                LocomotionState::default(),
+                Transform::from_xyz(0.0, 1.2, 0.0),
+                Stamina {
+                    current: 100.0,
+                    max: 100.0,
+                },
+            ))
+            .id();
+
+        app.world_mut().spawn((
+            CavernObstacle,
+            ObstacleShape::Cylinder {
+                radius: 0.5,
+                height: 0.25,
+            },
+            Transform::from_xyz(0.0, 0.125, -1.0),
+        ));
+
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::KeyW);
+        app.world_mut().insert_resource(keys);
+
+        for _ in 0..40 {
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
+            app.update();
+        }
+
+        let player_tf = app.world().get::<Transform>(player).unwrap();
+        assert!(
+            player_tf.translation.z <= -1.0,
+            "Player must step over low rock and reach past it: z={:.3} must be <= -1.0",
+            player_tf.translation.z
         );
     }
 }

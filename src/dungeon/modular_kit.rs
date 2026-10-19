@@ -479,16 +479,16 @@ pub fn setup_cavern_world(
     }
 
     for (name, x, z, radius, height) in [
-        ("Collider_Transition_Rock_Left_01", -2.4, -1.1, 0.58, 1.4),
-        ("Collider_Transition_Rock_Left_02", -2.5, -2.3, 0.64, 1.4),
-        ("Collider_Transition_Rock_Left_03", -2.7, -3.4, 0.70, 1.4),
-        ("Collider_Transition_Rock_Right_01", 2.3, -1.0, 0.56, 1.4),
-        ("Collider_Transition_Rock_Right_02", 2.4, -2.2, 0.62, 1.4),
-        ("Collider_Transition_Rock_Right_03", 2.6, -3.3, 0.68, 1.4),
-        ("Collider_Transition_Rock_Fore_Left_A", -2.3, 0.8, 0.56, 1.4),
-        ("Collider_Transition_Rock_Fore_Left_B", -2.4, -0.2, 0.60, 1.4),
-        ("Collider_Transition_Rock_Fore_Right_A", 2.3, 0.8, 0.54, 1.4),
-        ("Collider_Transition_Rock_Fore_Right_B", 2.4, -0.2, 0.58, 1.4),
+        ("Collider_Transition_Rock_Left_01", -2.4, -1.1, 0.58, 0.32),
+        ("Collider_Transition_Rock_Left_02", -2.5, -2.3, 0.64, 0.32),
+        ("Collider_Transition_Rock_Left_03", -2.7, -3.4, 0.70, 0.32),
+        ("Collider_Transition_Rock_Right_01", 2.3, -1.0, 0.56, 0.32),
+        ("Collider_Transition_Rock_Right_02", 2.4, -2.2, 0.62, 0.32),
+        ("Collider_Transition_Rock_Right_03", 2.6, -3.3, 0.68, 0.32),
+        ("Collider_Transition_Rock_Fore_Left_A", -2.3, 0.8, 0.56, 0.32),
+        ("Collider_Transition_Rock_Fore_Left_B", -2.4, -0.2, 0.60, 0.32),
+        ("Collider_Transition_Rock_Fore_Right_A", 2.3, 0.8, 0.54, 0.32),
+        ("Collider_Transition_Rock_Fore_Right_B", 2.4, -0.2, 0.58, 0.32),
     ] {
         commands.spawn((
             Name::new(name),
