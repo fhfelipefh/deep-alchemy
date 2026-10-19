@@ -5,7 +5,10 @@ use crate::{
     },
     ui::menu::{GameSettings, GameState},
 };
-use bevy::prelude::*;
+use bevy::{
+    input::mouse::{MouseScrollUnit, MouseWheel},
+    prelude::*,
+};
 
 pub struct HudPlugin;
 
@@ -318,7 +321,18 @@ fn update_hud_bars(
     }
 }
 
-fn handle_hotbar_input(keys: Res<ButtonInput<KeyCode>>, mut active_slot: ResMut<ActiveHotbarSlot>) {
+fn handle_hotbar_input(
+    game_state: Option<Res<State<GameState>>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut mouse_wheel: EventReader<MouseWheel>,
+    mut active_slot: ResMut<ActiveHotbarSlot>,
+) {
+    if let Some(state) = game_state {
+        if *state.get() != GameState::InGame {
+            return;
+        }
+    }
+
     if keys.just_pressed(KeyCode::Digit1) {
         active_slot.0 = 1;
     } else if keys.just_pressed(KeyCode::Digit2) {
@@ -329,6 +343,31 @@ fn handle_hotbar_input(keys: Res<ButtonInput<KeyCode>>, mut active_slot: ResMut<
         active_slot.0 = 4;
     } else if keys.just_pressed(KeyCode::Digit5) {
         active_slot.0 = 5;
+    }
+
+    let mut scroll_steps = 0_i32;
+    for ev in mouse_wheel.read() {
+        let delta = match ev.unit {
+            MouseScrollUnit::Line => -ev.y,
+            MouseScrollUnit::Pixel => {
+                if ev.y.abs() >= 1.0 {
+                    -ev.y.signum()
+                } else {
+                    0.0
+                }
+            }
+        };
+        if delta > 0.0 {
+            scroll_steps += delta.round().max(1.0) as i32;
+        } else if delta < 0.0 {
+            scroll_steps -= (-delta).round().max(1.0) as i32;
+        }
+    }
+
+    if scroll_steps != 0 {
+        let current_idx = (active_slot.0.clamp(1, 5) - 1) as i32;
+        let new_idx = (current_idx + scroll_steps).rem_euclid(5);
+        active_slot.0 = (new_idx + 1) as usize;
     }
 }
 
@@ -476,6 +515,7 @@ pub mod tests {
     fn test_hotbar_number_keys_switch_active_slot() {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
+        app.add_event::<MouseWheel>();
         app.init_resource::<ActiveHotbarSlot>();
         app.init_resource::<ButtonInput<KeyCode>>();
         app.add_systems(Update, handle_hotbar_input);
@@ -502,6 +542,54 @@ pub mod tests {
             5,
             "Pressing 5 must select slot 5"
         );
+    }
+
+    #[test]
+    fn test_hotbar_mouse_scroll_switches_active_slot() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_event::<MouseWheel>();
+        app.init_resource::<ActiveHotbarSlot>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+        app.add_systems(Update, handle_hotbar_input);
+
+        let window = app.world_mut().spawn_empty().id();
+
+        app.world_mut().send_event(MouseWheel {
+            unit: MouseScrollUnit::Line,
+            x: 0.0,
+            y: -1.0,
+            window,
+        });
+        app.update();
+        assert_eq!(app.world().resource::<ActiveHotbarSlot>().0, 2);
+
+        app.world_mut().send_event(MouseWheel {
+            unit: MouseScrollUnit::Line,
+            x: 0.0,
+            y: 1.0,
+            window,
+        });
+        app.update();
+        assert_eq!(app.world().resource::<ActiveHotbarSlot>().0, 1);
+
+        app.world_mut().send_event(MouseWheel {
+            unit: MouseScrollUnit::Line,
+            x: 0.0,
+            y: 1.0,
+            window,
+        });
+        app.update();
+        assert_eq!(app.world().resource::<ActiveHotbarSlot>().0, 5);
+
+        app.world_mut().send_event(MouseWheel {
+            unit: MouseScrollUnit::Line,
+            x: 0.0,
+            y: -1.0,
+            window,
+        });
+        app.update();
+        assert_eq!(app.world().resource::<ActiveHotbarSlot>().0, 1);
     }
 
     #[test]
