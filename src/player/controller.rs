@@ -19,8 +19,10 @@ pub fn resolve_player_collision_sliding(
                 ObstacleShape::Cylinder { radius, height } => {
                     let obs_y = tf.translation.y;
                     let half_h = height * 0.5;
+                    let obs_bottom = obs_y - half_h;
+                    let obs_top = obs_y + half_h;
 
-                    if resolved.y < obs_y - half_h - 1.2 || resolved.y > obs_y + half_h + 0.5 {
+                    if resolved.y - 1.15 > obs_top || resolved.y + 0.65 < obs_bottom {
                         continue;
                     }
 
@@ -66,9 +68,10 @@ pub fn resolve_player_collision_sliding(
                 }
                 ObstacleShape::Cuboid { half_extents } => {
                     let obs_y = tf.translation.y;
-                    if resolved.y < obs_y - half_extents.y - 1.2
-                        || resolved.y > obs_y + half_extents.y + 0.5
-                    {
+                    let obs_bottom = obs_y - half_extents.y;
+                    let obs_top = obs_y + half_extents.y;
+
+                    if resolved.y - 1.15 > obs_top || resolved.y + 0.65 < obs_bottom {
                         continue;
                     }
 
@@ -328,7 +331,7 @@ pub fn player_movement(
         if is_moving {
             let vel = move_dir.normalize() * locomotion.current_speed * dt;
             let desired_pos = tf.translation + vel;
-            let player_radius = 0.35;
+            let player_radius = 0.38;
             tf.translation = resolve_player_collision_sliding(
                 desired_pos,
                 tf.translation,
@@ -825,6 +828,54 @@ mod tests {
         assert!(
             player_x >= -6.46,
             "Player must be blocked by canyon wall: x={:.3} must be >= -6.46",
+            player_x
+        );
+    }
+
+    #[test]
+    fn test_collision_blocks_player_at_lateral_rock_terraces() {
+        let mut app = App::new();
+        app.add_systems(Update, player_movement);
+        app.init_resource::<Time>();
+
+        let player = app
+            .world_mut()
+            .spawn((
+                Player,
+                PlayerState::Active,
+                LocomotionState::default(),
+                Transform::from_xyz(-3.8, 1.2, -3.1),
+                Stamina {
+                    current: 100.0,
+                    max: 100.0,
+                },
+            ))
+            .id();
+
+        app.world_mut().spawn((
+            CavernObstacle,
+            ObstacleShape::Cuboid {
+                half_extents: Vec3::new(1.6, 3.5, 2.1),
+            },
+            Transform::from_xyz(-6.1, 2.5, -3.1),
+        ));
+
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::KeyA);
+        app.world_mut().insert_resource(keys);
+
+        for _ in 0..40 {
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(16));
+            app.update();
+        }
+
+        let player_x = app.world().get::<Transform>(player).unwrap().translation.x;
+
+        assert!(
+            player_x >= -4.13,
+            "Player must be blocked before lateral rock terrace: x={:.3} must be >= -4.13",
             player_x
         );
     }

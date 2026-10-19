@@ -456,62 +456,39 @@ pub fn setup_cavern_world(
         Collider::cylinder(0.32, 1.05),
     ));
 
-    commands.spawn((
-        Name::new("Collider_Rock_Terrace_Left"),
-        CavernObstacle,
-        ObstacleShape::Cuboid {
-            half_extents: Vec3::new(1.75, 1.25, 1.75),
-        },
-        Transform::from_xyz(-6.8, 1.2, -6.8),
-        RigidBody::Static,
-        Collider::cuboid(3.5, 2.5, 3.5),
-    ));
-    commands.spawn((
-        Name::new("Collider_Rock_Terrace_Right"),
-        CavernObstacle,
-        ObstacleShape::Cuboid {
-            half_extents: Vec3::new(1.75, 1.25, 1.75),
-        },
-        Transform::from_xyz(6.8, 1.2, -6.8),
-        RigidBody::Static,
-        Collider::cuboid(3.5, 2.5, 3.5),
-    ));
+    for (name, x, z, hx, hz) in [
+        ("Collider_Rock_Terrace_Left_Fore", -6.4, 1.0, 1.6, 2.3),
+        ("Collider_Rock_Terrace_Right_Fore", 6.4, 1.0, 1.6, 2.3),
+        ("Collider_Rock_Terrace_Left_Mid", -6.1, -3.1, 1.6, 2.1),
+        ("Collider_Rock_Terrace_Right_Mid", 6.1, -3.1, 1.6, 2.1),
+        ("Collider_Rock_Terrace_Left_Back", -6.6, -6.8, 1.7, 1.9),
+        ("Collider_Rock_Terrace_Right_Back", 6.6, -6.8, 1.7, 1.9),
+        ("Collider_Rock_Terrace_Left_Deep", -6.4, -9.4, 1.6, 1.9),
+        ("Collider_Rock_Terrace_Right_Deep", 6.4, -9.4, 1.6, 1.9),
+    ] {
+        commands.spawn((
+            Name::new(name),
+            CavernObstacle,
+            ObstacleShape::Cuboid {
+                half_extents: Vec3::new(hx, 3.5, hz),
+            },
+            Transform::from_xyz(x, 2.5, z),
+            RigidBody::Static,
+            Collider::cuboid(hx * 2.0, 7.0, hz * 2.0),
+        ));
+    }
 
     for (name, x, z, radius, height) in [
-        ("Collider_Transition_Rock_Left_01", -2.4, -1.1, 0.58, 0.60),
-        ("Collider_Transition_Rock_Left_02", -2.5, -2.3, 0.64, 0.68),
-        ("Collider_Transition_Rock_Left_03", -2.7, -3.4, 0.70, 0.76),
-        ("Collider_Transition_Rock_Right_01", 2.3, -1.0, 0.56, 0.56),
-        ("Collider_Transition_Rock_Right_02", 2.4, -2.2, 0.62, 0.64),
-        ("Collider_Transition_Rock_Right_03", 2.6, -3.3, 0.68, 0.72),
-        (
-            "Collider_Transition_Rock_Fore_Left_A",
-            -2.3,
-            0.8,
-            0.56,
-            0.56,
-        ),
-        (
-            "Collider_Transition_Rock_Fore_Left_B",
-            -2.4,
-            -0.2,
-            0.60,
-            0.64,
-        ),
-        (
-            "Collider_Transition_Rock_Fore_Right_A",
-            2.3,
-            0.8,
-            0.54,
-            0.52,
-        ),
-        (
-            "Collider_Transition_Rock_Fore_Right_B",
-            2.4,
-            -0.2,
-            0.58,
-            0.60,
-        ),
+        ("Collider_Transition_Rock_Left_01", -2.4, -1.1, 0.58, 1.4),
+        ("Collider_Transition_Rock_Left_02", -2.5, -2.3, 0.64, 1.4),
+        ("Collider_Transition_Rock_Left_03", -2.7, -3.4, 0.70, 1.4),
+        ("Collider_Transition_Rock_Right_01", 2.3, -1.0, 0.56, 1.4),
+        ("Collider_Transition_Rock_Right_02", 2.4, -2.2, 0.62, 1.4),
+        ("Collider_Transition_Rock_Right_03", 2.6, -3.3, 0.68, 1.4),
+        ("Collider_Transition_Rock_Fore_Left_A", -2.3, 0.8, 0.56, 1.4),
+        ("Collider_Transition_Rock_Fore_Left_B", -2.4, -0.2, 0.60, 1.4),
+        ("Collider_Transition_Rock_Fore_Right_A", 2.3, 0.8, 0.54, 1.4),
+        ("Collider_Transition_Rock_Fore_Right_B", 2.4, -0.2, 0.58, 1.4),
     ] {
         commands.spawn((
             Name::new(name),
@@ -524,10 +501,14 @@ pub fn setup_cavern_world(
     }
 
     for (name, x, z, radius, height) in [
-        ("Collider_Side_Rock_Left_Front", -5.15, -4.8, 0.95, 1.8),
-        ("Collider_Side_Rock_Left_Back", -5.70, -7.2, 1.15, 2.4),
-        ("Collider_Side_Rock_Right_Front", 5.15, -4.8, 0.95, 1.8),
-        ("Collider_Side_Rock_Right_Back", 5.70, -7.2, 1.15, 2.4),
+        ("Collider_Side_Rock_Left_Front", -5.15, -4.8, 1.15, 3.6),
+        ("Collider_Side_Rock_Left_Low", -5.60, -5.8, 1.25, 3.6),
+        ("Collider_Side_Rock_Left_Back", -5.70, -7.2, 1.25, 3.6),
+        ("Collider_Waterfall_Cliff_Tower_Left", -4.65, -10.60, 1.65, 8.0),
+        ("Collider_Side_Rock_Right_Front", 5.15, -4.8, 1.15, 3.6),
+        ("Collider_Side_Rock_Right_Low", 5.60, -5.8, 1.25, 3.6),
+        ("Collider_Side_Rock_Right_Back", 5.70, -7.2, 1.25, 3.6),
+        ("Collider_Waterfall_Cliff_Tower_Right", 4.65, -10.60, 1.65, 8.0),
     ] {
         commands.spawn((
             Name::new(name),
@@ -543,21 +524,21 @@ pub fn setup_cavern_world(
         Name::new("Collider_Canyon_Wall_Left"),
         CavernObstacle,
         ObstacleShape::Cuboid {
-            half_extents: Vec3::new(1.0, 4.0, 9.0),
+            half_extents: Vec3::new(1.4, 5.0, 9.0),
         },
-        Transform::from_xyz(-8.5, 3.0, -4.5),
+        Transform::from_xyz(-7.8, 3.5, -4.5),
         RigidBody::Static,
-        Collider::cuboid(2.0, 8.0, 18.0),
+        Collider::cuboid(2.8, 10.0, 18.0),
     ));
     commands.spawn((
         Name::new("Collider_Canyon_Wall_Right"),
         CavernObstacle,
         ObstacleShape::Cuboid {
-            half_extents: Vec3::new(1.0, 4.0, 9.0),
+            half_extents: Vec3::new(1.4, 5.0, 9.0),
         },
-        Transform::from_xyz(8.5, 3.0, -4.5),
+        Transform::from_xyz(7.8, 3.5, -4.5),
         RigidBody::Static,
-        Collider::cuboid(2.0, 8.0, 18.0),
+        Collider::cuboid(2.8, 10.0, 18.0),
     ));
 
     commands.spawn((

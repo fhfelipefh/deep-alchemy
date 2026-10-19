@@ -3,7 +3,7 @@ use crate::{
         camera::{Health, Player, Stamina},
         interaction::InteractionState,
     },
-    ui::menu::GameState,
+    ui::menu::{GameSettings, GameState},
 };
 use bevy::prelude::*;
 
@@ -21,6 +21,7 @@ impl Plugin for HudPlugin {
                     update_hud_visibility,
                     handle_hotbar_input,
                     update_hotbar_selection_visuals,
+                    update_fps_counter,
                 ),
             );
     }
@@ -37,6 +38,9 @@ impl Default for ActiveHotbarSlot {
 
 #[derive(Component)]
 pub struct HudRoot;
+
+#[derive(Component)]
+pub struct FpsCounterText;
 
 #[derive(Component)]
 pub struct CrosshairDot;
@@ -68,6 +72,25 @@ pub const COLOR_STAMINA_FILL: Color = Color::srgb(0.15, 0.88, 0.48);
 
 fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font_handle: Handle<Font> = asset_server.load("fonts/DejaVuSans.ttf");
+
+    commands.spawn((
+        FpsCounterText,
+        Text::new(""),
+        TextFont {
+            font: asset_server.load("fonts/DejaVuSans-Bold.ttf"),
+            font_size: 14.0,
+            ..default()
+        },
+        TextColor(Color::srgb(1.0, 0.88, 0.20)),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(14.0),
+            right: Val::Px(18.0),
+            ..default()
+        },
+        Visibility::Hidden,
+        ZIndex(200),
+    ));
 
     commands
         .spawn((
@@ -344,6 +367,47 @@ fn update_hud_visibility(
     }
 }
 
+pub fn update_fps_counter(
+    time: Res<Time>,
+    settings: Option<Res<GameSettings>>,
+    mut fps_accum: Local<f32>,
+    mut timer: Local<f32>,
+    mut query: Query<(&mut Text, &mut Visibility), With<FpsCounterText>>,
+) {
+    let show = settings.as_ref().map(|s| s.show_fps).unwrap_or(false);
+    for (mut text, mut vis) in query.iter_mut() {
+        if !show {
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+            }
+            continue;
+        }
+
+        if *vis != Visibility::Visible {
+            *vis = Visibility::Visible;
+        }
+
+        let dt = time.delta_secs();
+        *timer += dt;
+        if dt > 0.00001 {
+            let current = 1.0 / dt;
+            if *fps_accum == 0.0 {
+                *fps_accum = current;
+                let fps_val = fps_accum.round() as u32;
+                text.0 = format!("{}", fps_val);
+            } else {
+                *fps_accum = *fps_accum * 0.85 + current * 0.15;
+            }
+        }
+
+        if *timer >= 0.10 {
+            *timer = 0.0;
+            let fps_val = fps_accum.round() as u32;
+            text.0 = format!("{}", fps_val);
+        }
+    }
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -361,6 +425,16 @@ pub mod tests {
         let mut hearts_query = app.world_mut().query::<&HealthHeartFill>();
         let heart_count = hearts_query.iter(app.world()).count();
         assert_eq!(heart_count, 5, "HUD must spawn exactly 5 health heart orbs");
+
+        let fps_count = app
+            .world_mut()
+            .query::<&FpsCounterText>()
+            .iter(app.world())
+            .count();
+        assert_eq!(
+            fps_count, 1,
+            "HUD must spawn exactly 1 discrete FPS counter element"
+        );
 
         let mut stamina_query = app.world_mut().query::<&StaminaBarFill>();
         let stamina_count = stamina_query.iter(app.world()).count();
@@ -526,5 +600,34 @@ pub mod tests {
         for (_, vis) in hud_query.iter(app.world()) {
             assert_eq!(*vis, Visibility::Visible, "HUD must become visible InGame");
         }
+    }
+
+    #[test]
+    fn test_update_fps_counter() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.init_resource::<GameSettings>();
+        app.add_systems(Update, update_fps_counter);
+
+        let entity = app
+            .world_mut()
+            .spawn((FpsCounterText, Text::new(""), Visibility::Hidden))
+            .id();
+
+        app.update();
+        assert_eq!(
+            *app.world().get::<Visibility>(entity).unwrap(),
+            Visibility::Hidden
+        );
+
+        app.world_mut().resource_mut::<GameSettings>().show_fps = true;
+        app.update();
+        assert_eq!(
+            *app.world().get::<Visibility>(entity).unwrap(),
+            Visibility::Visible
+        );
+        let text_content = &app.world().get::<Text>(entity).unwrap().0;
+        assert!(!text_content.is_empty());
+        assert!(text_content.chars().all(|c| c.is_ascii_digit()));
     }
 }

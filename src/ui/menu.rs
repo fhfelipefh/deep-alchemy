@@ -56,10 +56,10 @@ impl RtxQuality {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Off => "DESATIVADO (60+ FPS)",
-            Self::Low => "BAIXO (ALVO 30 FPS)",
-            Self::Medium => "MÉDIO (EQUILIBRADO)",
-            Self::Ultra => "ULTRA (RAY-TRACING)",
+            Self::Off => "DESLIGADO",
+            Self::Low => "BAIXO",
+            Self::Medium => "MÉDIO",
+            Self::Ultra => "ALTO",
         }
     }
 
@@ -76,6 +76,7 @@ pub struct GameSettings {
     pub master_volume: f32,
     pub rtx_quality: RtxQuality,
     pub rtx_enabled: bool,
+    pub show_fps: bool,
 }
 
 impl Default for GameSettings {
@@ -87,6 +88,7 @@ impl Default for GameSettings {
             master_volume: 0.8,
             rtx_quality: RtxQuality::Off,
             rtx_enabled: false,
+            show_fps: false,
         }
     }
 }
@@ -111,6 +113,9 @@ pub struct FullscreenButtonText;
 
 #[derive(Component)]
 pub struct RtxButtonText;
+
+#[derive(Component)]
+pub struct FpsButtonText;
 
 #[derive(Component)]
 pub struct SensitivityValueText;
@@ -141,6 +146,7 @@ pub enum MenuButtonAction {
     BackToMain,
     ToggleFullscreen,
     ToggleRtx,
+    ToggleFps,
     AdjustSensitivity(f32),
     AdjustFov(f32),
     AdjustVolume(f32),
@@ -482,10 +488,45 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                             .with_children(|btn| {
                                 btn.spawn((
                                     RtxButtonText,
-                                    Text::new("DESATIVADO (60+ FPS)"),
+                                    Text::new("DESLIGADO"),
                                     TextFont {
                                         font: font_handle.clone(),
-                                        font_size: 12.0,
+                                        font_size: 13.0,
+                                        ..default()
+                                    },
+                                    TextColor(COLOR_TEXT_LIGHT),
+                                    Node::default(),
+                                ));
+                            });
+                        },
+                    );
+
+                    spawn_settings_row(
+                        settings_view,
+                        font_handle.clone(),
+                        "Contador de FPS:",
+                        |row| {
+                            row.spawn((
+                                Button,
+                                MenuButtonAction::ToggleFps,
+                                Node {
+                                    width: Val::Px(240.0),
+                                    height: Val::Px(36.0),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    border: UiRect::all(Val::Px(1.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(COLOR_BTN_NORMAL),
+                                BorderColor(COLOR_BORDER_MUTED),
+                            ))
+                            .with_children(|btn| {
+                                btn.spawn((
+                                    FpsButtonText,
+                                    Text::new("DESATIVADO"),
+                                    TextFont {
+                                        font: font_handle.clone(),
+                                        font_size: 13.0,
                                         ..default()
                                     },
                                     TextColor(COLOR_TEXT_LIGHT),
@@ -881,6 +922,9 @@ pub fn handle_menu_button_interactions(
                         settings.rtx_quality = settings.rtx_quality.next();
                         settings.rtx_enabled = settings.rtx_quality.is_enabled();
                     }
+                    MenuButtonAction::ToggleFps => {
+                        settings.show_fps = !settings.show_fps;
+                    }
                     MenuButtonAction::AdjustSensitivity(delta) => {
                         settings.mouse_sensitivity =
                             (settings.mouse_sensitivity + delta).clamp(0.0006, 0.0080);
@@ -1033,6 +1077,7 @@ pub fn update_settings_labels(
         (
             With<FullscreenButtonText>,
             Without<RtxButtonText>,
+            Without<FpsButtonText>,
             Without<SensitivityValueText>,
             Without<FovValueText>,
             Without<VolumeValueText>,
@@ -1043,6 +1088,18 @@ pub fn update_settings_labels(
         (
             With<RtxButtonText>,
             Without<FullscreenButtonText>,
+            Without<FpsButtonText>,
+            Without<SensitivityValueText>,
+            Without<FovValueText>,
+            Without<VolumeValueText>,
+        ),
+    >,
+    mut fps_txt: Query<
+        &mut Text,
+        (
+            With<FpsButtonText>,
+            Without<FullscreenButtonText>,
+            Without<RtxButtonText>,
             Without<SensitivityValueText>,
             Without<FovValueText>,
             Without<VolumeValueText>,
@@ -1054,6 +1111,7 @@ pub fn update_settings_labels(
             With<SensitivityValueText>,
             Without<FullscreenButtonText>,
             Without<RtxButtonText>,
+            Without<FpsButtonText>,
             Without<FovValueText>,
             Without<VolumeValueText>,
         ),
@@ -1064,6 +1122,7 @@ pub fn update_settings_labels(
             With<FovValueText>,
             Without<FullscreenButtonText>,
             Without<RtxButtonText>,
+            Without<FpsButtonText>,
             Without<SensitivityValueText>,
             Without<VolumeValueText>,
         ),
@@ -1074,6 +1133,7 @@ pub fn update_settings_labels(
             With<VolumeValueText>,
             Without<FullscreenButtonText>,
             Without<RtxButtonText>,
+            Without<FpsButtonText>,
             Without<SensitivityValueText>,
             Without<FovValueText>,
         ),
@@ -1093,6 +1153,14 @@ pub fn update_settings_labels(
 
     for mut txt in rtx_txt.iter_mut() {
         txt.0 = settings.rtx_quality.label().to_string();
+    }
+
+    for mut txt in fps_txt.iter_mut() {
+        txt.0 = if settings.show_fps {
+            "ATIVADO".to_string()
+        } else {
+            "DESATIVADO".to_string()
+        };
     }
 
     for mut txt in sens_txt.iter_mut() {
@@ -1283,6 +1351,7 @@ mod tests {
         assert_eq!(settings.fov_degrees, 75.0);
         assert_eq!(settings.mouse_sensitivity, 0.0022);
         assert_eq!(settings.master_volume, 0.8);
+        assert_eq!(settings.show_fps, false);
 
         settings.mouse_sensitivity = (settings.mouse_sensitivity + 0.1).clamp(0.0006, 0.0080);
         assert_eq!(settings.mouse_sensitivity, 0.0080);
@@ -1353,6 +1422,13 @@ mod tests {
         assert_eq!(
             app.world_mut()
                 .query::<&RtxButtonText>()
+                .iter(app.world())
+                .count(),
+            1
+        );
+        assert_eq!(
+            app.world_mut()
+                .query::<&FpsButtonText>()
                 .iter(app.world())
                 .count(),
             1
@@ -1501,12 +1577,20 @@ mod tests {
             BackgroundColor(COLOR_BTN_NORMAL),
             BorderColor(COLOR_BORDER_MUTED),
         ));
+        app.world_mut().spawn((
+            Button,
+            MenuButtonAction::ToggleFps,
+            Interaction::Pressed,
+            BackgroundColor(COLOR_BTN_NORMAL),
+            BorderColor(COLOR_BORDER_MUTED),
+        ));
         app.update();
 
         let settings = app.world().resource::<GameSettings>();
         assert_eq!(settings.fullscreen, true);
         assert_eq!(settings.rtx_quality, RtxQuality::Low);
         assert_eq!(settings.rtx_enabled, true);
+        assert_eq!(settings.show_fps, true);
         assert!((settings.mouse_sensitivity - 0.0032).abs() < 1e-5);
         assert_eq!(settings.fov_degrees, 85.0);
         assert!((settings.master_volume - 0.9).abs() < 1e-5);
@@ -1601,6 +1685,7 @@ mod tests {
             .spawn((FullscreenButtonText, Text::new("")))
             .id();
         let rtx_text = app.world_mut().spawn((RtxButtonText, Text::new(""))).id();
+        let fps_text = app.world_mut().spawn((FpsButtonText, Text::new(""))).id();
         let sens_text = app
             .world_mut()
             .spawn((SensitivityValueText, Text::new("")))
@@ -1610,6 +1695,7 @@ mod tests {
 
         app.world_mut().resource_mut::<GameSettings>().fullscreen = true;
         app.world_mut().resource_mut::<GameSettings>().rtx_quality = RtxQuality::Low;
+        app.world_mut().resource_mut::<GameSettings>().show_fps = true;
         app.world_mut()
             .resource_mut::<GameSettings>()
             .mouse_sensitivity = 0.0035;
@@ -1624,7 +1710,11 @@ mod tests {
         );
         assert_eq!(
             app.world().get::<Text>(rtx_text).unwrap().0,
-            "BAIXO (ALVO 30 FPS)"
+            "BAIXO"
+        );
+        assert_eq!(
+            app.world().get::<Text>(fps_text).unwrap().0,
+            "ATIVADO"
         );
         assert_eq!(app.world().get::<Text>(sens_text).unwrap().0, "0.0035");
         assert_eq!(app.world().get::<Text>(fov_text).unwrap().0, "90°");
