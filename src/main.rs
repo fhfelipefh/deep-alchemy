@@ -76,6 +76,7 @@ fn handle_screenshot_test_lifecycle(
     mut commands: Commands,
     mut counter: Local<u32>,
     mut app_exit: EventWriter<AppExit>,
+    mut player_query: Query<&mut Transform, With<deep_alchemy::player::camera::Player>>,
 ) {
     *counter += 1;
     if *counter == 20 {
@@ -84,8 +85,18 @@ fn handle_screenshot_test_lifecycle(
             .spawn(Screenshot::primary_window())
             .observe(save_to_disk("debug_output/frame_check.png"));
         info!(">>> [SCREENSHOT GATE] Triggered primary_window screenshot at frame 20 -> debug_output/frame_check.png");
-    } else if *counter >= 60 {
-        info!(">>> [SCREENSHOT GATE] Frame 60 reached, gracefully exiting.");
+    } else if *counter == 25 {
+        if let Ok(mut transform) = player_query.get_single_mut() {
+            transform.rotation = Quat::from_rotation_y(std::f32::consts::PI);
+            info!(">>> [SCREENSHOT GATE] Rotated player 180° to capture rear portal view.");
+        }
+    } else if *counter == 45 {
+        commands
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk("debug_output/frame_rear_check.png"));
+        info!(">>> [SCREENSHOT GATE] Triggered rear screenshot at frame 45 -> debug_output/frame_rear_check.png");
+    } else if *counter >= 70 {
+        info!(">>> [SCREENSHOT GATE] Frame 70 reached, gracefully exiting.");
         app_exit.send(AppExit::Success);
     }
 }

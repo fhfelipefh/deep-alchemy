@@ -167,7 +167,7 @@ pub fn setup_cavern_world(
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut water_materials: ResMut<Assets<WaterMaterial>>,
-    mut moss_materials: ResMut<Assets<CelShadedMossMaterial>>,
+    _moss_materials: ResMut<Assets<CelShadedMossMaterial>>,
 ) {
 
     commands.insert_resource(AmbientLight {
@@ -355,24 +355,21 @@ pub fn setup_cavern_world(
         SceneRoot(asset_server.load("models/cavern_kit.glb#Scene0")),
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.22, 0.92, 0.96),
+            intensity: 45000.0,
+            range: 16.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 3.2, 2.2),
+    ));
 
-    let cliff_material = moss_materials.add(CelShadedMossMaterial {
-        base_color: LinearRgba::new(0.13, 0.21, 0.25, 1.0),
-        moss_color: LinearRgba::new(0.15, 0.50, 0.27, 1.0),
-        light_dir: Vec4::new(0.25, 0.85, -0.45, 0.0),
-        moss_params: Vec4::new(0.52, 2.8, 0.18, 3.0),
-    });
-    for (name, x, seed) in [
-        ("Striated_Cliff_Left", -5.25, 0.37),
-        ("Striated_Cliff_Right", 5.25, 1.91),
+    for (name, x) in [
+        ("Striated_Cliff_Left", -5.25),
+        ("Striated_Cliff_Right", 5.25),
     ] {
-        commands.spawn((
-            Name::new(name),
-            Mesh3d(meshes.add(create_striated_cliff_mesh(4.9, 10.5, 16, 14, seed))),
-            MeshMaterial3d(cliff_material.clone()),
-            Transform::from_xyz(x, 0.25, -11.32),
-        ));
-
         commands.spawn((
             Name::new(format!("Collider_{name}")),
             CavernObstacle,
