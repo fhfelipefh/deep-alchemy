@@ -134,25 +134,26 @@ impl Plugin for AlchemyPlugin {
     }
 }
 
-pub fn calculate_aim_trajectory(
+pub fn calculate_aim_trajectory_and_impact(
     origin: Vec3,
     initial_velocity: Vec3,
     gravity: f32,
     steps: usize,
     step_time: f32,
-    spatial_query: Option<&SpatialQuery>,
-) -> Vec<Vec3> {
-    let mut points = Vec::with_capacity(steps);
+    spatial_query: Option<(&SpatialQuery, &SpatialQueryFilter)>,
+) -> (Vec<Vec3>, Option<(Vec3, Vec3)>) {
+    let mut points = Vec::with_capacity(steps + 1);
     let mut current_pos = origin;
     let mut current_vel = initial_velocity;
     points.push(current_pos);
+    let mut hit_info = None;
 
     for _ in 0..steps {
         let next_vel = current_vel + Vec3::new(0.0, -gravity * step_time, 0.0);
         let displacement = (current_vel + next_vel) * 0.5 * step_time;
         let segment_len = displacement.length();
 
-        if let Some(sq) = spatial_query {
+        if let Some((sq, filter)) = spatial_query {
             if segment_len > 1e-4 {
                 let dir = displacement / segment_len;
                 if let Some(hit) = sq.cast_ray(
@@ -160,11 +161,14 @@ pub fn calculate_aim_trajectory(
                     Dir3::new(dir).unwrap_or(Dir3::NEG_Y),
                     segment_len,
                     true,
-                    &SpatialQueryFilter::default(),
+                    filter,
                 ) {
-                    current_pos += dir * hit.distance;
-                    points.push(current_pos);
-                    break;
+                    if hit.distance > 0.001 {
+                        let impact_pos = current_pos + dir * hit.distance;
+                        points.push(impact_pos);
+                        hit_info = Some((impact_pos, hit.normal));
+                        break;
+                    }
                 }
             }
         }
@@ -176,7 +180,29 @@ pub fn calculate_aim_trajectory(
             break;
         }
     }
-    points
+
+    (points, hit_info)
+}
+
+pub fn calculate_aim_trajectory(
+    origin: Vec3,
+    initial_velocity: Vec3,
+    gravity: f32,
+    steps: usize,
+    step_time: f32,
+    spatial_query: Option<&SpatialQuery>,
+) -> Vec<Vec3> {
+    let filter = SpatialQueryFilter::default();
+    let sq_tuple = spatial_query.map(|sq| (sq, &filter));
+    let (pts, _) = calculate_aim_trajectory_and_impact(
+        origin,
+        initial_velocity,
+        gravity,
+        steps,
+        step_time,
+        sq_tuple,
+    );
+    pts
 }
 
 pub fn apply_throw_inaccuracy(
@@ -198,7 +224,7 @@ pub fn apply_throw_inaccuracy(
     perturbed.normalize_or_zero()
 }
 
-fn selected_potion_effects(slot: usize) -> (Color, Vec<ActiveEffect>) {
+pub fn selected_potion_effects(slot: usize) -> (Color, Vec<ActiveEffect>) {
     let (color, kind, magnitude) = match slot {
         2 => (
             Color::srgb(0.95, 0.12, 0.16),
@@ -237,7 +263,7 @@ fn selected_potion_effects(slot: usize) -> (Color, Vec<ActiveEffect>) {
     )
 }
 
-fn update_potion_aiming(
+pub fn update_potion_aiming(
     game_state: Option<Res<State<GameState>>>,
     mouse: Res<ButtonInput<MouseButton>>,
     slot: Option<Res<ActiveHotbarSlot>>,
@@ -276,36 +302,64 @@ fn update_potion_aiming(
     let slot_index = slot.as_deref().map(|s| s.0).unwrap_or(1);
     let (color, _) = selected_potion_effects(slot_index);
     let forward = *camera_tf.forward();
-    let ray_origin = camera_tf.translation();
-    let ray_dir = Dir3::new((forward + Vec3::new(0.0, -0.28, 0.0)).normalize()).unwrap_or(Dir3::NEG_Y);
+    let origin = camera_tf.translation() + forward * 0.45 + Vec3::new(0.0, -0.12, 0.0);
+    let impulse_dir = (forward + Vec3::new(0.0, 0.22, 0.0)).normalize();
+    let initial_velocity = impulse_dir * 16.0;
 
     let excluded: Vec<Entity> = player_entities.iter().collect();
     let filter = SpatialQueryFilter::default().with_excluded_entities(excluded);
 
-    if let Some(hit) = spatial_query.cast_ray(ray_origin, ray_dir, 35.0, true, &filter) {
-        if hit.distance >= 0.8 {
-            let hit_pos = ray_origin + ray_dir.as_vec3() * hit.distance;
-            let hit_normal = hit.normal;
-            let decal_mesh = meshes.add(create_flat_circle_mesh(0.38, 24));
-            let decal_mat = materials.add(StandardMaterial {
-                base_color: color.with_alpha(0.85),
-                emissive: color.to_linear() * 1.8,
-                unlit: true,
-                alpha_mode: AlphaMode::Blend,
-                ..default()
-            });
-            let rotation = Quat::from_rotation_arc(Vec3::Y, hit_normal);
-            commands.spawn((
-                TrajectoryAimIndicator,
-                Mesh3d(decal_mesh),
-                MeshMaterial3d(decal_mat),
-                Transform::from_translation(hit_pos + hit_normal * 0.015).with_rotation(rotation),
-            ));
-        }
+    let (points, hit_info) = calculate_aim_trajectory_and_impact(
+        origin,
+        initial_velocity,
+        9.8,
+        28,
+        0.045,
+        Some((&spatial_query, &filter)),
+    );
+
+    let bead_mesh = meshes.add(Sphere::new(0.028).mesh().uv(8, 6));
+    let bead_mat = materials.add(StandardMaterial {
+        base_color: color.with_alpha(0.85),
+        emissive: color.to_linear() * 2.2,
+        unlit: true,
+        alpha_mode: AlphaMode::Blend,
+        ..default()
+    });
+
+    for pt in points.into_iter().skip(1) {
+        commands.spawn((
+            TrajectoryAimIndicator,
+            Mesh3d(bead_mesh.clone()),
+            MeshMaterial3d(bead_mat.clone()),
+            Transform::from_translation(pt),
+            bevy::pbr::NotShadowCaster,
+            bevy::pbr::NotShadowReceiver,
+        ));
+    }
+
+    if let Some((hit_pos, hit_normal)) = hit_info {
+        let decal_mesh = meshes.add(create_flat_circle_mesh(0.35, 24));
+        let decal_mat = materials.add(StandardMaterial {
+            base_color: color.with_alpha(0.88),
+            emissive: color.to_linear() * 2.0,
+            unlit: true,
+            alpha_mode: AlphaMode::Blend,
+            ..default()
+        });
+        let rotation = Quat::from_rotation_arc(Vec3::Y, hit_normal);
+        commands.spawn((
+            TrajectoryAimIndicator,
+            Mesh3d(decal_mesh),
+            MeshMaterial3d(decal_mat),
+            Transform::from_translation(hit_pos + hit_normal * 0.015).with_rotation(rotation),
+            bevy::pbr::NotShadowCaster,
+            bevy::pbr::NotShadowReceiver,
+        ));
     }
 }
 
-fn spawn_potion_projectile(
+pub fn spawn_potion_projectile(
     game_state: Option<Res<State<GameState>>>,
     time: Res<Time>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -340,21 +394,16 @@ fn spawn_potion_projectile(
 
     let slot_index = slot.as_deref().map(|s| s.0).unwrap_or(1);
     let (color, effects) = selected_potion_effects(slot_index);
-    let spawn_pos = camera.translation() + base_direction * 0.75;
+    let spawn_pos = camera.translation() + base_direction * 0.45 + Vec3::new(0.0, -0.10, 0.0);
 
     let impulse_dir = (final_direction + Vec3::new(0.0, 0.22, 0.0)).normalize();
     let speed = 16.0;
     let linear_vel = impulse_dir * speed;
-    let angular_vel = Vec3::new(
-        (time.elapsed_secs() * 3.7).sin() * 8.0,
-        5.0,
-        (time.elapsed_secs() * 2.3).cos() * 8.0,
-    );
 
     let flask_mesh = meshes.add(create_potion_flask_mesh(slot_index));
     let flask_mat = materials.add(StandardMaterial {
-        base_color: color.with_alpha(0.82),
-        emissive: color.to_linear() * 0.9,
+        base_color: color.with_alpha(0.85),
+        emissive: color.to_linear() * 1.2,
         perceptual_roughness: 0.12,
         metallic: 0.05,
         reflectance: 0.85,
@@ -363,14 +412,10 @@ fn spawn_potion_projectile(
     });
 
     commands.spawn((
+        Name::new("Potion_Flask_Projectile"),
         Mesh3d(flask_mesh),
         MeshMaterial3d(flask_mat),
         Transform::from_translation(spawn_pos).with_scale(Vec3::splat(1.0)),
-        RigidBody::Dynamic,
-        Collider::sphere(0.12),
-        GravityScale(1.0),
-        LinearVelocity(linear_vel),
-        AngularVelocity(angular_vel),
         PotionProjectile {
             velocity: linear_vel,
             effects,
@@ -381,7 +426,7 @@ fn spawn_potion_projectile(
     ));
 }
 
-fn update_potion_projectiles(
+pub fn update_potion_projectiles(
     time: Res<Time>,
     spatial_query: SpatialQuery,
     mut projectiles: Query<(Entity, &mut Transform, &mut PotionProjectile)>,
@@ -393,105 +438,117 @@ fn update_potion_projectiles(
 ) {
     let dt = time.delta_secs();
     let gravity = Vec3::new(0.0, -9.8, 0.0);
-    let excluded: Vec<Entity> = player_entities.iter().collect();
-    let filter = SpatialQueryFilter::default().with_excluded_entities(excluded);
+    let mut excluded: Vec<Entity> = player_entities.iter().collect();
+
+    for (entity, _, _) in projectiles.iter() {
+        excluded.push(entity);
+    }
+    let filter = SpatialQueryFilter::default().with_excluded_entities(excluded.clone());
 
     for (entity, mut transform, mut projectile) in &mut projectiles {
         projectile.velocity += gravity * dt;
-        let distance = projectile.velocity.length() * dt;
+        let step = projectile.velocity * dt;
+        let distance = step.length();
         let direction = projectile.velocity.normalize_or_zero();
-        let sweep_dist = distance.max(0.14);
 
-        let hit = spatial_query.cast_ray(
-            transform.translation,
-            Dir3::new(direction).unwrap_or(Dir3::NEG_Y),
-            sweep_dist,
-            true,
-            &filter,
-        );
+        let hit = if distance > 1e-4 {
+            spatial_query.cast_ray(
+                transform.translation,
+                Dir3::new(direction).unwrap_or(Dir3::NEG_Y),
+                distance,
+                true,
+                &filter,
+            )
+        } else {
+            None
+        };
 
         if let Some(hit) = hit {
-            let impact_point = transform.translation + direction * hit.distance;
-            let impact_normal = hit.normal;
+            if hit.distance > 0.001 && hit.entity != entity && !excluded.contains(&hit.entity) {
+                let impact_point = transform.translation + direction * hit.distance;
+                let impact_normal = hit.normal;
 
-            for (r_entity, r_tf, mut receiver) in receivers.iter_mut() {
-                if r_entity == hit.entity || r_tf.translation.distance(impact_point) <= 2.8 {
-                    for effect in &projectile.effects {
-                        receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
+                for (r_entity, r_tf, mut receiver) in receivers.iter_mut() {
+                    if r_entity == hit.entity || r_tf.translation.distance(impact_point) <= 2.8 {
+                        for effect in &projectile.effects {
+                            receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
+                        }
                     }
                 }
-            }
 
-            commands.entity(entity).despawn();
+                commands.entity(entity).despawn();
 
-            let rotation = Quat::from_rotation_arc(Vec3::Y, impact_normal);
-            let puddle_mesh = meshes.add(create_irregular_puddle_mesh(0.72, 24));
-            let puddle_mat = materials.add(StandardMaterial {
-                base_color: projectile.color.with_alpha(0.78),
-                emissive: projectile.color.to_linear() * 0.4,
-                perceptual_roughness: 0.08,
-                metallic: 0.12,
-                reflectance: 0.90,
-                alpha_mode: AlphaMode::Blend,
-                ..default()
-            });
-
-            commands.spawn((
-                PotionPuddle {
-                    color: projectile.color,
-                    elapsed: 0.0,
-                    max_lifetime: 75.0,
-                },
-                Mesh3d(puddle_mesh),
-                MeshMaterial3d(puddle_mat),
-                Transform::from_translation(impact_point + impact_normal * 0.012).with_rotation(rotation),
-            ));
-
-            let shard_mesh = meshes.add(create_glass_shard_mesh(0.045));
-            let shard_mat = materials.add(StandardMaterial {
-                base_color: Color::srgba(0.92, 0.96, 1.0, 0.75),
-                emissive: LinearRgba::new(0.2, 0.25, 0.3, 1.0),
-                perceptual_roughness: 0.08,
-                metallic: 0.05,
-                reflectance: 0.95,
-                alpha_mode: AlphaMode::Blend,
-                ..default()
-            });
-
-            let tangent = if impact_normal.y.abs() < 0.9 {
-                impact_normal.cross(Vec3::Y).normalize()
-            } else {
-                impact_normal.cross(Vec3::X).normalize()
-            };
-            let bitangent = impact_normal.cross(tangent).normalize();
-
-            for i in 0..16 {
-                let phi = (i as f32) * (std::f32::consts::TAU / 16.0) + (i as f32 * 1.7).sin() * 0.25;
-                let radial_speed = 2.2 + 2.0 * ((i as f32 * 2.3).sin().abs());
-                let normal_speed = 3.0 + 2.5 * ((i as f32 * 3.1).cos().abs());
-                let shard_vel = tangent * (phi.cos() * radial_speed)
-                    + bitangent * (phi.sin() * radial_speed)
-                    + impact_normal * normal_speed;
+                let rotation = Quat::from_rotation_arc(Vec3::Y, impact_normal);
+                let puddle_mesh = meshes.add(create_irregular_puddle_mesh(0.72, 24));
+                let puddle_mat = materials.add(StandardMaterial {
+                    base_color: projectile.color.with_alpha(0.78),
+                    emissive: projectile.color.to_linear() * 0.4,
+                    perceptual_roughness: 0.08,
+                    metallic: 0.12,
+                    reflectance: 0.90,
+                    alpha_mode: AlphaMode::Blend,
+                    ..default()
+                });
 
                 commands.spawn((
-                    GlassShardParticle {
-                        velocity: shard_vel,
-                        lifetime: 0.0,
-                        max_lifetime: 1.6 + 0.6 * ((i as f32 * 1.9).sin().abs()),
-                        ground_y: impact_point.y,
-                        bounce_count: 0,
+                    PotionPuddle {
+                        color: projectile.color,
+                        elapsed: 0.0,
+                        max_lifetime: 75.0,
                     },
-                    Mesh3d(shard_mesh.clone()),
-                    MeshMaterial3d(shard_mat.clone()),
-                    Transform::from_translation(impact_point + impact_normal * 0.04)
-                        .with_rotation(Quat::from_rotation_y(phi)),
+                    Mesh3d(puddle_mesh),
+                    MeshMaterial3d(puddle_mat),
+                    Transform::from_translation(impact_point + impact_normal * 0.012).with_rotation(rotation),
                 ));
-            }
 
-            continue;
+                let shard_mesh = meshes.add(create_glass_shard_mesh(0.045));
+                let shard_mat = materials.add(StandardMaterial {
+                    base_color: Color::srgba(0.92, 0.96, 1.0, 0.75),
+                    emissive: LinearRgba::new(0.2, 0.25, 0.3, 1.0),
+                    perceptual_roughness: 0.08,
+                    metallic: 0.05,
+                    reflectance: 0.95,
+                    alpha_mode: AlphaMode::Blend,
+                    ..default()
+                });
+
+                let tangent = if impact_normal.y.abs() < 0.9 {
+                    impact_normal.cross(Vec3::Y).normalize()
+                } else {
+                    impact_normal.cross(Vec3::X).normalize()
+                };
+                let bitangent = impact_normal.cross(tangent).normalize();
+
+                for i in 0..16 {
+                    let phi = (i as f32) * (std::f32::consts::TAU / 16.0) + (i as f32 * 1.7).sin() * 0.25;
+                    let radial_speed = 2.2 + 2.0 * ((i as f32 * 2.3).sin().abs());
+                    let normal_speed = 3.0 + 2.5 * ((i as f32 * 3.1).cos().abs());
+                    let shard_vel = tangent * (phi.cos() * radial_speed)
+                        + bitangent * (phi.sin() * radial_speed)
+                        + impact_normal * normal_speed;
+
+                    commands.spawn((
+                        GlassShardParticle {
+                            velocity: shard_vel,
+                            lifetime: 0.0,
+                            max_lifetime: 1.6 + 0.6 * ((i as f32 * 1.9).sin().abs()),
+                            ground_y: impact_point.y,
+                            bounce_count: 0,
+                        },
+                        Mesh3d(shard_mesh.clone()),
+                        MeshMaterial3d(shard_mat.clone()),
+                        Transform::from_translation(impact_point + impact_normal * 0.04)
+                            .with_rotation(Quat::from_rotation_y(phi)),
+                    ));
+                }
+
+                continue;
+            }
         }
 
-        transform.translation += projectile.velocity * dt;
+        transform.translation += step;
+        transform.rotate_local_x(7.5 * dt);
+        transform.rotate_local_y(4.2 * dt);
         projectile.lifetime -= dt;
         if projectile.lifetime <= 0.0 {
             commands.entity(entity).despawn();
@@ -910,6 +967,46 @@ mod tests {
     }
 
     #[test]
+    fn test_potion_selected_effects_all_slots_unique_and_colored() {
+        let (c1, e1) = selected_potion_effects(1);
+        let (c2, e2) = selected_potion_effects(2);
+        let (c3, e3) = selected_potion_effects(3);
+        let (c4, e4) = selected_potion_effects(4);
+        let (c5, e5) = selected_potion_effects(5);
+
+        assert_eq!(e1[0].kind, AlchemicalEffectKind::Swiftness);
+        assert_eq!(e2[0].kind, AlchemicalEffectKind::ThermalHeat);
+        assert_eq!(e3[0].kind, AlchemicalEffectKind::Vitality);
+        assert_eq!(e4[0].kind, AlchemicalEffectKind::Frost);
+        assert_eq!(e5[0].kind, AlchemicalEffectKind::Luminescence);
+
+        assert_ne!(c1, c2);
+        assert_ne!(c2, c3);
+        assert_ne!(c3, c4);
+        assert_ne!(c4, c5);
+    }
+
+    #[test]
+    fn test_aim_trajectory_calculation_and_impact_ballistic_curve() {
+        let origin = Vec3::new(0.0, 1.5, 0.0);
+        let vel = Vec3::new(0.0, 5.0, -10.0);
+        let (pts, hit) = calculate_aim_trajectory_and_impact(origin, vel, 9.8, 25, 0.045, None);
+        assert!(pts.len() >= 20);
+        assert_eq!(pts[0], origin);
+        assert!(pts[pts.len() - 1].z < origin.z);
+        assert!(hit.is_none());
+
+        let mut max_y = origin.y;
+        for p in &pts {
+            if p.y > max_y {
+                max_y = p.y;
+            }
+        }
+        assert!(max_y > origin.y, "Parabolic arc must reach an apex higher than origin");
+        assert!(pts[pts.len() - 1].y < max_y, "Arc must descend after apex");
+    }
+
+    #[test]
     fn test_aim_trajectory_calculation_generates_arc() {
         let origin = Vec3::new(0.0, 1.5, 0.0);
         let vel = Vec3::new(0.0, 5.0, -10.0);
@@ -917,6 +1014,182 @@ mod tests {
         assert!(pts.len() >= 15);
         assert_eq!(pts[0], origin);
         assert!(pts[pts.len() - 1].z < origin.z);
+    }
+
+    #[test]
+    fn test_potion_aiming_spawns_indicators_and_cleans_up() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(bevy::asset::AssetPlugin::default());
+        app.add_plugins(avian3d::prelude::PhysicsPlugins::default());
+        app.init_resource::<Assets<StandardMaterial>>();
+        app.init_resource::<Assets<Mesh>>();
+
+        let mut mouse = ButtonInput::<MouseButton>::default();
+        mouse.press(MouseButton::Right);
+        app.insert_resource(mouse);
+
+        app.world_mut().spawn((
+            Player,
+            PlayerState::Active,
+        ));
+
+        app.world_mut().spawn((
+            PlayerCamera,
+            Transform::from_xyz(0.0, 1.75, 0.0),
+            GlobalTransform::from_translation(Vec3::new(0.0, 1.75, 0.0)),
+        ));
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(update_potion_aiming);
+        schedule.run(app.world_mut());
+
+        let mut indicator_query = app.world_mut().query::<&TrajectoryAimIndicator>();
+        let count = indicator_query.iter(app.world()).count();
+        assert!(count >= 15, "Aiming must spawn trajectory arc indicators");
+
+        let mouse_released = ButtonInput::<MouseButton>::default();
+        app.insert_resource(mouse_released);
+        schedule.run(app.world_mut());
+
+        let mut indicator_query_after = app.world_mut().query::<&TrajectoryAimIndicator>();
+        let count_after = indicator_query_after.iter(app.world()).count();
+        assert_eq!(count_after, 0, "Releasing aim must despawn all indicators");
+    }
+
+    #[test]
+    fn test_potion_projectile_flight_lifecycle_no_premature_despawn() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(bevy::asset::AssetPlugin::default());
+        app.add_plugins(avian3d::prelude::PhysicsPlugins::default());
+        app.init_resource::<Assets<StandardMaterial>>();
+        app.init_resource::<Assets<Mesh>>();
+
+        let initial_pos = Vec3::new(0.0, 5.0, 0.0);
+        let initial_vel = Vec3::new(0.0, 2.0, -12.0);
+
+        let proj_entity = app
+            .world_mut()
+            .spawn((
+                Transform::from_translation(initial_pos),
+                PotionProjectile {
+                    velocity: initial_vel,
+                    effects: vec![ActiveEffect {
+                        kind: AlchemicalEffectKind::Swiftness,
+                        duration: 5.0,
+                        elapsed: 0.0,
+                        magnitude: 20.0,
+                    }],
+                    lifetime: 8.0,
+                    color: Color::srgb(0.12, 0.92, 0.42),
+                    slot: 1,
+                },
+            ))
+            .id();
+
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_millis(50));
+        app.insert_resource(time);
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(update_potion_projectiles);
+
+        for _ in 0..10 {
+            schedule.run(app.world_mut());
+        }
+
+        let proj_opt = app.world().get::<PotionProjectile>(proj_entity);
+        assert!(
+            proj_opt.is_some(),
+            "Projectile must remain active during in-flight propagation across multiple frames"
+        );
+
+        let tf = app.world().get::<Transform>(proj_entity).unwrap();
+        assert!(
+            tf.translation.z < -4.0,
+            "Projectile must travel forward along Z axis"
+        );
+        let proj = proj_opt.unwrap();
+        assert!(
+            proj.lifetime < 7.6,
+            "Projectile lifetime must decrease during flight"
+        );
+        assert!(
+            proj.velocity.y < initial_vel.y,
+            "Vertical velocity must decrease due to gravity"
+        );
+    }
+
+    #[test]
+    fn test_potion_projectile_impact_and_splash_lifecycle() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::transform::TransformPlugin,
+            bevy::asset::AssetPlugin::default(),
+            bevy::scene::ScenePlugin::default(),
+            avian3d::prelude::PhysicsPlugins::default(),
+        ));
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_millis(50),
+        ));
+        app.init_resource::<Assets<StandardMaterial>>();
+        app.init_resource::<Assets<Mesh>>();
+        app.add_systems(Update, update_potion_projectiles);
+
+        let target_entity = app
+            .world_mut()
+            .spawn((
+                Transform::from_xyz(0.0, 0.0, -3.0),
+                GlobalTransform::from_translation(Vec3::new(0.0, 0.0, -3.0)),
+                RigidBody::Static,
+                Collider::cuboid(4.0, 4.0, 0.5),
+                EffectReceiverComponent::default(),
+            ))
+            .id();
+
+        app.update();
+
+        let proj_entity = app
+            .world_mut()
+            .spawn((
+                Transform::from_xyz(0.0, 0.0, -1.0),
+                PotionProjectile {
+                    velocity: Vec3::new(0.0, 0.0, -50.0),
+                    effects: vec![ActiveEffect {
+                        kind: AlchemicalEffectKind::ThermalHeat,
+                        duration: 6.0,
+                        elapsed: 0.0,
+                        magnitude: 35.0,
+                    }],
+                    lifetime: 8.0,
+                    color: Color::srgb(0.95, 0.12, 0.16),
+                    slot: 2,
+                },
+            ))
+            .id();
+
+        app.update();
+
+        assert!(
+            app.world().get_entity(proj_entity).is_err(),
+            "Projectile must despawn upon impacting the target obstacle"
+        );
+
+        let target_recv = app.world().get::<EffectReceiverComponent>(target_entity).unwrap();
+        assert!(
+            target_recv.has_effect(AlchemicalEffectKind::ThermalHeat),
+            "Receiver at impact location must receive the potion alchemical effect"
+        );
+
+        let mut puddle_query = app.world_mut().query::<&PotionPuddle>();
+        let puddle_count = puddle_query.iter(app.world()).count();
+        assert_eq!(puddle_count, 1, "Exactly one alchemical puddle must be spawned at impact");
+
+        let mut shards_query = app.world_mut().query::<&GlassShardParticle>();
+        let shards_count = shards_query.iter(app.world()).count();
+        assert_eq!(shards_count, 16, "Exactly 16 glass shard particles must be spawned on shatter");
     }
 
     #[test]
