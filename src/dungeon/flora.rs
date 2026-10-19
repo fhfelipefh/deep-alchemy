@@ -278,7 +278,7 @@ fn create_leaf_mesh(length: f32, width: f32, lobe_seed: f32) -> Mesh {
         let y = t * length;
 
         let envelope = (t * std::f32::consts::PI).sin().powf(0.55);
-        let lobe = 1.0 + 0.38 * (t * 9.0 + lobe_seed * 6.28).sin();
+        let lobe = 1.0 + 0.38 * (t * 9.0 + lobe_seed * std::f32::consts::TAU).sin();
         let hw = width * envelope * lobe;
         let z_curl = t * t * 0.045;
 

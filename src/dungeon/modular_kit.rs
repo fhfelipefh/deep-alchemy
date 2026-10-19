@@ -1,5 +1,6 @@
 use crate::{
     alchemy::{AlchemicalEffectKind, AlchemicalIngredient, ThermalGeyser},
+    dungeon::asset_loader::{SceneAssetInstance, SceneAssetRegistry},
     player::interaction::Interactable,
     render::{
         cel_moss_material::CelShadedMossMaterial,
@@ -46,13 +47,14 @@ pub struct DungeonPlugin;
 
 impl Plugin for DungeonPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Startup,
-            (
-                setup_cavern_world,
-                crate::dungeon::generator::spawn_procedural_dungeon,
-            ),
-        )
+        app.init_resource::<SceneAssetRegistry>()
+            .add_systems(
+                Startup,
+                (
+                    setup_cavern_world,
+                    crate::dungeon::generator::spawn_procedural_dungeon,
+                ),
+            )
         .add_systems(
             Update,
             (
@@ -209,6 +211,7 @@ pub fn keep_tall_grass_clear_of_obstacles(
 pub fn setup_cavern_world(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    registry: Res<SceneAssetRegistry>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut water_materials: ResMut<Assets<WaterMaterial>>,
     _moss_materials: ResMut<Assets<CelShadedMossMaterial>>,
@@ -396,7 +399,10 @@ pub fn setup_cavern_world(
     ));
 
     commands.spawn((
-        SceneRoot(asset_server.load("models/cavern_kit.glb#Scene0")),
+        SceneAssetInstance {
+            asset_key: "cavern_grotto".to_string(),
+        },
+        SceneRoot(registry.load_scene(&asset_server, "cavern_grotto")),
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));
     commands.spawn((
@@ -689,7 +695,10 @@ pub fn setup_cavern_world(
     let bench_rotation = Quat::from_rotation_y(-0.45);
     commands.spawn((
         Name::new("Rustic_Mossy_Bench"),
-        SceneRoot(asset_server.load("models/alchemy_props.glb#Scene0")),
+        SceneAssetInstance {
+            asset_key: "prop_wooden_bench".to_string(),
+        },
+        SceneRoot(registry.load_scene(&asset_server, "prop_wooden_bench")),
         Transform::from_translation(bench_position).with_rotation(bench_rotation),
     ));
 
@@ -740,55 +749,6 @@ pub fn setup_cavern_world(
     }
 
     info!("Masterwork Cel-Shaded Cavern Grotto initialized with Volumetric Waterfall, Organic Mushrooms, and Sobel Outlines!");
-}
-
-pub fn create_striated_cliff_mesh(
-    width: f32,
-    height: f32,
-    columns: usize,
-    rows: usize,
-    seed: f32,
-) -> Mesh {
-    let mut positions = Vec::with_capacity(columns * rows * 6);
-    let mut normals = Vec::with_capacity(columns * rows * 6);
-    let mut indices = Vec::with_capacity(columns * rows * 6);
-
-    let surface_depth = |x: f32, y: f32| {
-        let strata = (y * 2.65 + x * 0.42 + seed).sin().abs().powf(14.0) * 0.46;
-        let fissure_wave = (x * 3.7 - y * 0.72 + seed * 4.0).sin().abs();
-        let fissure = if fissure_wave > 0.945 { -0.42 } else { 0.0 };
-        let weathering = (x * 1.45 + seed).sin() * 0.11 + (y * 1.12 - seed * 2.0).cos() * 0.08;
-        strata + fissure + weathering
-    };
-
-    for row in 0..rows {
-        for column in 0..columns {
-            let x0 = -width * 0.5 + width * column as f32 / columns as f32;
-            let x1 = -width * 0.5 + width * (column + 1) as f32 / columns as f32;
-            let y0 = height * row as f32 / rows as f32;
-            let y1 = height * (row + 1) as f32 / rows as f32;
-            let a = Vec3::new(x0, y0, surface_depth(x0, y0));
-            let b = Vec3::new(x1, y0, surface_depth(x1, y0));
-            let c = Vec3::new(x1, y1, surface_depth(x1, y1));
-            let d = Vec3::new(x0, y1, surface_depth(x0, y1));
-            let normal = (b - a).cross(c - a).normalize_or_zero();
-            let base = positions.len() as u32;
-
-            for vertex in [a, b, c, d] {
-                positions.push(vertex.to_array());
-                normals.push(normal.to_array());
-            }
-            indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
-        }
-    }
-
-    Mesh::new(
-        PrimitiveTopology::TriangleList,
-        RenderAssetUsages::default(),
-    )
-    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
-    .with_inserted_indices(Indices::U32(indices))
 }
 
 pub fn create_water_disk_mesh(radius: f32, segments: usize) -> Mesh {
@@ -969,6 +929,7 @@ pub mod tests {
         app.init_asset::<WaterMaterial>();
         app.init_asset::<CelShadedMossMaterial>();
         app.init_asset::<bevy::scene::Scene>();
+        app.init_resource::<SceneAssetRegistry>();
         app.add_systems(Startup, setup_cavern_world);
         app.update();
 
@@ -1002,12 +963,11 @@ pub mod tests {
     }
 
     #[test]
-    fn test_striated_cliff_mesh_has_faceted_geometry() {
-        let mesh = create_striated_cliff_mesh(4.9, 10.5, 16, 14, 0.37);
-        assert_eq!(mesh.primitive_topology(), PrimitiveTopology::TriangleList);
-        assert!(mesh.attribute(Mesh::ATTRIBUTE_POSITION).is_some());
-        assert!(mesh.attribute(Mesh::ATTRIBUTE_NORMAL).is_some());
-        assert!(mesh.indices().is_some());
+    fn test_modular_kit_asset_registry_loaded_and_mapped() {
+        let registry = SceneAssetRegistry::default();
+        assert!(registry.get_path("env_cave_wall").is_some());
+        assert!(registry.get_path("prop_wooden_bench").is_some());
+        assert!(registry.get_path("cavern_grotto").is_some());
     }
 
     #[test]

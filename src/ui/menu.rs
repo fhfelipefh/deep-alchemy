@@ -289,7 +289,7 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                 root.spawn((
                     MenuSpore {
                         speed,
-                        sway_phase: seed * 6.28,
+                        sway_phase: seed * std::f32::consts::TAU,
                         sway_freq: 0.8 + seed2 * 0.9,
                         base_x,
                         current_y: start_y,

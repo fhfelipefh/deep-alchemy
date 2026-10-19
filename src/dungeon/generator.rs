@@ -1,4 +1,7 @@
-use crate::dungeon::modular_kit::{CavernObstacle, ObstacleShape};
+use crate::dungeon::{
+    asset_loader::SceneAssetRegistry,
+    modular_kit::{CavernObstacle, ObstacleShape},
+};
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use std::collections::{HashSet, VecDeque};
@@ -420,61 +423,14 @@ impl DungeonGenerator {
 
 pub fn spawn_procedural_dungeon(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
+    registry: Res<SceneAssetRegistry>,
 ) {
     let config = DungeonConfig::default();
     let dungeon = DungeonGenerator::generate(config.clone());
-
-    let mat_floor_path = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.48, 0.36, 0.25),
-        perceptual_roughness: 0.82,
-        ..default()
-    });
-
-    let mat_floor_border = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.24, 0.28, 0.32),
-        perceptual_roughness: 0.85,
-        ..default()
-    });
-
-    let mat_wall_moss = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.18, 0.52, 0.30),
-        perceptual_roughness: 0.75,
-        ..default()
-    });
-
-    let mat_wall_stone = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.32, 0.42, 0.50),
-        perceptual_roughness: 0.78,
-        ..default()
-    });
-
-    let mat_fungi_glow = materials.add(StandardMaterial {
-        base_color: Color::LinearRgba(LinearRgba::new(0.25, 0.95, 0.92, 1.0)),
-        emissive: LinearRgba::new(3.8, 7.8, 7.5, 1.0),
-        perceptual_roughness: 0.20,
-        ..default()
-    });
-
-    let mat_geode_glow = materials.add(StandardMaterial {
-        base_color: Color::LinearRgba(LinearRgba::new(0.20, 0.95, 1.0, 1.0)),
-        emissive: LinearRgba::new(4.5, 8.5, 9.2, 1.0),
-        perceptual_roughness: 0.15,
-        ..default()
-    });
-
-    let mat_shrine_gold = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.88, 0.75, 0.35),
-        emissive: LinearRgba::new(4.2, 3.2, 0.8, 1.0),
-        perceptual_roughness: 0.30,
-        ..default()
-    });
-
     let half_tile = config.tile_size * 0.5;
 
     for cell in &dungeon.dual_cells {
-
         if cell.world_pos.x.abs() < 8.0 && cell.world_pos.z > -13.5 && cell.world_pos.z < 3.5 {
             continue;
         }
@@ -483,42 +439,25 @@ pub fn spawn_procedural_dungeon(
 
         match cell.piece {
             CanonicalPiece::Empty => {
-
+                let handle = registry.load_scene(&asset_server, "tile_corridor_straight");
                 commands.spawn((
-                    Mesh3d(
-                        meshes.add(
-                            Plane3d::default()
-                                .mesh()
-                                .size(config.tile_size, config.tile_size),
-                        ),
-                    ),
-                    MeshMaterial3d(mat_floor_border.clone()),
+                    Name::new("DungeonTile_Empty"),
+                    SceneRoot(handle),
                     Transform::from_translation(cell.world_pos).with_rotation(rot),
                     RigidBody::Static,
                     Collider::half_space(Vec3::Y),
-                ));
-                commands.spawn((
-                    Mesh3d(
-                        meshes.add(
-                            Plane3d::default()
-                                .mesh()
-                                .size(config.tile_size * 0.78, config.tile_size * 0.78),
-                        ),
-                    ),
-                    MeshMaterial3d(mat_floor_path.clone()),
-                    Transform::from_translation(cell.world_pos + Vec3::new(0.0, 0.008, 0.0))
-                        .with_rotation(rot),
                 ));
 
                 if let Some(macro_type) = cell.macro_room {
                     match macro_type {
                         RoomType::CrystalGeode => {
-
+                            let crystal_handle =
+                                registry.load_scene(&asset_server, "macro_crystal_cluster");
                             commands.spawn((
-                                Mesh3d(meshes.add(Cone::new(0.48, 3.4).mesh())),
-                                MeshMaterial3d(mat_geode_glow.clone()),
+                                Name::new("MacroRoom_CrystalGeode"),
+                                SceneRoot(crystal_handle),
                                 Transform::from_translation(
-                                    cell.world_pos + Vec3::new(0.0, 1.7, 0.0),
+                                    cell.world_pos + Vec3::new(0.0, 0.5, 0.0),
                                 ),
                                 PointLight {
                                     color: Color::srgb(0.17, 0.91, 0.85),
@@ -530,13 +469,16 @@ pub fn spawn_procedural_dungeon(
                             ));
                         }
                         RoomType::AlchemicalShrine => {
-
+                            let shrine_handle =
+                                registry.load_scene(&asset_server, "macro_alchemical_shrine");
                             commands.spawn((
-                                Mesh3d(meshes.add(Cuboid::new(1.1, 1.2, 1.1).mesh())),
-                                MeshMaterial3d(mat_shrine_gold.clone()),
+                                Name::new("MacroRoom_AlchemicalShrine"),
+                                SceneRoot(shrine_handle),
                                 Transform::from_translation(
-                                    cell.world_pos + Vec3::new(0.0, 0.6, 0.0),
+                                    cell.world_pos + Vec3::new(0.0, 0.5, 0.0),
                                 ),
+                                RigidBody::Static,
+                                Collider::cuboid(1.1, 1.2, 1.1),
                                 PointLight {
                                     color: Color::srgb(1.0, 0.72, 0.28),
                                     intensity: 24000.0,
@@ -551,175 +493,72 @@ pub fn spawn_procedural_dungeon(
                 }
             }
             CanonicalPiece::StraightEdge => {
-
+                let handle = registry.load_scene(&asset_server, "tile_corridor_straight");
                 commands.spawn((
-                    Mesh3d(
-                        meshes.add(
-                            Plane3d::default()
-                                .mesh()
-                                .size(config.tile_size, config.tile_size),
-                        ),
-                    ),
-                    MeshMaterial3d(mat_floor_path.clone()),
-                    Transform::from_translation(cell.world_pos),
+                    Name::new("DungeonTile_StraightEdge"),
+                    SceneRoot(handle),
+                    Transform::from_translation(cell.world_pos).with_rotation(rot),
                     RigidBody::Static,
                     Collider::half_space(Vec3::Y),
                 ));
 
-                let base_offset = rot * Vec3::new(0.0, 0.6, -half_tile + 0.45);
+                let wall_offset = rot * Vec3::new(0.0, 1.2, -half_tile + 0.35);
                 commands.spawn((
-                    CavernObstacle,
-                    ObstacleShape::Cuboid {
-                        half_extents: Vec3::new(config.tile_size * 0.5, 0.6, 0.45),
-                    },
-                    Mesh3d(meshes.add(Cuboid::new(config.tile_size, 1.2, 0.9).mesh())),
-                    MeshMaterial3d(mat_wall_moss.clone()),
-                    Transform::from_translation(cell.world_pos + base_offset).with_rotation(rot),
-                    RigidBody::Static,
-                    Collider::cuboid(config.tile_size, 1.2, 0.9),
-                ));
-
-                let wall_offset = rot * Vec3::new(0.0, 2.4, -half_tile + 0.35);
-                commands.spawn((
+                    Name::new("Collider_Dungeon_Wall_Straight"),
                     CavernObstacle,
                     ObstacleShape::Cuboid {
                         half_extents: Vec3::new(config.tile_size * 0.5, 1.2, 0.375),
                     },
-                    Mesh3d(meshes.add(Cuboid::new(config.tile_size, 2.4, 0.75).mesh())),
-                    MeshMaterial3d(mat_wall_stone.clone()),
                     Transform::from_translation(cell.world_pos + wall_offset).with_rotation(rot),
                     RigidBody::Static,
                     Collider::cuboid(config.tile_size, 2.4, 0.75),
                 ));
-
-                let rib_offset = rot * Vec3::new(0.0, 3.8, -half_tile + 0.75);
-                commands.spawn((
-                    Mesh3d(meshes.add(Cuboid::new(config.tile_size, 0.5, 0.9).mesh())),
-                    MeshMaterial3d(mat_wall_stone.clone()),
-                    Transform::from_translation(cell.world_pos + rib_offset).with_rotation(rot),
-                ));
-
-                let light_offset = rot * Vec3::new(0.0, 1.6, -half_tile + 0.95);
-                commands.spawn((
-                    Mesh3d(meshes.add(Cone::new(0.20, 0.28).mesh())),
-                    MeshMaterial3d(mat_fungi_glow.clone()),
-                    Transform::from_translation(cell.world_pos + light_offset).with_rotation(rot),
-                    PointLight {
-                        color: Color::srgb(0.17, 0.91, 0.85),
-                        intensity: 14000.0,
-                        range: 12.0,
-                        shadows_enabled: false,
-                        ..default()
-                    },
-                ));
             }
             CanonicalPiece::OuterCorner | CanonicalPiece::InnerCorner => {
-
+                let handle = registry.load_scene(&asset_server, "tile_corridor_corner");
                 commands.spawn((
-                    Mesh3d(
-                        meshes.add(
-                            Plane3d::default()
-                                .mesh()
-                                .size(config.tile_size, config.tile_size),
-                        ),
-                    ),
-                    MeshMaterial3d(mat_floor_path.clone()),
-                    Transform::from_translation(cell.world_pos),
+                    Name::new("DungeonTile_Corner"),
+                    SceneRoot(handle),
+                    Transform::from_translation(cell.world_pos).with_rotation(rot),
                     RigidBody::Static,
                     Collider::half_space(Vec3::Y),
                 ));
 
-                let base_offset = rot * Vec3::new(-half_tile + 0.6, 0.6, -half_tile + 0.6);
+                let pillar_offset = rot * Vec3::new(-half_tile + 0.6, 1.4, -half_tile + 0.6);
                 commands.spawn((
-                    CavernObstacle,
-                    ObstacleShape::Cuboid {
-                        half_extents: Vec3::new(0.9, 0.6, 0.9),
-                    },
-                    Mesh3d(meshes.add(Cuboid::new(1.8, 1.2, 1.8).mesh())),
-                    MeshMaterial3d(mat_wall_moss.clone()),
-                    Transform::from_translation(cell.world_pos + base_offset)
-                        .with_rotation(rot * Quat::from_rotation_y(0.38)),
-                    RigidBody::Static,
-                    Collider::cuboid(1.8, 1.2, 1.8),
-                ));
-
-                let pillar_offset = rot * Vec3::new(-half_tile + 0.6, 2.6, -half_tile + 0.6);
-                commands.spawn((
+                    Name::new("Collider_Dungeon_Pillar_Corner"),
                     CavernObstacle,
                     ObstacleShape::Cuboid {
                         half_extents: Vec3::new(0.7, 1.4, 0.7),
                     },
-                    Mesh3d(meshes.add(Cuboid::new(1.4, 2.8, 1.4).mesh())),
-                    MeshMaterial3d(mat_wall_stone.clone()),
-                    Transform::from_translation(cell.world_pos + pillar_offset)
-                        .with_rotation(rot * Quat::from_rotation_y(-0.25)),
+                    Transform::from_translation(cell.world_pos + pillar_offset),
                     RigidBody::Static,
                     Collider::cuboid(1.4, 2.8, 1.4),
                 ));
-
-                let crystal_offset = rot * Vec3::new(-half_tile + 1.1, 1.3, -half_tile + 1.1);
-                commands.spawn((
-                    Mesh3d(meshes.add(Cone::new(0.22, 0.75).mesh())),
-                    MeshMaterial3d(mat_geode_glow.clone()),
-                    Transform::from_translation(cell.world_pos + crystal_offset),
-                    PointLight {
-                        color: Color::srgb(0.17, 0.91, 0.85),
-                        intensity: 15000.0,
-                        range: 12.0,
-                        shadows_enabled: false,
-                        ..default()
-                    },
-                ));
             }
             CanonicalPiece::SolidPillar => {
-
-                let base_pos = cell.world_pos + Vec3::new(0.0, 0.8, 0.0);
+                let handle = registry.load_scene(&asset_server, "tile_solid_pillar");
                 commands.spawn((
+                    Name::new("DungeonTile_SolidPillar"),
+                    SceneRoot(handle),
+                    Transform::from_translation(cell.world_pos),
                     CavernObstacle,
                     ObstacleShape::Cuboid {
                         half_extents: Vec3::new(
                             config.tile_size * 0.5,
-                            0.8,
-                            config.tile_size * 0.5,
-                        ),
-                    },
-                    Mesh3d(meshes.add(Cuboid::new(config.tile_size, 1.6, config.tile_size).mesh())),
-                    MeshMaterial3d(mat_wall_moss.clone()),
-                    Transform::from_translation(base_pos),
-                    RigidBody::Static,
-                    Collider::cuboid(config.tile_size, 1.6, config.tile_size),
-                ));
-
-                let upper_pos = cell.world_pos + Vec3::new(0.0, 3.2, 0.0);
-                commands.spawn((
-                    CavernObstacle,
-                    ObstacleShape::Cuboid {
-                        half_extents: Vec3::new(
-                            config.tile_size * 0.46,
                             1.6,
-                            config.tile_size * 0.46,
+                            config.tile_size * 0.5,
                         ),
                     },
-                    Mesh3d(meshes.add(
-                        Cuboid::new(config.tile_size * 0.92, 3.2, config.tile_size * 0.92).mesh(),
-                    )),
-                    MeshMaterial3d(mat_wall_stone.clone()),
-                    Transform::from_translation(upper_pos),
                     RigidBody::Static,
-                    Collider::cuboid(config.tile_size * 0.92, 3.2, config.tile_size * 0.92),
+                    Collider::cuboid(config.tile_size, 3.2, config.tile_size),
                 ));
             }
             CanonicalPiece::SaddleCrossing => {
-
+                let handle = registry.load_scene(&asset_server, "tile_corridor_straight");
                 commands.spawn((
-                    Mesh3d(
-                        meshes.add(
-                            Plane3d::default()
-                                .mesh()
-                                .size(config.tile_size, config.tile_size),
-                        ),
-                    ),
-                    MeshMaterial3d(mat_floor_path.clone()),
+                    Name::new("DungeonTile_SaddleCrossing"),
+                    SceneRoot(handle),
                     Transform::from_translation(cell.world_pos),
                     RigidBody::Static,
                     Collider::half_space(Vec3::Y),

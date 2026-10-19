@@ -1,8 +1,10 @@
+pub mod asset_loader;
 pub mod flora;
 pub mod generator;
 pub mod modular_kit;
 pub mod telemetry;
 
+pub use asset_loader::{spawn_scene_asset, spawn_scene_asset_with_collider, SceneAssetRegistry};
 pub use generator::{
     CanonicalPiece, DungeonConfig, DungeonGenerator, PrimaryTile, ProceduralDungeon, RoomType,
 };
