@@ -802,85 +802,196 @@ fn test_architecture_zero_vision_loop_and_telemetry_pipeline() {
 
 #[test]
 fn test_architecture_zero_comments_policy() {
-    let mut files_to_check = Vec::new();
-    fn collect_rust_files(dir: &Path, files: &mut Vec<std::path::PathBuf>) {
+    let mut code_files = Vec::new();
+    fn collect_files(dir: &Path, files: &mut Vec<std::path::PathBuf>) {
         if let Ok(entries) = fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
-                    collect_rust_files(&path, files);
-                } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
-                    files.push(path);
+                    let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    if dir_name != "target" && dir_name != ".git" && !dir_name.ends_with(".egg-info") && dir_name != "__pycache__" {
+                        collect_files(&path, files);
+                    }
+                } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    if matches!(ext, "rs" | "wgsl" | "ron" | "py") {
+                        files.push(path);
+                    }
                 }
             }
         }
     }
 
-    collect_rust_files(Path::new("src"), &mut files_to_check);
+    collect_files(Path::new("src"), &mut code_files);
+    collect_files(Path::new("tests"), &mut code_files);
+    collect_files(Path::new("scripts"), &mut code_files);
+    collect_files(Path::new("assets/shaders"), &mut code_files);
+    collect_files(Path::new("assets/data"), &mut code_files);
+    collect_files(Path::new("agent-harness"), &mut code_files);
 
     let mut violations = Vec::new();
 
-    for file_path in files_to_check {
+    for file_path in code_files {
         let content = fs::read_to_string(&file_path)
             .unwrap_or_else(|_| panic!("Failed to read file: {:?}", file_path));
+        let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
         let chars: Vec<char> = content.chars().collect();
         let mut i = 0;
         let n = chars.len();
-        let mut in_string = false;
         let mut line_number = 1;
 
-        while i < n {
-            if chars[i] == '\n' {
-                line_number += 1;
-            }
+        if ext == "py" {
+            let mut in_single_quote = false;
+            let mut in_double_quote = false;
+            let mut in_triple_single = false;
+            let mut in_triple_double = false;
 
-            if in_string {
-                if chars[i] == '\\' && i + 1 < n {
-                    i += 2;
-                    continue;
+            while i < n {
+                if chars[i] == '\n' {
+                    line_number += 1;
+                    if in_single_quote {
+                        in_single_quote = false;
+                    }
+                    if in_double_quote {
+                        in_double_quote = false;
+                    }
                 }
-                if chars[i] == '"' {
-                    in_string = false;
-                }
-                i += 1;
-                continue;
-            }
 
-            if chars[i] == '"' {
-                in_string = true;
-                i += 1;
-                continue;
-            }
-
-            if chars[i] == '\'' && i + 2 < n && chars[i + 2] == '\'' {
-                i += 3;
-                continue;
-            }
-
-            if i + 1 < n && chars[i] == '/' && chars[i + 1] == '/' {
-                violations.push(format!("{}:{}: Line comment detected", file_path.display(), line_number));
-                while i < n && chars[i] != '\n' {
-                    i += 1;
-                }
-                continue;
-            }
-
-            if i + 1 < n && chars[i] == '/' && chars[i + 1] == '*' {
-                violations.push(format!("{}:{}: Block comment detected", file_path.display(), line_number));
-                i += 2;
-                while i + 1 < n && !(chars[i] == '*' && chars[i + 1] == '/') {
-                    if chars[i] == '\n' {
-                        line_number += 1;
+                if in_triple_single {
+                    if i + 2 < n && chars[i] == '\'' && chars[i + 1] == '\'' && chars[i + 2] == '\'' {
+                        in_triple_single = false;
+                        i += 3;
+                        continue;
                     }
                     i += 1;
+                    continue;
                 }
-                if i + 1 < n {
-                    i += 2;
-                }
-                continue;
-            }
 
-            i += 1;
+                if in_triple_double {
+                    if i + 2 < n && chars[i] == '"' && chars[i + 1] == '"' && chars[i + 2] == '"' {
+                        in_triple_double = false;
+                        i += 3;
+                        continue;
+                    }
+                    i += 1;
+                    continue;
+                }
+
+                if in_single_quote {
+                    if chars[i] == '\\' && i + 1 < n {
+                        i += 2;
+                        continue;
+                    }
+                    if chars[i] == '\'' {
+                        in_single_quote = false;
+                    }
+                    i += 1;
+                    continue;
+                }
+
+                if in_double_quote {
+                    if chars[i] == '\\' && i + 1 < n {
+                        i += 2;
+                        continue;
+                    }
+                    if chars[i] == '"' {
+                        in_double_quote = false;
+                    }
+                    i += 1;
+                    continue;
+                }
+
+                if i + 2 < n && chars[i] == '\'' && chars[i + 1] == '\'' && chars[i + 2] == '\'' {
+                    violations.push(format!("{}:{}: Docstring or triple-quoted string detected", file_path.display(), line_number));
+                    in_triple_single = true;
+                    i += 3;
+                    continue;
+                }
+
+                if i + 2 < n && chars[i] == '"' && chars[i + 1] == '"' && chars[i + 2] == '"' {
+                    violations.push(format!("{}:{}: Docstring or triple-quoted string detected", file_path.display(), line_number));
+                    in_triple_double = true;
+                    i += 3;
+                    continue;
+                }
+
+                if chars[i] == '\'' {
+                    in_single_quote = true;
+                    i += 1;
+                    continue;
+                }
+
+                if chars[i] == '"' {
+                    in_double_quote = true;
+                    i += 1;
+                    continue;
+                }
+
+                if chars[i] == '#' {
+                    violations.push(format!("{}:{}: Python comment detected", file_path.display(), line_number));
+                    while i < n && chars[i] != '\n' {
+                        i += 1;
+                    }
+                    continue;
+                }
+
+                i += 1;
+            }
+        } else {
+            let mut in_string = false;
+
+            while i < n {
+                if chars[i] == '\n' {
+                    line_number += 1;
+                }
+
+                if in_string {
+                    if chars[i] == '\\' && i + 1 < n {
+                        i += 2;
+                        continue;
+                    }
+                    if chars[i] == '"' {
+                        in_string = false;
+                    }
+                    i += 1;
+                    continue;
+                }
+
+                if chars[i] == '"' {
+                    in_string = true;
+                    i += 1;
+                    continue;
+                }
+
+                if chars[i] == '\'' && i + 2 < n && chars[i + 2] == '\'' {
+                    i += 3;
+                    continue;
+                }
+
+                if i + 1 < n && chars[i] == '/' && chars[i + 1] == '/' {
+                    violations.push(format!("{}:{}: Line comment detected", file_path.display(), line_number));
+                    while i < n && chars[i] != '\n' {
+                        i += 1;
+                    }
+                    continue;
+                }
+
+                if i + 1 < n && chars[i] == '/' && chars[i + 1] == '*' {
+                    violations.push(format!("{}:{}: Block comment detected", file_path.display(), line_number));
+                    i += 2;
+                    while i + 1 < n && !(chars[i] == '*' && chars[i + 1] == '/') {
+                        if chars[i] == '\n' {
+                            line_number += 1;
+                        }
+                        i += 1;
+                    }
+                    if i + 1 < n {
+                        i += 2;
+                    }
+                    continue;
+                }
+
+                i += 1;
+            }
         }
     }
 

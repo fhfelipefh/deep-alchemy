@@ -4,7 +4,6 @@ import math
 import os
 from mathutils import Vector, Matrix, Euler
 
-# Clear all objects in the current scene
 for obj in bpy.data.objects:
     bpy.data.objects.remove(obj, do_unlink=True)
 for mesh in bpy.data.meshes:
@@ -40,7 +39,6 @@ mat_canvas = create_mat("M_Canvas", (0.65, 0.58, 0.45, 1.0), roughness=0.9)
 mat_hat = create_mat("M_Hat", (0.28, 0.18, 0.12, 1.0), roughness=0.7)
 mat_hat_band = create_mat("M_HatBand", (0.1, 0.08, 0.08, 1.0), roughness=0.5)
 
-# 1. Create Armature
 armature_data = bpy.data.armatures.new("Armature_Player")
 armature_obj = bpy.data.objects.new("Armature_Player", armature_data)
 bpy.context.collection.objects.link(armature_obj)
@@ -74,7 +72,6 @@ head_bone.head = (0, 0, 1.65)
 head_bone.tail = (0, 0, 1.95)
 head_bone.parent = neck
 
-# Arms
 shoulder_l = eb.new("UpperArm.L")
 shoulder_l.head = (0.22, 0, 1.50)
 shoulder_l.tail = (0.48, 0, 1.22)
@@ -105,7 +102,6 @@ hand_r.head = (-0.68, 0, 0.95)
 hand_r.tail = (-0.75, 0, 0.85)
 hand_r.parent = forearm_r
 
-# Legs
 thigh_l = eb.new("Thigh.L")
 thigh_l.head = (0.15, 0, 0.9)
 thigh_l.tail = (0.16, 0, 0.48)
@@ -164,7 +160,6 @@ def make_cylinder(name, radius, depth, loc, rot, mat, parent=None, bone_name=Non
             obj.parent_bone = bone_name
     return obj
 
-# 2. Body Meshes
 torso = make_box("Player_Torso", (0.42, 0.28, 0.65), (0, 0, 1.25), mat_coat, armature_obj, "Chest")
 vest = make_box("Player_Vest", (0.38, 0.26, 0.50), (0, 0.02, 1.25), mat_vest, armature_obj, "Chest")
 belt = make_box("Player_Belt", (0.44, 0.30, 0.10), (0, 0, 0.92), mat_leather, armature_obj, "Spine")
@@ -196,7 +191,6 @@ leg_up_r = make_cylinder("LegUp_R", 0.09, 0.45, (-0.16, 0, 0.68), (0, 0, 0), mat
 leg_low_r = make_cylinder("LegLow_R", 0.08, 0.40, (-0.16, 0, 0.30), (0, 0, 0), mat_pants, armature_obj, "Shin.R")
 boot_r = make_box("Boot_R", (0.12, 0.24, 0.18), (-0.16, 0.04, 0.09), mat_boots, armature_obj, "Foot.R")
 
-# 3. Head & Fedora Hat (Child node tagged "Head_Hat" for RenderLayer 1)
 bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=12, radius=0.14, location=(0, 0, 1.76))
 head_face = bpy.context.active_object
 head_face.name = "Head_Face"
@@ -222,7 +216,6 @@ bpy.ops.mesh.primitive_torus_add(major_radius=0.05, minor_radius=0.015, location
 goggle_r = bpy.context.active_object
 goggle_r.data.materials.append(mat_brass)
 
-# Join head & hat parts into "Head_Hat"
 bpy.ops.object.select_all(action='DESELECT')
 head_face.select_set(True)
 hat_brim.select_set(True)
@@ -238,7 +231,6 @@ head_hat.parent = armature_obj
 head_hat.parent_type = 'BONE'
 head_hat.parent_bone = "Head"
 
-# Smooth shading
 for obj in bpy.data.objects:
     if obj.type == 'MESH':
         for poly in obj.data.polygons:

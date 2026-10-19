@@ -1,34 +1,3 @@
-"""
-Masterwork Procedural 3D Cavern Grotto Generator - Anti-Low-Poly & High Geometry Fidelity Edition
-Executes inside Blender 4.5 background mode.
-Generates assets/models/cavern_kit.glb adhering strictly to the Art Reference Directives
-and Anti-Low-Poly Geometric Constraints:
-
-1. Subdivisão e Suavização de Superfícies (Proibição de BoxGeometry, ConeGeometry e Flat Shading)
-   - Todas as rochas e paredes geradas a partir de Icosaedros subdivididos (subdivisions=4) ou grids de alta densidade.
-   - computeVertexNormals e use_smooth = True em 100% das malhas orgânicas.
-   - Deformação de vértices com ruído contínuo tridimensional multi-escala (Perlin/Simplex/Harmônico).
-   - Musgo integrado lendo a normal da superfície (Normal_Z > 0.55).
-
-2. Cogumelos da Direita e Separação de Bounding Box (Zero Colisão)
-   - Modelagem por Revolução (LatheGeometry: 36 segmentos radiais x 20 anéis) para chapéus côncavos com cavidade inferior.
-   - Caules curvos contínuos (TubeGeometry / Spline: 24 radiais x 24 longitudinais com flare basal).
-   - Raio proporcional reduzido para não dominar a cena.
-   - Coordenadas afastadas para trás e para a direita (X >= 4.1, Y >= 2.95), garantindo > 1.6m de folga da Bounding Box do banco.
-
-3. Anfiteatro Contínuo, Teto Elevado e Terreno Sinuoso
-   - Remoção completa dos prismas/cubos no horizonte.
-   - Parede de anfiteatro contínua e alta (Z até 18.0..22.0) envolvendo a lagoa em formato de ferradura.
-   - Teto da caverna elevado para encobrir totalmente a origem da cachoeira (Z = 17.5) e fechar o fundo preto.
-   - Estalactites orgânicas alongadas (24 radiais x 24 anéis) com afinamento exponencial suave e leve curvatura.
-   - Terreno subdividido (140x140) com relevo ondulado nas laterais e contorno de terra batida sinuoso/meandrado.
-
-COORDINATE MAPPING (Blender to Bevy glTF):
-Bevy camera is at (0, 1.75, 0) looking towards -Z.
-Blender +Y exports to glTF -Z (Forward in front of camera!).
-Blender -Y exports to glTF +Z (Behind camera).
-Blender Z exports to Bevy Y (Up).
-"""
 import bpy
 import bmesh
 import math
@@ -36,7 +5,6 @@ import random
 import os
 from mathutils import Vector, Matrix, Euler
 
-# Reset entire Blender scene
 for obj in list(bpy.data.objects):
     bpy.data.objects.remove(obj, do_unlink=True)
 for mesh in list(bpy.data.meshes):
@@ -69,12 +37,11 @@ def create_pbr_material(name, base_color, roughness=0.8, metallic=0.0, emission=
                 bsdf.inputs["Emission Strength"].default_value = emission_strength
     return mat
 
-# --- Color Palette strictly matching Concept Art ---
 mat_rock_shadow = create_pbr_material("M_Rock_Shadow", (0.11, 0.15, 0.19), roughness=0.90)
 mat_rock_lit = create_pbr_material("M_Rock_Lit", (0.22, 0.30, 0.35), roughness=0.80)
-mat_cavern_moss = create_pbr_material("M_Cavern_Moss", (0.10, 0.46, 0.16), roughness=0.86) # Velvet emerald moss #246e34
+mat_cavern_moss = create_pbr_material("M_Cavern_Moss", (0.10, 0.46, 0.16), roughness=0.86)
 mat_cavern_vine = create_pbr_material("M_Cavern_Vine", (0.16, 0.50, 0.22), roughness=0.75)
-mat_ground_path = create_pbr_material("M_Ground_Path", (0.15, 0.08, 0.03), roughness=0.95) # Deep rich chocolate earth #3d1f0c
+mat_ground_path = create_pbr_material("M_Ground_Path", (0.15, 0.08, 0.03), roughness=0.95)
 mat_ground_grass = create_pbr_material("M_Ground_Grass", (0.08, 0.28, 0.13), roughness=0.90)
 mat_fine_rim = create_pbr_material("M_Fine_Stone_Rim", (0.22, 0.24, 0.26), roughness=0.75)
 mat_river_pebble = create_pbr_material("M_River_Pebble", (0.32, 0.34, 0.36), roughness=0.65)
@@ -83,7 +50,6 @@ mat_angular_rock = create_pbr_material("M_Angular_Rock", (0.20, 0.23, 0.26), rou
 mat_rock_highlight = create_pbr_material("M_Rock_Highlight", (0.28, 0.38, 0.45), roughness=0.75)
 mat_stone_slab = create_pbr_material("M_Stone_Slab", (0.22, 0.26, 0.30), roughness=0.82)
 
-# Flora: Left Side (Vibrant Cyan Parasol Mushrooms, Gills, Broad Leaves, Glowing Stalks)
 mat_shroom_pale_cap = create_pbr_material("M_Shroom_Pale_Cap", (0.05, 0.88, 0.86), roughness=0.20, emission=(0.06, 0.95, 0.92), emission_strength=2.6)
 mat_shroom_dots = create_pbr_material("M_Shroom_Dots", (0.85, 0.98, 1.0), roughness=0.20, emission=(0.80, 0.98, 1.0), emission_strength=2.2)
 mat_shroom_gills = create_pbr_material("M_Shroom_Gills", (0.05, 0.72, 0.78), roughness=0.30, emission=(0.08, 0.84, 0.88), emission_strength=2.2)
@@ -91,7 +57,6 @@ mat_shroom_stem = create_pbr_material("M_Shroom_Stem", (0.72, 0.84, 0.80), rough
 mat_broad_leaf = create_pbr_material("M_Broad_Leaf", (0.14, 0.48, 0.20), roughness=0.65)
 mat_glowing_tip = create_pbr_material("M_Glowing_Tip", (0.20, 0.95, 0.92), roughness=0.20, emission=(0.20, 0.98, 0.95), emission_strength=3.0)
 
-# Flora: Right Side (Intense Cyan/Turquoise Lathe Mushrooms, Tall Grass, Glowing Bulbs)
 mat_shroom_vibrant_cap = create_pbr_material("M_Shroom_Vibrant_Cap", (0.04, 0.88, 0.90), roughness=0.18, emission=(0.06, 0.96, 0.94), emission_strength=2.6)
 mat_tall_grass = create_pbr_material("M_Tall_Grass", (0.16, 0.50, 0.22), roughness=0.72)
 mat_glow_bulb = create_pbr_material("M_Glow_Bulb", (0.15, 0.95, 0.90), roughness=0.15, emission=(0.15, 0.98, 0.92), emission_strength=3.0)
@@ -103,46 +68,35 @@ mat_moss_wet = create_pbr_material("M_Wet_Moss", (0.06, 0.30, 0.12), roughness=0
 mat_moss_lime = create_pbr_material("M_Lime_Moss", (0.22, 0.62, 0.18), roughness=0.84)
 mat_moss_fringes = create_pbr_material("M_Moss_Fringes", (0.11, 0.40, 0.16), roughness=0.88)
 
-# Waterfall Foam Billows & Water Ripples
 mat_water_foam_billow = create_pbr_material("M_Water_Foam_Billow", (0.92, 0.98, 1.0), roughness=0.20, emission=(0.60, 0.90, 1.0), emission_strength=1.5)
 mat_water_ripple_ring = create_pbr_material("M_Water_Ripple_Ring", (0.40, 0.92, 0.98), roughness=0.15, emission=(0.35, 0.90, 0.98), emission_strength=1.8, alpha=0.85)
 
-# Ceiling Lichen
 mat_ceiling_lichen = create_pbr_material("M_Ceiling_Lichen", (0.20, 0.92, 0.88), roughness=0.15, emission=(0.18, 0.95, 0.90), emission_strength=2.8)
 
-# ==============================================================================
-# DETERMINISTIC CONTINUOUS MULTI-SCALE 3D NOISE FUNCTION
-# ==============================================================================
 def continuous_noise_3d(x, y, z):
-    """
-    Smooth, band-limited multi-harmonic 3D noise for organic surface displacement.
-    Guarantees C1 continuity without polygonal creases.
-    """
+
     n1 = math.sin(x * 1.35 + y * 1.82 + z * 0.91)
     n2 = math.cos(x * 2.71 - y * 1.43 + z * 2.15)
     n3 = math.sin(x * 4.95 + y * 3.78 - z * 3.12)
     n4 = math.cos(x * 9.15 - y * 8.21 + z * 7.43)
     return (n1 * 0.48 + n2 * 0.28 + n3 * 0.16 + n4 * 0.08)
 
-# ==============================================================================
-# EXACT MATHEMATICAL TERRAIN SURFACE HEIGHT FUNCTION
-# ==============================================================================
 def get_terrain_surface_z(x, y):
     lake_center_x = 0.0
     lake_center_y = 8.5
     lake_radius = 5.2
     dist_lake = math.sqrt((x - lake_center_x)**2 + (y - lake_center_y)**2)
-    
+
     if dist_lake < lake_radius:
         depth_factor = 1.0 - (dist_lake / lake_radius)
         return -0.75 * depth_factor
     elif dist_lake < lake_radius + 2.0:
         return 0.05
     elif y < 5.2 and abs(x) < 2.4:
-        # Smooth beaten brown dirt path
+
         return 0.04
     else:
-        # Rolling lateral grassy banks with organic wave relief
+
         dist_side = max(0.0, abs(x) - 2.4)
         bank_h = min(1.85, dist_side * 0.35)
         wave_relief = (
@@ -152,53 +106,41 @@ def get_terrain_surface_z(x, y):
         )
         return 0.05 + bank_h + wave_relief
 
-# ==============================================================================
-# 1. HIGH-VAULTED CONTINUOUS CAVERN ROOF & ARCH (ENCOBRE TOTALMENTE A CACHOEIRA)
-# ==============================================================================
 def get_cavern_ceiling_z(x, y):
-    """
-    Mathematical elevation function for the cavern ceiling rock vault.
-    Guarantees exact matching between ceiling mesh and stalactite anchoring.
-    """
+
     wall_dist = 9.2 + max(0.0, y - 2.0) * 0.35
     sin_ang = max(-0.99, min(0.99, x / max(0.01, wall_dist)))
     angle = math.asin(sin_ang)
     is_over_waterfall = (abs(angle) < 0.35 and y > 7.0)
-    
+
     if y >= 12.5:
-        # Rear rock vault meeting the back cliff wall
+
         curr_z = 18.2 - abs(math.sin(angle)) * 4.0
     elif is_over_waterfall:
-        # Vault arches cleanly over the waterfall top (Z = 17.5) at Z = 18.2..18.6
+
         y_blend = min(1.0, max(0.0, (y - 7.0) / 4.8))
         peak_z = 18.5 - (abs(angle) / 0.35) * 1.5
         curr_z = 10.5 + y_blend * (peak_z - 10.5)
     else:
-        # Framing cavern arch: opens high and wide, eliminating claustrophobia
+
         arch_dip = math.cos(angle * 1.15) * 1.8
         base_z = 6.2 + arch_dip + max(0.0, y) * 0.28
         curr_z = max(4.5, base_z)
-        
+
     n_disp = continuous_noise_3d(angle * 3.5, y * 0.45, curr_z * 0.35) * 0.38
     return curr_z + n_disp
 
 def build_visible_cavern_roof_and_arch():
-    """
-    Creates a fractured subterranean rock vault:
-    - Arches over the waterfall origin (Z = 17.5, Y = 10.8) at Z = 18.2..18.6, encasing it seamlessly.
-    - Connects directly to the solid waterfall back cliff wall, sealing off black voids.
-    - Dips down in the foreground to frame the camera in an authentic fractured rock arch.
-    - Uses FLAT SHADING (poly.use_smooth = False) and faceted planar noise for genuine rock plates.
-    """
+
     bm = bmesh.new()
     segments_u = 48
     segments_v = 36
-    
+
     grid = []
     for iv in range(segments_v + 1):
         v_frac = iv / segments_v
         curr_y = -4.5 + v_frac * 18.0
-        
+
         row = []
         for iu in range(segments_u + 1):
             u_frac = iu / segments_u
@@ -206,16 +148,15 @@ def build_visible_cavern_roof_and_arch():
             wall_dist = 9.2 + max(0.0, curr_y - 2.0) * 0.35
             curr_x = math.sin(angle) * wall_dist
             base_z = get_cavern_ceiling_z(curr_x, curr_y)
-            
-            # Planar faceted plate noise
+
             facet_snap = math.floor((curr_x * 0.45 + curr_y * 0.35) * 2.0) * 0.18
             n_disp = continuous_noise_3d(curr_x * 0.35, curr_y * 0.35, base_z * 0.25) * 0.32
             curr_z = base_z + facet_snap + n_disp
-            
+
             v = bm.verts.new((curr_x, curr_y, curr_z))
             row.append(v)
         grid.append(row)
-        
+
     bm.verts.ensure_lookup_table()
     for iv in range(segments_v):
         for iu in range(segments_u):
@@ -224,28 +165,27 @@ def build_visible_cavern_roof_and_arch():
             v3 = grid[iv + 1][iu + 1]
             v4 = grid[iv + 1][iu]
             f = bm.faces.new((v1, v2, v3, v4))
-            
+
             center = f.calc_center_median()
             norm = f.normal
             if center.z > 14.0 and abs(center.x) < 3.8:
-                f.material_index = 1 # Lit rock near upper cleft
+                f.material_index = 1
             elif norm.z > 0.50 and center.z < 8.0:
-                f.material_index = 2 # Top velvet moss on ledges
+                f.material_index = 2
             else:
-                f.material_index = 0 # Deep shadow cavern rock
-                
+                f.material_index = 0
+
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     mesh = bpy.data.meshes.new("Cavern_Visible_Arch_Mesh")
     obj = bpy.data.objects.new("Cavern_Visible_Arch", mesh)
     bpy.context.collection.objects.link(obj)
     bm.to_mesh(mesh)
     bm.free()
-    
-    # FLAT SHADING FOR CRACKING FACET CONTRAST & SOBEL INK LINES!
+
     for p in mesh.polygons:
         p.use_smooth = False
     mesh.update()
-    
+
     obj.data.materials.append(mat_rock_shadow)
     obj.data.materials.append(mat_rock_lit)
     obj.data.materials.append(mat_cavern_moss)
@@ -253,41 +193,30 @@ def build_visible_cavern_roof_and_arch():
 
 build_visible_cavern_roof_and_arch()
 
-
-# ==============================================================================
-# 2. ELONGATED ORGANIC STALACTITES (EXPONENTIAL TAPER + TOP PIVOT + EMBEDDED IN CEILING)
-# ==============================================================================
 def spawn_organic_stalactite(x, y, z_top, height=2.8, radius=0.42, tilt=(0.0, 0.0), name="OrganicStalactite"):
-    """
-    Spawns chiseled, multi-faceted mineral stalactites matching concept art:
-    - 7-sided angular crystalline prism for crisp cel-shaded faceting.
-    - Fluted longitudinal ridges and stepped diameter drops along the shaft.
-    - Flared root attachment collar embedding cleanly inside the ceiling vault rock.
-    - Sharp crystalline chiseled tip.
-    - 100% FLAT SHADING (poly.use_smooth = False) allowing Sobel ink lines and sharp rim lighting.
-    """
+
     bm = bmesh.new()
     rings = 14
     radials = 7
-    
+
     ring_verts = []
     for ir in range(rings + 1):
         t = ir / rings
-        # Stepped geological mineral growth steps
+
         step_ring = math.floor(t * 3.5) / 3.5
         stepped_drop = 1.0 - (t - step_ring) * 0.22
         flare = ((1.0 - t) ** 3.0) * 0.55 * radius
         exp_taper = ((1.0 - t) ** 1.30)
         curr_r = max(0.016, (radius * exp_taper * stepped_drop) + flare)
-        
+
         curr_x = tilt[0] * (t ** 1.25) + math.sin(t * 5.2) * 0.025
         curr_y = tilt[1] * (t ** 1.25) + math.cos(t * 5.2) * 0.025
         curr_z = -t * height
-        
+
         row = []
         for ia in range(radials):
             ang = 2.0 * math.pi * ia / radials
-            # Angular longitudinal fluting
+
             r_facet = curr_r * (1.0 + 0.12 * math.cos(ang * 3.0) + 0.05 * math.sin(t * 8.0))
             vx = curr_x + math.cos(ang) * r_facet
             vy = curr_y + math.sin(ang) * r_facet
@@ -295,9 +224,9 @@ def spawn_organic_stalactite(x, y, z_top, height=2.8, radius=0.42, tilt=(0.0, 0.
             vert = bm.verts.new((vx, vy, vz))
             row.append(vert)
         ring_verts.append(row)
-        
+
     bm.verts.ensure_lookup_table()
-    
+
     for ir in range(rings):
         t = (ir + 0.5) / rings
         for ia in range(radials):
@@ -307,136 +236,118 @@ def spawn_organic_stalactite(x, y, z_top, height=2.8, radius=0.42, tilt=(0.0, 0.
             v3 = ring_verts[ir + 1][ia_next]
             v4 = ring_verts[ir + 1][ia]
             face = bm.faces.new((v1, v2, v3, v4))
-            
-            # Directional facet coloring
+
             if t < 0.16:
-                face.material_index = 2 # M_Cavern_Moss at ceiling attachment collar
+                face.material_index = 2
             elif math.cos(ia * 2.0 * math.pi / radials) > 0.10:
-                face.material_index = 1 # M_Rock_Lit on directional face
+                face.material_index = 1
             else:
-                face.material_index = 0 # M_Rock_Shadow in crevice
-                
-    # Pointed tip cap at bottom (local z = -height)
+                face.material_index = 0
+
     tip_center = bm.verts.new((tilt[0] + 0.008, tilt[1], -height))
     for ia in range(radials):
         ia_next = (ia + 1) % radials
         face = bm.faces.new((ring_verts[rings][ia], ring_verts[rings][ia_next], tip_center))
         face.material_index = 0
-        
-    # Top ceiling attachment cap at local z = 0.0
+
     top_center = bm.verts.new((0.0, 0.0, 0.0))
     for ia in range(radials):
         ia_next = (ia + 1) % radials
         face = bm.faces.new((ring_verts[0][ia_next], ring_verts[0][ia], top_center))
         face.material_index = 2
-        
+
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     trans_mat = Matrix.Translation(Vector((x, y, z_top)))
     bm.transform(trans_mat)
-    
+
     mesh = bpy.data.meshes.new(f"{name}_Mesh")
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.collection.objects.link(obj)
     bm.to_mesh(mesh)
     bm.free()
-    
-    # FLAT SHADING FOR CRACKING FACET CONTRAST & SOBEL INK LINES!
+
     for poly in mesh.polygons:
         poly.use_smooth = False
     mesh.update()
-    
+
     obj.data.materials.append(mat_rock_shadow)
     obj.data.materials.append(mat_rock_lit)
     obj.data.materials.append(mat_cavern_moss)
     return obj
 
 visible_stalactite_targets = [
-    # Left Fissure Cluster: Massive anchor, flanking daggers and fine needles
-    (-6.2, 4.2, 2.65, 0.74, (0.09, -0.07)),  # Colossal ancient stalactite (deep drop to z=2.65)
-    (-5.4, 3.2, 3.85, 0.46, (0.05, 0.04)),   # Medium fluted body
-    (-6.6, 5.1, 5.60, 0.16, (0.02, -0.02)),  # Slender needle (soda straw)
-    (-5.8, 2.1, 4.40, 0.38, (0.04, -0.03)),  # Intermediate column
-    (-4.9, 4.6, 4.90, 0.28, (-0.03, 0.05)),  # Slender satellite
-    (-4.4, 6.4, 3.30, 0.58, (-0.06, 0.08)),  # Long dagger flanking waterfall margin
-    (-4.1, 7.1, 5.75, 0.18, (0.03, -0.02)),  # Delicate straw spike
-    (-5.7, 0.6, 4.10, 0.44, (0.06, -0.04)),  # Mid canyon flank
-    (-6.3, 1.4, 5.40, 0.20, (-0.02, 0.03)),  # Fine straw spike
-    (-5.1, -1.0, 3.50, 0.52, (0.05, 0.03)),  # Foreground overhang stalactite
-    (-4.4, -1.6, 5.25, 0.17, (-0.03, 0.02)), # Foreground needle
 
-    # Right Fissure Cluster: Asymmetrical, unique heights and widths
-    (6.8, 2.2, 2.80, 0.70, (-0.08, 0.06)),   # Dominant colossal column on right
-    (5.9, 3.5, 4.20, 0.42, (-0.04, -0.05)),  # Fluted mid body
-    (6.4, 4.1, 5.80, 0.15, (0.02, 0.01)),    # Slender needle (soda straw)
-    (5.3, 4.9, 3.60, 0.50, (0.04, -0.07)),   # Heavy mineral spike
-    (4.7, 5.8, 5.50, 0.22, (-0.02, 0.04)),   # High delicate needle
-    (4.2, 7.4, 3.40, 0.55, (-0.07, 0.06)),   # Long dagger framing right waterfall
-    (3.8, 8.2, 5.65, 0.18, (0.01, -0.03)),   # Waterfall margin needle
-    (5.8, 0.9, 4.50, 0.36, (-0.04, 0.03)),   # Canyon mid flank
-    (6.5, 0.2, 5.35, 0.20, (0.03, -0.02)),   # Flank needle
-    (5.4, -0.9, 3.35, 0.56, (-0.05, 0.04)),  # Foreground overhang pillar
-    (4.6, -1.5, 5.15, 0.19, (0.02, -0.03)),  # Foreground needle
+    (-6.2, 4.2, 2.65, 0.74, (0.09, -0.07)),
+    (-5.4, 3.2, 3.85, 0.46, (0.05, 0.04)),
+    (-6.6, 5.1, 5.60, 0.16, (0.02, -0.02)),
+    (-5.8, 2.1, 4.40, 0.38, (0.04, -0.03)),
+    (-4.9, 4.6, 4.90, 0.28, (-0.03, 0.05)),
+    (-4.4, 6.4, 3.30, 0.58, (-0.06, 0.08)),
+    (-4.1, 7.1, 5.75, 0.18, (0.03, -0.02)),
+    (-5.7, 0.6, 4.10, 0.44, (0.06, -0.04)),
+    (-6.3, 1.4, 5.40, 0.20, (-0.02, 0.03)),
+    (-5.1, -1.0, 3.50, 0.52, (0.05, 0.03)),
+    (-4.4, -1.6, 5.25, 0.17, (-0.03, 0.02)),
+
+    (6.8, 2.2, 2.80, 0.70, (-0.08, 0.06)),
+    (5.9, 3.5, 4.20, 0.42, (-0.04, -0.05)),
+    (6.4, 4.1, 5.80, 0.15, (0.02, 0.01)),
+    (5.3, 4.9, 3.60, 0.50, (0.04, -0.07)),
+    (4.7, 5.8, 5.50, 0.22, (-0.02, 0.04)),
+    (4.2, 7.4, 3.40, 0.55, (-0.07, 0.06)),
+    (3.8, 8.2, 5.65, 0.18, (0.01, -0.03)),
+    (5.8, 0.9, 4.50, 0.36, (-0.04, 0.03)),
+    (6.5, 0.2, 5.35, 0.20, (0.03, -0.02)),
+    (5.4, -0.9, 3.35, 0.56, (-0.05, 0.04)),
+    (4.6, -1.5, 5.15, 0.19, (0.02, -0.03)),
 ]
 
 for idx, (sx, sy, target_tip_z, sr, stilt) in enumerate(visible_stalactite_targets):
     ceiling_z = get_cavern_ceiling_z(sx, sy)
-    z_top = ceiling_z + 0.50  # 0.5m embedded inside rock vault!
+    z_top = ceiling_z + 0.50
     sh = max(1.8, z_top - target_tip_z)
     spawn_organic_stalactite(sx, sy, z_top, height=sh, radius=sr, tilt=stilt, name=f"VisibleStalactite_{idx}")
 
-# ==============================================================================
-# 3. CONTINUOUS U-CANYON GROTTO WALLS & 3-TIER ROCK TERRACES
-# ==============================================================================
 def build_cyclopean_portal_arch():
-    """
-    Creates a monumental, hand-chiseled cyclopean rock gateway leading into the dungeon:
-    - Built from fractured bedrock pillars with chiseled facets (subdivided icospheres + planar cuts).
-    - Flanked on left (X=-2.7) and right (X=2.7) by massive, stepped stone buttresses.
-    - Overhead: Jagged rock keystone with hanging stone teeth, dripping vines, and a lush moss shelf.
-    - Embedded glowing cyan spores / crystal clusters dotting the fissures (matching concept_deep_cavern.png).
-    - 100% FLAT SHADING (poly.use_smooth = False).
-    """
-    # 1. Left and Right Massive Jamb Buttresses
+
     for side_sign, p_name in [(-1.0, "Portal_Pillar_Left"), (1.0, "Portal_Pillar_Right")]:
         cx = side_sign * 2.85
         cy = -4.35
-        
-        # Stack 4 heavy faceted angular blocks from z=0.5 to z=5.2
+
         num_blocks = 4
         for ib in range(num_blocks):
             bz = 0.65 + ib * 1.25
             rad = 1.15 - ib * 0.10
             scale_xyz = (1.20, 1.15, 0.75)
-            
+
             bm = bmesh.new()
             bmesh.ops.create_icosphere(bm, subdivisions=2, radius=rad)
-            
-            # Planar rock cleavage cuts
+
             for v in bm.verts:
                 p = v.co
                 dist = p.length
                 if dist > 0.0001:
                     norm = p.normalized()
                     n = continuous_noise_3d(norm.x * 2.5 + ib * 13, norm.y * 2.5, norm.z * 2.5)
-                    # Chiseled facets
+
                     facet_snap = 1.0 + (math.floor(n * 3.5) / 3.5) * 0.30
                     bottom_flat = 0.70 if p.z < -0.1 else 1.0
                     v.co = norm * (dist * facet_snap * bottom_flat)
                     v.co.x *= scale_xyz[0]
                     v.co.y *= scale_xyz[1]
                     v.co.z *= scale_xyz[2]
-                    
+
             trans_mat = Matrix.Translation((cx, cy, bz))
             bm.transform(trans_mat)
-            
+
             for f in bm.faces:
                 if f.normal.z > 0.44:
-                    f.material_index = 2 # M_Cavern_Moss on top shelf
+                    f.material_index = 2
                 elif f.normal.y > 0.15:
-                    f.material_index = 1 # M_Rock_Lit
+                    f.material_index = 1
                 else:
-                    f.material_index = 0 # M_Rock_Shadow
-                    
+                    f.material_index = 0
+
             bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
             b_mesh = bpy.data.meshes.new(f"{p_name}_Block_{ib}_Mesh")
             b_obj = bpy.data.objects.new(f"{p_name}_Block_{ib}", b_mesh)
@@ -449,8 +360,7 @@ def build_cyclopean_portal_arch():
             b_obj.data.materials.append(mat_rock_shadow)
             b_obj.data.materials.append(mat_rock_lit)
             b_obj.data.materials.append(mat_cavern_moss)
-            
-        # Embedded glowing cyan spores in the pillar crevices
+
         for isp in range(3):
             ang = isp * 1.8 + (0.5 if side_sign > 0 else -0.5)
             sp_x = cx + math.cos(ang) * 0.95
@@ -458,22 +368,20 @@ def build_cyclopean_portal_arch():
             sp_z = 0.8 + isp * 1.4
             spawn_wall_cyan_spores(sp_x, sp_y, sp_z, num_shrooms=4, name=f"{p_name}_Spores_{isp}")
 
-    # 2. Transverse Cyclopean Lintel & Jagged Arch Keystone (Faceted Angular Icosphere Blocks)
     span_blocks = 5
     for ispan in range(span_blocks):
-        t_span = (ispan - 2) / 2.0 # -1.0 to 1.0
+        t_span = (ispan - 2) / 2.0
         bx_center = t_span * 1.45
         by_center = -4.35
         bz_center = 4.25 + (1.0 - abs(t_span)) * 0.45
-        
+
         bm_b = bmesh.new()
         bmesh.ops.create_icosphere(bm_b, subdivisions=2, radius=1.0)
-        
-        # Scale and shape each interlocking stone slab
+
         sx = 0.95
         sy = 1.15
         sz = 0.85
-        
+
         for v in bm_b.verts:
             p = v.co
             dist = p.length
@@ -481,24 +389,24 @@ def build_cyclopean_portal_arch():
                 norm = p.normalized()
                 n = continuous_noise_3d(norm.x * 2.4 + ispan * 9, norm.y * 2.4, norm.z * 2.4)
                 facet_snap = 1.0 + (math.floor(n * 3.5) / 3.5) * 0.28
-                # Downward tooth on underside of arch
+
                 tooth = 0.35 if (p.z < -0.2 and abs(p.y) < 0.3) else 0.0
                 v.co = norm * (dist * facet_snap)
                 v.co.x *= sx
                 v.co.y *= sy
                 v.co.z = (v.co.z - tooth) * sz
-                
+
         trans_mat = Matrix.Translation((bx_center, by_center, bz_center))
         bm_b.transform(trans_mat)
-        
+
         for f in bm_b.faces:
             if f.normal.z > 0.42:
-                f.material_index = 2 # M_Cavern_Moss on top lintel ledge
+                f.material_index = 2
             elif f.normal.y > 0.15:
-                f.material_index = 1 # M_Rock_Lit
+                f.material_index = 1
             else:
-                f.material_index = 0 # M_Rock_Shadow
-                
+                f.material_index = 0
+
         bmesh.ops.recalc_face_normals(bm_b, faces=bm_b.faces)
         b_mesh = bpy.data.meshes.new(f"Portal_Lintel_Block_{ispan}_Mesh")
         b_obj = bpy.data.objects.new(f"Portal_Lintel_Block_{ispan}", b_mesh)
@@ -511,23 +419,12 @@ def build_cyclopean_portal_arch():
         b_obj.data.materials.append(mat_rock_shadow)
         b_obj.data.materials.append(mat_rock_lit)
         b_obj.data.materials.append(mat_cavern_moss)
-    
-    # 3. Hanging vines from the cyclopean lintel
+
     for vx, v_len in [(-1.2, 1.4), (-0.4, 2.1), (0.5, 1.8), (1.3, 1.2)]:
         spawn_hanging_vine(vx, -4.1, 3.4, length=v_len, segments=10, name=f"Portal_Vine_{vx}")
 
-
 def build_continuous_u_canyon_grotto_walls():
-    """
-    Unified Continuous Horseshoe Canyon & Amphitheater Walls:
-    - Stratified, faceted geological bedrock formation:
-      * Stacked horizontal strata tiers with sharp protruding shelves.
-      * Vertical crag buttresses and fissures with angular polygonal facets.
-      * 100% FLAT SHADING (poly.use_smooth = False) allowing Sobel ink lines along facets.
-      * Top shelf surfaces (normal.z > 0.40) covered in rich emerald velvet moss.
-      * Monumental cyclopean portal opening at the rear (Y = -4.5) flanked by heavy rock pillars
-        and framed by stepped rock corbels and hanging rock teeth.
-    """
+
     bm = bmesh.new()
     u_segs = 64
     v_segs = 28
@@ -536,9 +433,8 @@ def build_continuous_u_canyon_grotto_walls():
     for iu in range(u_segs + 1):
         u_frac = iu / u_segs
 
-        # Parameterize the continuous closed U-contour in (X, Y)
         if u_frac < 0.22:
-            # Segment 1: Left canyon wall from rear to lake margin
+
             t = u_frac / 0.22
             y0 = -4.5 + t * 10.0
             meander = math.sin(t * math.pi * 2.0) * 0.35 + continuous_noise_3d(-8.5, y0 * 0.4, 0.0) * 0.25
@@ -546,7 +442,7 @@ def build_continuous_u_canyon_grotto_walls():
             inward_nx = 1.0
             inward_ny = 0.0
         elif u_frac < 0.55:
-            # Segment 2: Horseshoe amphitheater curve around lake and BEHIND waterfall
+
             t = (u_frac - 0.22) / 0.33
             theta_0 = 1.92
             ang = -theta_0 + t * (2.0 * theta_0)
@@ -559,7 +455,7 @@ def build_continuous_u_canyon_grotto_walls():
             inward_nx = -math.sin(ang)
             inward_ny = -math.cos(ang)
         elif u_frac < 0.77:
-            # Segment 3: Right canyon wall from lake margin down to rear
+
             t = (u_frac - 0.55) / 0.22
             y0 = 5.5 - t * 10.0
             meander = math.sin(t * math.pi * 2.0) * 0.35 + continuous_noise_3d(8.5, y0 * 0.4, 0.0) * 0.25
@@ -567,7 +463,7 @@ def build_continuous_u_canyon_grotto_walls():
             inward_nx = -1.0
             inward_ny = 0.0
         else:
-            # Segment 4: Rear wall behind player closing from right to left
+
             t = (u_frac - 0.77) / 0.23
             x0 = 8.5 - t * 17.0
             meander = math.sin(t * math.pi) * 0.4
@@ -578,7 +474,6 @@ def build_continuous_u_canyon_grotto_walls():
         z_ground = get_terrain_surface_z(x0, y0) - 0.30
         z_ceil = get_cavern_ceiling_z(x0, y0) + 0.20
 
-        # Natural portal passage at rear wall
         if u_frac >= 0.77 and abs(x0) < 2.5:
             rel_x = x0 / 2.5
             arch_shape = math.sqrt(max(0.0, 1.0 - rel_x * rel_x))
@@ -597,19 +492,15 @@ def build_continuous_u_canyon_grotto_walls():
             v_frac = iv / v_segs
             curr_z = z_base + v_frac * h_total
 
-            # 1. Stepped geological strata shelves:
-            # Create discrete horizontal tiers every ~2.2m
             tier_phase = (curr_z % 2.2) / 2.2
             if tier_phase < 0.28:
                 shelf_disp = 0.65 * (1.0 - (tier_phase / 0.28))
             else:
                 shelf_disp = -0.12 * math.sin((tier_phase - 0.28) / 0.72 * math.pi)
 
-            # 2. Vertical columnar buttress protrusion:
             col_id = int(iu / 2)
             col_pillar = math.sin(col_id * 1.85) * 0.42 + math.cos(col_id * 3.4) * 0.28
 
-            # 3. Piecewise planar facet noise:
             facet_q = math.floor(curr_z * 0.6) * 0.4
             facet_noise = continuous_noise_3d(x0 * 0.5, y0 * 0.5, facet_q) * 0.35
 
@@ -639,12 +530,19 @@ def build_continuous_u_canyon_grotto_walls():
 
             norm = f.normal
             center = f.calc_center_median()
-            if norm.z > 0.42 and center.z < 12.0:
-                f.material_index = 2 # M_Cavern_Moss on horizontal terraced ledges
+            u_frac = iu / float(u_segs)
+
+            is_waterfall_backdrop = 0.22 <= u_frac <= 0.55 and center.y > 6.0 and center.z < 16.5
+            moss_noise = continuous_noise_3d(center.x * 0.45, center.y * 0.45, center.z * 0.45)
+
+            if is_waterfall_backdrop and (norm.z > 0.14 or moss_noise > -0.25 or (center.z < 11.0 and abs(center.x) < 4.8)):
+                f.material_index = 2
+            elif norm.z > 0.35 and center.z < 12.0:
+                f.material_index = 2
             elif norm.y < -0.2 and center.z > 6.0:
-                f.material_index = 1 # M_Rock_Lit near upper skylight
+                f.material_index = 1
             else:
-                f.material_index = 0 # M_Rock_Shadow (wet dark cavern stone)
+                f.material_index = 0
 
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     mesh = bpy.data.meshes.new("Continuous_U_Canyon_Walls_Mesh")
@@ -653,7 +551,6 @@ def build_continuous_u_canyon_grotto_walls():
     bm.to_mesh(mesh)
     bm.free()
 
-    # FLAT SHADING FOR CRACKING FACET CONTRAST & SOBEL INK LINES!
     for p in mesh.polygons:
         p.use_smooth = False
     mesh.update()
@@ -661,36 +558,28 @@ def build_continuous_u_canyon_grotto_walls():
     obj.data.materials.append(mat_rock_shadow)
     obj.data.materials.append(mat_rock_lit)
     obj.data.materials.append(mat_cavern_moss)
-    
+
     return obj
 
 build_continuous_u_canyon_grotto_walls()
 def build_waterfall_flank_cliffs():
-    """
-    Creates monumental 3D faceted rock cliff towers directly flanking the waterfall cascade:
-    - Left Cliff Tower: X in [-5.8, -2.8], Y in [9.0, 12.5], rising from Z=0 to Z=17.5.
-    - Right Cliff Tower: X in [2.8, 5.8], Y in [9.0, 12.5], rising from Z=0 to Z=17.5.
-    - Replaces flat quad cards with deep, multi-tiered stratified bedrock buttresses.
-    - Features lush velvet moss shelves, wet splash ledges, and cascading vines.
-    - 100% FLAT SHADING (poly.use_smooth = False).
-    """
+
     for side_sign, tower_name in [(-1.0, "Waterfall_Cliff_Tower_Left"), (1.0, "Waterfall_Cliff_Tower_Right")]:
         cx = side_sign * 4.65
         cy = 10.60
-        
-        # 5 stacked master tiers up to Z=17.5
+
         tiers_spec = [
-            (1.5, 3.2, 3.8, 3.2),    # Base plunge shelf
-            (4.8, 3.6, 3.4, 2.8),    # Lower gorge tier
-            (8.5, 4.0, 3.2, 2.6),    # Mid terrace
-            (12.6, 4.2, 3.0, 2.4),   # Upper cliff shelf
-            (16.5, 3.8, 2.8, 2.2),   # High crest connecting to vault
+            (1.5, 3.2, 3.8, 3.2),
+            (4.8, 3.6, 3.4, 2.8),
+            (8.5, 4.0, 3.2, 2.6),
+            (12.6, 4.2, 3.0, 2.4),
+            (16.5, 3.8, 2.8, 2.2),
         ]
-        
+
         for itier, (tz, th, tw, td) in enumerate(tiers_spec):
             bm = bmesh.new()
             bmesh.ops.create_icosphere(bm, subdivisions=2, radius=1.0)
-            
+
             for v in bm.verts:
                 p = v.co
                 dist = p.length
@@ -703,18 +592,20 @@ def build_waterfall_flank_cliffs():
                     v.co.x *= (tw * 0.5)
                     v.co.y *= (td * 0.5)
                     v.co.z *= (th * 0.5)
-                    
+
             trans_mat = Matrix.Translation((cx, cy, tz))
             bm.transform(trans_mat)
-            
+
             for f in bm.faces:
-                if f.normal.z > 0.42:
-                    f.material_index = 2 # M_Cavern_Moss on horizontal ledges
-                elif abs(f.normal.x) > 0.2 and f.normal.y < 0.0:
-                    f.material_index = 1 # M_Rock_Lit near waterfall spray
+                f_norm = f.normal
+                f_center = f.calc_center_median()
+                if f_norm.z > 0.22 or (abs(f_center.x) < 5.2 and f_norm.y < 0.2 and f_norm.z > 0.05):
+                    f.material_index = 2
+                elif abs(f_norm.x) > 0.2 and f_norm.y < 0.0:
+                    f.material_index = 1
                 else:
-                    f.material_index = 0 # M_Rock_Shadow in fissures
-                    
+                    f.material_index = 0
+
             bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
             t_mesh = bpy.data.meshes.new(f"{tower_name}_Tier_{itier}_Mesh")
             t_obj = bpy.data.objects.new(f"{tower_name}_Tier_{itier}", t_mesh)
@@ -727,28 +618,20 @@ def build_waterfall_flank_cliffs():
             t_obj.data.materials.append(mat_rock_shadow)
             t_obj.data.materials.append(mat_rock_lit)
             t_obj.data.materials.append(mat_cavern_moss)
-            
-        # Cascading vines on cliff face
+
         for ivine in range(3):
             vx = cx + (ivine - 1) * 0.85
             vy = cy - 1.25
             vz = 6.5 + ivine * 2.8
             spawn_hanging_vine(vx, vy, vz, length=2.2, segments=12, name=f"{tower_name}_Vine_{ivine}")
 
-
-# Organic Travertine Boulder Terraces flanking waterfall & canyon walls (Subdivided Icospheres + Noise)
 def spawn_organic_boulder(name, center_x, center_y, center_z, scale=(1.0, 1.0, 1.0), rot_z=0.0, seed=42):
-    """
-    Spawns angular, faceted rock blocks from subdivided icosahedrons (subdivisions=2):
-    - Replaces smooth dough balls with crisp crystalline rock facets.
-    - Flat shading (poly.use_smooth = False) allowing Sobel ink outlines.
-    - Assigns velvet moss (M_Cavern_Moss) when normal.z > 0.48.
-    """
+
     bm = bmesh.new()
     bmesh.ops.create_icosphere(bm, subdivisions=2, radius=1.0)
-    
+
     rng = random.Random(seed)
-    
+
     for v in bm.verts:
         p = v.co
         dist = p.length
@@ -761,40 +644,38 @@ def spawn_organic_boulder(name, center_x, center_y, center_z, scale=(1.0, 1.0, 1
             v.co.x *= scale[0]
             v.co.y *= scale[1]
             v.co.z *= scale[2]
-            
+
     rot_mat = Matrix.Rotation(rot_z, 4, 'Z')
     bm.transform(rot_mat)
     trans_mat = Matrix.Translation((center_x, center_y, center_z))
     bm.transform(trans_mat)
-    
+
     for f in bm.faces:
         if f.normal.z > 0.48:
-            f.material_index = 2 # M_Cavern_Moss on top shelf
+            f.material_index = 2
         elif f.normal.y < -0.2:
-            f.material_index = 1 # M_Rock_Lit
+            f.material_index = 1
         else:
-            f.material_index = 0 # M_Rock_Shadow on flanks
-            
+            f.material_index = 0
+
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     mesh = bpy.data.meshes.new(f"{name}_Mesh")
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.collection.objects.link(obj)
     bm.to_mesh(mesh)
     bm.free()
-    
-    # FLAT SHADING FOR CRACKING FACET CONTRAST & SOBEL INK LINES!
+
     for p in mesh.polygons:
         p.use_smooth = False
     mesh.update()
-    
+
     obj.data.materials.append(mat_rock_shadow)
     obj.data.materials.append(mat_rock_lit)
     obj.data.materials.append(mat_cavern_moss)
     return obj
 
 organic_terraces = [
-    # Left tiered shelves (Base, Mid, Upper tiers from camera foreground to waterfall)
-    # Tier 1 (Base shelves):
+
     ("Left_Terrace_B0", -7.0, -2.0, 0.40, (1.5, 1.3, 0.75), 0.3, 110),
     ("Left_Terrace_B1", -6.8, -0.5, 0.42, (1.5, 1.3, 0.80), -0.2, 111),
     ("Left_Terrace_B2", -6.6, 1.0, 0.45, (1.6, 1.4, 0.85), 0.4, 112),
@@ -803,7 +684,6 @@ organic_terraces = [
     ("Left_Terrace_1", -6.5, 6.8, 0.55, (1.6, 1.4, 0.90), 0.2, 101),
     ("Left_Terrace_Low", -5.8, 5.8, 0.40, (1.2, 1.1, 0.65), 0.5, 105),
 
-    # Tier 2 (Mid-height shelves):
     ("Left_Terrace_M0", -7.5, -1.2, 1.40, (1.4, 1.2, 0.95), -0.4, 120),
     ("Left_Terrace_M1", -7.3, 0.6, 1.55, (1.5, 1.2, 1.00), 0.3, 121),
     ("Left_Terrace_M2", -7.2, 2.5, 1.80, (1.5, 1.2, 1.05), -0.2, 122),
@@ -811,13 +691,10 @@ organic_terraces = [
     ("Left_Terrace_2", -6.8, 7.8, 1.40, (1.5, 1.3, 1.10), -0.3, 102),
     ("Left_Terrace_3", -7.0, 8.8, 2.45, (1.4, 1.2, 1.20), 0.4, 103),
 
-    # Tier 3 (Upper cliff shelves connecting to ceiling - only deep in the cavern to let foreground breathe):
     ("Left_Terrace_U1", -7.8, 2.0, 3.20, (1.4, 1.2, 1.15), -0.3, 131),
     ("Left_Terrace_U2", -7.6, 4.0, 3.60, (1.4, 1.1, 1.20), 0.3, 132),
     ("Left_Terrace_4", -7.4, 9.8, 3.65, (1.3, 1.1, 1.30), -0.2, 104),
 
-    # Right tiered shelves (Base, Mid, Upper tiers):
-    # Tier 1 (Base shelves):
     ("Right_Terrace_B0", 7.0, -2.0, 0.40, (1.5, 1.3, 0.75), -0.3, 210),
     ("Right_Terrace_B1", 6.8, -0.5, 0.42, (1.5, 1.3, 0.80), 0.2, 211),
     ("Right_Terrace_B2", 6.6, 1.0, 0.45, (1.6, 1.4, 0.85), -0.4, 212),
@@ -825,7 +702,6 @@ organic_terraces = [
     ("Right_Terrace_1", 6.5, 6.8, 0.55, (1.6, 1.4, 0.90), -0.2, 201),
     ("Right_Terrace_Low", 5.8, 5.8, 0.40, (1.2, 1.1, 0.65), -0.5, 205),
 
-    # Tier 2 (Mid-height shelves):
     ("Right_Terrace_M0", 7.5, -1.2, 1.40, (1.4, 1.2, 0.95), 0.4, 220),
     ("Right_Terrace_M1", 7.3, 0.6, 1.55, (1.5, 1.2, 1.00), -0.3, 221),
     ("Right_Terrace_M2", 7.2, 2.5, 1.80, (1.5, 1.2, 1.05), 0.3, 222),
@@ -833,7 +709,6 @@ organic_terraces = [
     ("Right_Terrace_2", 6.8, 7.8, 1.40, (1.5, 1.3, 1.10), 0.3, 202),
     ("Right_Terrace_3", 7.0, 8.8, 2.45, (1.4, 1.2, 1.20), -0.4, 203),
 
-    # Tier 3 (Upper cliff shelves connecting to ceiling):
     ("Right_Terrace_U1", 7.8, 2.0, 3.20, (1.4, 1.2, 1.15), 0.3, 231),
     ("Right_Terrace_U2", 7.6, 4.0, 3.60, (1.4, 1.1, 1.20), -0.3, 232),
     ("Right_Terrace_4", 7.4, 9.8, 3.65, (1.3, 1.1, 1.30), 0.2, 204),
@@ -842,20 +717,19 @@ organic_terraces = [
 for (tname, tx, ty, tz, tscale, trot, tseed) in organic_terraces:
     spawn_organic_boulder(tname, tx, ty, tz, scale=tscale, rot_z=trot, seed=tseed)
 
-# Submerged river boulders and stones resting at the bottom of the clear lake basin under the waterfall
 submerged_lake_boulders = [
-    # Directly under the waterfall plunge impact zone:
+
     ("Submerged_Boulder_Plunge_Center", 0.0, 9.2, -0.38, (1.20, 0.85, 0.45), 0.2, 501),
     ("Submerged_Boulder_Plunge_Left", -1.4, 9.0, -0.40, (0.95, 1.05, 0.42), -0.4, 502),
     ("Submerged_Boulder_Plunge_Right", 1.5, 9.1, -0.39, (1.05, 0.80, 0.44), 0.3, 503),
     ("Submerged_Boulder_Plunge_FarL", -2.4, 8.6, -0.32, (0.80, 0.75, 0.38), 0.5, 504),
     ("Submerged_Boulder_Plunge_FarR", 2.3, 8.7, -0.34, (0.85, 0.70, 0.40), -0.3, 505),
-    # Across the middle lake bed:
+
     ("Submerged_Boulder_Mid_1", -0.7, 7.8, -0.45, (0.80, 0.70, 0.36), 0.6, 510),
     ("Submerged_Boulder_Mid_2", 0.8, 7.6, -0.44, (0.75, 0.65, 0.35), -0.5, 511),
     ("Submerged_Boulder_Mid_3", -1.8, 7.3, -0.38, (0.65, 0.75, 0.32), 0.4, 512),
     ("Submerged_Boulder_Mid_4", 1.7, 7.4, -0.36, (0.70, 0.60, 0.34), -0.2, 513),
-    # Shallows near the travertine rim:
+
     ("Submerged_Boulder_Fore_1", 0.2, 6.5, -0.30, (0.60, 0.55, 0.28), 0.3, 520),
     ("Submerged_Boulder_Fore_2", -1.1, 6.2, -0.25, (0.55, 0.50, 0.26), -0.4, 521),
     ("Submerged_Boulder_Fore_3", 1.2, 6.3, -0.26, (0.58, 0.48, 0.27), 0.5, 522),
@@ -864,7 +738,6 @@ submerged_lake_boulders = [
 for (sname, sx, sy, sz, sscale, srot, sseed) in submerged_lake_boulders:
     spawn_organic_boulder(sname, sx, sy, sz, scale=sscale, rot_z=srot, seed=sseed)
 
-# Hanging Vines draping down the rock ledges
 def spawn_hanging_vine(x, y, z_top, length=1.8, segments=12, name="HangingVine"):
     bm = bmesh.new()
     width = 0.065
@@ -878,16 +751,15 @@ def spawn_hanging_vine(x, y, z_top, length=1.8, segments=12, name="HangingVine")
         v_l = bm.verts.new((cx - w * 0.5, cy, cz))
         v_r = bm.verts.new((cx + w * 0.5, cy, cz))
         rows.append((v_l, v_r))
-        
-        # Leaf buds sprouting sideways
+
         if iseg % 2 == 1:
             side = 1.0 if (iseg % 4 == 1) else -1.0
             leaf_tip = bm.verts.new((cx + side * (w + 0.15), cy - 0.02, cz - 0.03))
             bm.faces.new((v_l, v_r, leaf_tip))
-            
+
     for iseg in range(segments):
         bm.faces.new((rows[iseg][0], rows[iseg][1], rows[iseg + 1][1], rows[iseg + 1][0]))
-        
+
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     mesh = bpy.data.meshes.new(f"{name}_Mesh")
     obj = bpy.data.objects.new(name, mesh)
@@ -900,7 +772,7 @@ def spawn_hanging_vine(x, y, z_top, length=1.8, segments=12, name="HangingVine")
     obj.data.materials.append(mat_cavern_vine)
 
 vine_locations = [
-    # Flanking waterfall
+
     (-3.6, 11.2, 7.5, 3.2),
     (3.6, 11.2, 7.5, 3.2),
     (-4.5, 10.5, 5.2, 2.4),
@@ -911,12 +783,12 @@ vine_locations = [
     (6.5, 7.9, 2.2, 1.25),
     (-5.8, 6.9, 1.1, 0.95),
     (5.8, 6.9, 1.1, 0.95),
-    # Left canyon wall
+
     (-6.8, 4.2, 2.6, 1.5),
     (-6.7, 2.4, 2.4, 1.6),
     (-6.6, 0.6, 2.2, 1.4),
     (-6.8, -1.2, 2.0, 1.3),
-    # Right canyon wall
+
     (6.8, 4.4, 2.6, 1.5),
     (6.7, 2.4, 2.4, 1.6),
     (6.6, 0.6, 2.2, 1.4),
@@ -925,7 +797,6 @@ vine_locations = [
 for idx, (vx, vy, vz, vl) in enumerate(vine_locations):
     spawn_hanging_vine(vx, vy, vz, length=vl, name=f"Rock_Vine_{idx}")
 
-# Cascading Moss Curtains draping down sheer rock walls
 def spawn_moss_curtain(x, y, z_top, length=1.8, width=0.45, name="MossCurtain"):
     bm = bmesh.new()
     segments_y = 12
@@ -969,7 +840,6 @@ moss_curtain_locations = [
 for idx, (mx, my, mz, ml, mw) in enumerate(moss_curtain_locations):
     spawn_moss_curtain(mx, my, mz, length=ml, width=mw, name=f"Moss_Curtain_{idx}")
 
-# Rosette Ferns on rock ledges
 def spawn_rock_fern_rosette(x, y, z, scale=1.0, num_fronds=7, name="RockFern"):
     bm = bmesh.new()
     for ifr in range(num_fronds):
@@ -987,7 +857,7 @@ def spawn_rock_fern_rosette(x, y, z, scale=1.0, num_fronds=7, name="RockFern"):
             lx = x + math.cos(ang) * dist
             ly = y + math.sin(ang) * dist
             lz = z + (t * 0.15 * scale) - drop
-            
+
             px = -math.sin(ang) * w
             py = math.cos(ang) * w
             left_v.append(bm.verts.new((lx - px, ly - py, lz)))
@@ -1007,14 +877,14 @@ def spawn_rock_fern_rosette(x, y, z, scale=1.0, num_fronds=7, name="RockFern"):
     return obj
 
 fern_rosette_locations = [
-    # Flanking waterfall & lake margin
+
     (-5.2, 6.6, 0.95, 1.1),
     (5.2, 6.6, 0.95, 1.1),
     (-6.1, 7.6, 1.85, 1.2),
     (6.1, 7.6, 1.85, 1.2),
     (-6.8, 8.6, 2.85, 1.0),
     (6.8, 8.6, 2.85, 1.0),
-    # Canyon wall shelves
+
     (-5.6, -0.6, 0.85, 1.05),
     (5.6, -0.6, 0.85, 1.05),
     (-5.5, 1.2, 0.90, 1.15),
@@ -1025,8 +895,6 @@ fern_rosette_locations = [
 for idx, (fx, fy, fz, fs) in enumerate(fern_rosette_locations):
     spawn_rock_fern_rosette(fx, fy, fz, scale=fs, name=f"Rock_Fern_{idx}")
 
-# Wet moss behind the waterfall: varied lobes and hanging fronds instead of a
-# single flat green patch. Each patch uses a deterministic colour variation.
 def spawn_moss_patch(x, y, z, scale=1.0, variant=0, name="WetMossPatch"):
     mats = [mat_moss_wet, mat_cavern_moss, mat_moss_lime]
     rng = random.Random(variant * 97 + int(abs(x*y*z) * 10))
@@ -1102,36 +970,31 @@ wall_spore_locations = [
 for idx, (wx, wy, wz) in enumerate(wall_spore_locations):
     spawn_wall_cyan_spores(wx, wy, wz, num_shrooms=6, name=f"Wall_Cyan_Spore_{idx}")
 
-# Build cyclopean rock portal arch and waterfall flank cliffs
 build_cyclopean_portal_arch()
 build_waterfall_flank_cliffs()
 
-# ==============================================================================
-# 4. TERRAIN (140x140 GRID, SINUOUS MEANDERING DIRT PATH & NATURAL RELIEF)
-# ==============================================================================
 def build_terrain_and_lake_rim():
-    # High subdivision grid: 140x140 for organic path transitions and rolling mounds
+
     bpy.ops.mesh.primitive_grid_add(x_subdivisions=140, y_subdivisions=140, size=34.0, location=(0.0, 0.0, 0.0))
     terrain = bpy.context.active_object
     terrain.name = "Cavern_Terrain_Grid"
-    terrain.data.materials.append(mat_ground_path)  # Material 0: Beaten brown earth #472914
-    terrain.data.materials.append(mat_ground_grass) # Material 1: Dense green grass
+    terrain.data.materials.append(mat_ground_path)
+    terrain.data.materials.append(mat_ground_grass)
 
     bm = bmesh.new()
     bm.from_mesh(terrain.data)
-    
+
     lake_center_x = 0.0
     lake_center_y = 8.5
     lake_radius = 5.2
-    
+
     for v in bm.verts:
         v.co.z = get_terrain_surface_z(v.co.x, v.co.y)
 
     for f in bm.faces:
         center = f.calc_center_median()
         dist_l = math.sqrt((center.x - lake_center_x)**2 + (center.y - lake_center_y)**2)
-        
-        # Sinuous, meandering natural dirt path boundary (eliminates straight/trapezoid lines)
+
         w_base = 2.45
         w_meander = (
             math.sin(center.y * 0.72) * 0.38 +
@@ -1139,14 +1002,14 @@ def build_terrain_and_lake_rim():
             math.sin(center.x * 1.2 + center.y * 0.9) * 0.18
         )
         w_path = w_base + w_meander
-        
+
         is_path_strip = (center.y < 5.0 and abs(center.x) < w_path)
         is_lake_shore = dist_l < (lake_radius + 1.25 + math.sin(center.x * 2.0) * 0.15)
-        
+
         if is_path_strip or is_lake_shore:
-            f.material_index = 0 # Pure beaten brown dirt #472914
+            f.material_index = 0
         else:
-            f.material_index = 1 # Dense green grass banks with smooth relief
+            f.material_index = 1
 
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     bm.to_mesh(terrain.data)
@@ -1155,38 +1018,37 @@ def build_terrain_and_lake_rim():
         p.use_smooth = True
     terrain.data.update()
 
-    # Fine curved stone rim leveled with the water
     bm_rim = bmesh.new()
     rim_pts = 72
     rim_grid = []
     rim_top_z = 0.08
     rim_bot_z = -0.06
-    
+
     for ip in range(rim_pts + 1):
         frac = ip / rim_pts
         ang = math.pi * 0.85 + frac * math.pi * 1.30
-        
+
         r_inner = lake_radius - 0.08
         r_outer = lake_radius + 0.18
-        
+
         xi = lake_center_x + math.cos(ang) * r_inner
         yi = lake_center_y + math.sin(ang) * r_inner
-        
+
         xo = lake_center_x + math.cos(ang) * r_outer
         yo = lake_center_y + math.sin(ang) * r_outer
-        
+
         v_in_top = bm_rim.verts.new((xi, yi, rim_top_z))
         v_out_top = bm_rim.verts.new((xo, yo, rim_top_z))
         v_out_bot = bm_rim.verts.new((xo, yo, rim_bot_z))
         v_in_bot = bm_rim.verts.new((xi, yi, rim_bot_z))
         rim_grid.append((v_in_top, v_out_top, v_out_bot, v_in_bot))
-        
+
     for ip in range(rim_pts):
         r1 = rim_grid[ip]
         r2 = rim_grid[ip + 1]
         bm_rim.faces.new((r1[0], r2[0], r2[1], r1[1]))
         bm_rim.faces.new((r1[1], r2[1], r2[2], r1[2]))
-        
+
     bmesh.ops.recalc_face_normals(bm_rim, faces=bm_rim.faces)
     rim_mesh = bpy.data.meshes.new("Lake_Fine_Rim_Mesh")
     rim_obj = bpy.data.objects.new("Lake_Fine_Rim", rim_mesh)
@@ -1201,9 +1063,7 @@ def build_terrain_and_lake_rim():
 build_terrain_and_lake_rim()
 
 def spawn_path_flagstones():
-    """
-    Spawns flat, chiseled stone stepping slabs embedded into the dirt path.
-    """
+
     stepping_stone_coords = [
         (-0.45, -2.2, 0.05, 0.52, 0.42, 0.15),
         (0.38, -1.5, 0.05, 0.48, 0.45, -0.2),
@@ -1223,7 +1083,7 @@ def spawn_path_flagstones():
             dist = p.length
             if dist > 0.0001:
                 norm = p.normalized()
-                # Heavy vertical compression for flat stepping slab
+
                 v.co = norm * (dist * 0.95)
                 v.co.x *= rx
                 v.co.y *= ry
@@ -1232,13 +1092,13 @@ def spawn_path_flagstones():
         bm.transform(rot_mat)
         trans_mat = Matrix.Translation((sx, sy, sz))
         bm.transform(trans_mat)
-        
+
         for f in bm.faces:
             if f.normal.z > 0.60:
-                f.material_index = 0 # M_Stone_Slab
+                f.material_index = 0
             else:
-                f.material_index = 1 # M_Rock_Shadow
-                
+                f.material_index = 1
+
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         mesh = bpy.data.meshes.new(f"PathFlagstone_{idx}_Mesh")
         obj = bpy.data.objects.new(f"PathFlagstone_{idx}", mesh)
@@ -1251,10 +1111,8 @@ def spawn_path_flagstones():
         obj.data.materials.append(mat_stone_slab)
         obj.data.materials.append(mat_rock_shadow)
 
-
 spawn_path_flagstones()
 
-# Loose river pebbles on dirt path edges (Smooth UV spheres)
 def spawn_river_pebble(x, y, z, sx, sy):
     bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=12, radius=0.10, location=(x, y, z))
     peb = bpy.context.active_object
@@ -1277,15 +1135,11 @@ pebble_coords = [
 for (px, py, pz, psx, psy) in pebble_coords:
     spawn_river_pebble(px, py, pz, psx, psy)
 
-# Organic Transition Rocks on the boundary between Dirt and Grass (High-Density Icospheres)
 def spawn_organic_transition_rock(x, y, z, sx=0.55, sy=0.45, sz=0.35, rot_z=0.0, seed=42):
-    """
-    Subdivided Icosphere rock (subdivisions=2) with angular faceted noise displacement.
-    Integrated moss on Normal_Z > 0.48 with FLAT SHADING for comic ink outlines.
-    """
+
     bm = bmesh.new()
     bmesh.ops.create_icosphere(bm, subdivisions=2, radius=1.0)
-    
+
     rng = random.Random(seed)
     for v in bm.verts:
         p = v.co
@@ -1299,30 +1153,29 @@ def spawn_organic_transition_rock(x, y, z, sx=0.55, sy=0.45, sz=0.35, rot_z=0.0,
             v.co.x *= sx
             v.co.y *= sy
             v.co.z *= sz
-            
+
     rot_mat = Matrix.Rotation(rot_z, 4, 'Z')
     bm.transform(rot_mat)
     trans_mat = Matrix.Translation((x, y, z))
     bm.transform(trans_mat)
-    
+
     for f in bm.faces:
         if f.normal.z > 0.48:
-            f.material_index = 1 # M_Cavern_Moss integrated top
+            f.material_index = 1
         else:
-            f.material_index = 0 # M_Angular_Rock
-            
+            f.material_index = 0
+
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     mesh = bpy.data.meshes.new(f"TransitionRock_{seed}_Mesh")
     obj = bpy.data.objects.new(f"TransitionRock_{seed}", mesh)
     bpy.context.collection.objects.link(obj)
     bm.to_mesh(mesh)
     bm.free()
-    
-    # FLAT SHADING FOR CRACKING FACET CONTRAST & SOBEL INK LINES!
+
     for p in mesh.polygons:
         p.use_smooth = False
     mesh.update()
-    
+
     obj.data.materials.append(mat_angular_rock)
     obj.data.materials.append(mat_cavern_moss)
     return obj
@@ -1334,7 +1187,7 @@ organic_rock_coords = [
     (2.3, 1.0, 0.10, 0.50, 0.40, 0.28, -0.4, 304),
     (2.4, 2.2, 0.12, 0.56, 0.44, 0.32, 0.6, 305),
     (2.6, 3.3, 0.15, 0.62, 0.48, 0.36, -0.8, 306),
-    # Foreground path-framing rocks
+
     (-2.3, -0.8, 0.08, 0.50, 0.42, 0.28, 0.3, 310),
     (-2.4, 0.2, 0.09, 0.54, 0.44, 0.32, -0.5, 312),
     (2.3, -0.8, 0.08, 0.48, 0.40, 0.26, -0.3, 311),
@@ -1343,34 +1196,27 @@ organic_rock_coords = [
 for (ax, ay, az, asx, asy, asz, arot, aseed) in organic_rock_coords:
     spawn_organic_transition_rock(ax, ay, az, asx, asy, asz, arot, aseed)
 
-# ==============================================================================
-# 5. LEFT SIDE FLORA: LEANING PARASOL MUSHROOMS WITH PALE BLUE-CYAN CAPS & GILLS
-# ==============================================================================
 def build_stylized_parasol_mushroom(root_x, root_y, scale=1.0, lean_angle=-0.22, name="ParasolMushroom"):
-    """
-    Creates an arched umbrella parasol mushroom with curved downwards rim,
-    luminous cyan gills, glowing spore spots, and slender leaning stem.
-    """
+
     ground_z = get_terrain_surface_z(root_x, root_y)
     root_z = ground_z - 0.15 * scale
-    
-    # 1. Stem
+
     bm_stem = bmesh.new()
     stem_segments = 24
     radial_segments = 20
     h_stem = 2.4 * scale
     r_base = 0.20 * scale
-    
+
     stem_rows = []
     for ih in range(stem_segments + 1):
         t = ih / stem_segments
         curr_z = root_z + t * h_stem
         curr_x = root_x + (t ** 1.3) * math.sin(lean_angle) * h_stem
         curr_y = root_y + (t ** 1.3) * 0.25 * scale
-        
+
         root_flare = (((0.25 - t) / 0.25) ** 2.0) * 0.28 * scale if t < 0.25 else 0.0
         r_curr = r_base * (1.0 - t * 0.42) + root_flare
-        
+
         row = []
         for ir in range(radial_segments):
             angle = 2.0 * math.pi * ir / radial_segments
@@ -1379,21 +1225,19 @@ def build_stylized_parasol_mushroom(root_x, root_y, scale=1.0, lean_angle=-0.22,
             vz = curr_z
             row.append(bm_stem.verts.new((vx, vy, vz)))
         stem_rows.append(row)
-        
+
     for ih in range(stem_segments):
         for ir in range(radial_segments):
             ir_next = (ir + 1) % radial_segments
             bm_stem.faces.new((stem_rows[ih][ir], stem_rows[ih][ir_next], stem_rows[ih + 1][ir_next], stem_rows[ih + 1][ir]))
-            
+
     bmesh.ops.recalc_face_normals(bm_stem, faces=bm_stem.faces)
-    
-    # Mathematical tip position and tangent vector of the stem at t = 1.0
+
     tip_x = root_x + math.sin(lean_angle) * h_stem
     tip_y = root_y + 0.25 * scale
     tip_z = root_z + h_stem
     tip_pos = Vector((tip_x, tip_y, tip_z))
-    
-    # Tangent vector of parametric stem curve at t = 1.0: (dx/dt, dy/dt, dz/dt)
+
     tangent = Vector((1.30 * math.sin(lean_angle) * h_stem, 1.30 * 0.25 * scale, h_stem)).normalized()
 
     stem_mesh = bpy.data.meshes.new(f"{name}_Stem_Mesh")
@@ -1405,21 +1249,19 @@ def build_stylized_parasol_mushroom(root_x, root_y, scale=1.0, lean_angle=-0.22,
         p.use_smooth = True
     stem_mesh.update()
     stem_obj.data.materials.append(mat_shroom_stem)
-    
-    # 2. Arched Parasol Cap in local coordinates around (0, 0, 0)
-    # Origin (0,0,0) is at the inner neck insertion point
+
     r_cap = 1.15 * scale
     bm_cap = bmesh.new()
     cap_radials = 36
     cap_rings = 16
-    
+
     cap_grid = []
     for iring in range(cap_rings + 1):
         t_r = iring / cap_rings
         ring_r = t_r * r_cap
         drop_z = (t_r ** 2.2) * 0.62 * scale
         curr_z = 0.40 * scale - drop_z
-        
+
         row = []
         for ia in range(cap_radials):
             angle = 2.0 * math.pi * ia / cap_radials
@@ -1431,14 +1273,13 @@ def build_stylized_parasol_mushroom(root_x, root_y, scale=1.0, lean_angle=-0.22,
             vz = curr_z + rim_wave * 0.3
             row.append(bm_cap.verts.new((vx, vy, vz)))
         cap_grid.append(row)
-        
+
     for iring in range(cap_rings):
         for ia in range(cap_radials):
             ia_next = (ia + 1) % cap_radials
             f = bm_cap.faces.new((cap_grid[iring][ia], cap_grid[iring][ia_next], cap_grid[iring + 1][ia_next], cap_grid[iring + 1][ia]))
-            f.material_index = 0 # Pale Blue-Cyan Cap
-            
-    # Luminous underside gills connecting rim to inner neck insertion ring at z = 0.0
+            f.material_index = 0
+
     rim_verts = cap_grid[-1]
     neck_verts = []
     for ia in range(cap_radials):
@@ -1448,20 +1289,19 @@ def build_stylized_parasol_mushroom(root_x, root_y, scale=1.0, lean_angle=-0.22,
         vy = math.sin(angle) * (0.22 * scale + pleat)
         vz = 0.0
         neck_verts.append(bm_cap.verts.new((vx, vy, vz)))
-        
+
     for ia in range(cap_radials):
         ia_next = (ia + 1) % cap_radials
         f_gill = bm_cap.faces.new((rim_verts[ia], neck_verts[ia], neck_verts[ia_next], rim_verts[ia_next]))
-        f_gill.material_index = 1 # Glowing cyan gills
-        
+        f_gill.material_index = 1
+
     bmesh.ops.recalc_face_normals(bm_cap, faces=bm_cap.faces)
-    
-    # Align cap axis with stem tangent and embed 0.10 * scale into cap cavity (zero gap)
+
     rot_mat = Vector((0.0, 0.0, 1.0)).rotation_difference(tangent).to_matrix().to_4x4()
     trans_pos = tip_pos - tangent * (0.10 * scale)
     trans_mat = Matrix.Translation(trans_pos)
     bm_cap.transform(trans_mat @ rot_mat)
-    
+
     cap_mesh = bpy.data.meshes.new(f"{name}_Cap_Mesh")
     cap_obj = bpy.data.objects.new(f"{name}_Cap", cap_mesh)
     bpy.context.collection.objects.link(cap_obj)
@@ -1474,19 +1314,17 @@ def build_stylized_parasol_mushroom(root_x, root_y, scale=1.0, lean_angle=-0.22,
     cap_obj.data.materials.append(mat_shroom_gills)
     cap_obj.parent = stem_obj
 
-# Left Side Cluster: Harmonious Tiered Parasol Mushrooms (In open clearing, > 2.4m free space to rock terraces)
 build_stylized_parasol_mushroom(-3.60, 3.20, scale=1.05, lean_angle=0.10, name="Left_Shroom_Large")
 build_stylized_parasol_mushroom(-2.95, 2.45, scale=0.72, lean_angle=0.08, name="Left_Shroom_Medium")
 build_stylized_parasol_mushroom(-4.10, 2.15, scale=0.48, lean_angle=0.06, name="Left_Shroom_Small")
 
-# Broad Arching Fern/Palmate Leaves surrounding Left Mushrooms
 def spawn_broad_leaf_spray(x, y, z, scale=1.0, num_leaves=7, name="BroadLeafSpray"):
     bm = bmesh.new()
     for il in range(num_leaves):
         ang = (il / float(num_leaves)) * math.pi * 1.8 - 0.4
         length = 1.20 * scale
         width = 0.40 * scale
-        
+
         segs = 8
         left_v = []
         right_v = []
@@ -1498,15 +1336,15 @@ def spawn_broad_leaf_spray(x, y, z, scale=1.0, num_leaves=7, name="BroadLeafSpra
             lx = x + math.cos(ang) * dist
             ly = y + math.sin(ang) * dist
             lz = z + (t * 0.28 * scale) - drop
-            
+
             px = -math.sin(ang) * w
             py = math.cos(ang) * w
             left_v.append(bm.verts.new((lx - px, ly - py, lz)))
             right_v.append(bm.verts.new((lx + px, ly + py, lz)))
-            
+
         for iseg in range(segs):
             bm.faces.new((left_v[iseg], right_v[iseg], right_v[iseg + 1], left_v[iseg + 1]))
-            
+
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     mesh = bpy.data.meshes.new(f"{name}_Mesh")
     obj = bpy.data.objects.new(name, mesh)
@@ -1520,11 +1358,10 @@ def spawn_broad_leaf_spray(x, y, z, scale=1.0, num_leaves=7, name="BroadLeafSpra
 
 spawn_broad_leaf_spray(-3.3, 2.1, 0.10, scale=1.15, name="Left_Fern_Spray_1")
 spawn_broad_leaf_spray(-3.9, 3.0, 0.12, scale=0.95, name="Left_Fern_Spray_2")
-# Creeping foreground ground plants advancing softly over the brown dirt boundary
+
 spawn_broad_leaf_spray(-2.3, -0.2, 0.08, scale=0.85, name="Path_Creeping_Leaf_L")
 spawn_broad_leaf_spray(2.3, -0.2, 0.08, scale=0.85, name="Path_Creeping_Leaf_R")
 
-# Slender Stalks with Glowing Tips
 def spawn_glowing_stalk(x, y, z, h=0.75, name="GlowingStalk"):
     bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=0.016, depth=h, location=(x, y, z + h * 0.5))
     stem = bpy.context.active_object
@@ -1532,7 +1369,7 @@ def spawn_glowing_stalk(x, y, z, h=0.75, name="GlowingStalk"):
     stem.data.materials.append(mat_cavern_vine)
     for p in stem.data.polygons:
         p.use_smooth = True
-    
+
     bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=12, radius=0.055, location=(x + 0.03, y, z + h))
     tip = bpy.context.active_object
     tip.name = f"{name}_Tip"
@@ -1551,8 +1388,7 @@ def spawn_dandelion(x, y, z, height=0.82, bloom=True, seed_head=False, name="Dan
     for i in range(12):
         for j in range(10):
             bm.faces.new((rings[i][j], rings[i][(j+1)%10], rings[i+1][(j+1)%10], rings[i+1][j]))
-    
-    # Five low serrated leaf blades identify the rosette at the base
+
     for li in range(5):
         a = li * math.tau / 5.0
         left=[]; right=[]
@@ -1565,7 +1401,6 @@ def spawn_dandelion(x, y, z, height=0.82, bloom=True, seed_head=False, name="Dan
             f = bm.faces.new((left[k], right[k], right[k+1], left[k+1]))
             f.material_index = 1
 
-    # Stem tip receptacle disk seamlessly closing top ring
     top_ring = rings[-1]
     head = Vector((x + 0.07 * math.sin(math.pi), y, z + height))
     center_v = bm.verts.new(head)
@@ -1574,7 +1409,7 @@ def spawn_dandelion(x, y, z, height=0.82, bloom=True, seed_head=False, name="Dan
         f.material_index = 0
 
     if bloom:
-        # Flower head and petals built directly off receptacle
+
         for i in range(24):
             a = math.tau * i / 24.0
             p_base_l = head + Vector((math.cos(a - 0.10) * 0.025, math.sin(a - 0.10) * 0.025, 0.005))
@@ -1589,7 +1424,7 @@ def spawn_dandelion(x, y, z, height=0.82, bloom=True, seed_head=False, name="Dan
             f2 = bm.faces.new((vl2, vr2, vt)); f2.material_index = 2
 
     if seed_head:
-        # Pappus seed filaments directly emerging from receptacle center
+
         for i in range(24):
             a = math.tau * i / 24.0
             length = 0.22 + (i % 4) * 0.04
@@ -1618,39 +1453,28 @@ for idx, (dx, dy, dh, bloom, seed_head) in enumerate([
     (-4.0,3.5,0.80,False,True), (2.7,1.7,0.68,True,False), (3.25,2.55,0.84,False,True)]):
     spawn_dandelion(dx, dy, get_terrain_surface_z(dx, dy), dh, bloom, seed_head, f"Dandelion_{idx}")
 
-# ==============================================================================
-# 6. RIGHT SIDE FLORA: REVOLUTION LATHE MUSHROOMS WITH SMOOTH CONCAVE CAPS
-# ==============================================================================
 def build_stylized_lathe_mushroom(root_x, root_y, scale=1.0, lean_angle=-0.15, name="Right_Dome_Mushroom"):
-    """
-    Substitui esferas achatadas por modelagem genuína por revolução (LatheGeometry):
-    - Chapéu côncavo modelado por perfil de revolução (36 segmentos radiais x 20 anéis).
-    - Caule tubular curvo (TubeGeometry / Spline: 24 radiais x 24 segmentos).
-    - Cavidade inferior côncava com emissão azul-turquesa suave.
-    - Dimensões proporcionais refinadas e garantia de use_smooth = True.
-    """
+
     ground_z = get_terrain_surface_z(root_x, root_y)
     root_z = ground_z - 0.12 * scale
-    
-    # 1. Stem via curved Tube Geometry
+
     bm_stem = bmesh.new()
     stem_segments = 24
     radial_segments = 24
     h_stem = 1.95 * scale
     r_stem = 0.15 * scale
-    
+
     stem_rows = []
     for ih in range(stem_segments + 1):
         t = ih / stem_segments
         curr_z = root_z + t * h_stem
-        # Spline curvature curving gracefully away from the bench
+
         curr_x = root_x + (t ** 1.30) * math.sin(lean_angle) * (0.35 * h_stem)
         curr_y = root_y + (t ** 1.30) * math.cos(lean_angle) * (0.22 * h_stem)
-        
-        # Smooth flared root base
+
         root_flare = (((0.28 - t) / 0.28) ** 2.0) * 0.20 * scale if t < 0.28 else 0.0
         r_curr = r_stem * (1.0 - t * 0.32) + root_flare
-        
+
         row = []
         for ir in range(radial_segments):
             angle = 2.0 * math.pi * ir / radial_segments
@@ -1659,20 +1483,19 @@ def build_stylized_lathe_mushroom(root_x, root_y, scale=1.0, lean_angle=-0.15, n
             vz = curr_z
             row.append(bm_stem.verts.new((vx, vy, vz)))
         stem_rows.append(row)
-        
+
     for ih in range(stem_segments):
         for ir in range(radial_segments):
             ir_next = (ir + 1) % radial_segments
             bm_stem.faces.new((stem_rows[ih][ir], stem_rows[ih][ir_next], stem_rows[ih + 1][ir_next], stem_rows[ih + 1][ir]))
-            
+
     bmesh.ops.recalc_face_normals(bm_stem, faces=bm_stem.faces)
-    
-    # Mathematical tip position and tangent vector of the stem at t = 1.0
+
     tip_x = root_x + math.sin(lean_angle) * (0.35 * h_stem)
     tip_y = root_y + math.cos(lean_angle) * (0.22 * h_stem)
     tip_z = root_z + h_stem
     tip_pos = Vector((tip_x, tip_y, tip_z))
-    
+
     tangent = Vector((1.30 * math.sin(lean_angle) * (0.35 * h_stem), 1.30 * math.cos(lean_angle) * (0.22 * h_stem), h_stem)).normalized()
 
     stem_mesh = bpy.data.meshes.new(f"{name}_Stem_Mesh")
@@ -1684,21 +1507,19 @@ def build_stylized_lathe_mushroom(root_x, root_y, scale=1.0, lean_angle=-0.15, n
         p.use_smooth = True
     stem_mesh.update()
     stem_obj.data.materials.append(mat_shroom_stem)
-    
-    # 2. Cap via Revolution Profile (LatheGeometry in local coordinates around (0, 0, 0))
+
     bm_cap = bmesh.new()
     cap_radials = 36
     cap_rings = 20
-    r_cap = 0.62 * scale # Refined, non-oversized radius
-    
-    # Outer dome surface in local space
+    r_cap = 0.62 * scale
+
     cap_grid = []
     for ir in range(cap_rings + 1):
         u = ir / cap_rings
         ring_r = u * r_cap
         drop_z = (u ** 2.3) * (0.36 * scale)
         curr_z = 0.35 * scale - drop_z
-        
+
         row = []
         for ia in range(cap_radials):
             angle = 2.0 * math.pi * ia / cap_radials
@@ -1707,14 +1528,13 @@ def build_stylized_lathe_mushroom(root_x, root_y, scale=1.0, lean_angle=-0.15, n
             vz = curr_z
             row.append(bm_cap.verts.new((vx, vy, vz)))
         cap_grid.append(row)
-        
+
     for ir in range(cap_rings):
         for ia in range(cap_radials):
             ia_next = (ia + 1) % cap_radials
             f = bm_cap.faces.new((cap_grid[ir][ia], cap_grid[ir][ia_next], cap_grid[ir + 1][ia_next], cap_grid[ir + 1][ia]))
-            f.material_index = 0 # Vibrant Turquoise Cap
-            
-    # Inner concave underside cavity connecting rim to inner neck insertion ring at z = 0.0
+            f.material_index = 0
+
     rim_verts = cap_grid[-1]
     neck_verts = []
     for ia in range(cap_radials):
@@ -1723,20 +1543,19 @@ def build_stylized_lathe_mushroom(root_x, root_y, scale=1.0, lean_angle=-0.15, n
         vy = math.sin(angle) * (0.16 * scale)
         vz = 0.0
         neck_verts.append(bm_cap.verts.new((vx, vy, vz)))
-        
+
     for ia in range(cap_radials):
         ia_next = (ia + 1) % cap_radials
         f_cavity = bm_cap.faces.new((rim_verts[ia], neck_verts[ia], neck_verts[ia_next], rim_verts[ia_next]))
-        f_cavity.material_index = 1 # Soft glowing gills / underside
-        
+        f_cavity.material_index = 1
+
     bmesh.ops.recalc_face_normals(bm_cap, faces=bm_cap.faces)
-    
-    # Align cap axis with stem tangent and embed 0.08 * scale into cavity (zero gap)
+
     rot_mat = Vector((0.0, 0.0, 1.0)).rotation_difference(tangent).to_matrix().to_4x4()
     trans_pos = tip_pos - tangent * (0.08 * scale)
     trans_mat = Matrix.Translation(trans_pos)
     bm_cap.transform(trans_mat @ rot_mat)
-    
+
     cap_mesh = bpy.data.meshes.new(f"{name}_Cap_Mesh")
     cap_obj = bpy.data.objects.new(f"{name}_Cap", cap_mesh)
     bpy.context.collection.objects.link(cap_obj)
@@ -1749,24 +1568,20 @@ def build_stylized_lathe_mushroom(root_x, root_y, scale=1.0, lean_angle=-0.15, n
     cap_obj.data.materials.append(mat_shroom_gills)
     cap_obj.parent = stem_obj
 
-# Exactly three rounded lathe mushrooms positioned safely in the open clearing (> 1.7m clear space from bench and rocks)
 build_stylized_lathe_mushroom(4.20, 3.40, scale=0.78, lean_angle=-0.12, name="Right_Dome_Mushroom_1")
 build_stylized_lathe_mushroom(3.60, 2.70, scale=0.60, lean_angle=-0.08, name="Right_Dome_Mushroom_2")
 build_stylized_lathe_mushroom(4.75, 3.90, scale=0.45, lean_angle=-0.14, name="Right_Dome_Mushroom_3")
 
-# Tall grass must never intersect a taller authored element.  This policy is
-# deliberately shared by every clump, rather than encoding bench-specific
-# coordinates, so new props only need to register one footprint below.
 TALL_GRASS_CLEARANCE = 0.42
 TALL_GRASS_MAX_RELOCATION = 2.4
 tall_grass_exclusion_zones = []
 
 def register_tall_grass_exclusion(name, x, y, radius):
-    """Reserve a horizontal footprint for any rock, prop, or tall flora."""
+
     tall_grass_exclusion_zones.append((name, x, y, radius + TALL_GRASS_CLEARANCE))
 
 def resolve_tall_grass_position(x, y):
-    """Return the nearest deterministic spiral candidate outside all blockers."""
+
     def is_clear(cx, cy):
         return all(math.hypot(cx - bx, cy - by) >= radius
                    for _, bx, by, radius in tall_grass_exclusion_zones)
@@ -1774,7 +1589,6 @@ def resolve_tall_grass_position(x, y):
     if is_clear(x, y):
         return x, y
 
-    # Fixed angular phases keep exports deterministic and avoid visual clumps.
     for ring in range(1, 14):
         distance = ring * 0.18
         if distance > TALL_GRASS_MAX_RELOCATION:
@@ -1788,30 +1602,27 @@ def resolve_tall_grass_position(x, y):
 
     raise RuntimeError(f"No clear terrain location for tall grass at ({x}, {y})")
 
-# The bench is exported separately, but its reserved footprint belongs to the
-# scene-placement policy. Future high props must call this same registrar.
 register_tall_grass_exclusion("Rustic_Mossy_Bench", 2.90, 1.05, 1.15)
 register_tall_grass_exclusion("Right_Dome_Mushroom_1", 4.20, 3.40, 0.82)
 register_tall_grass_exclusion("Right_Dome_Mushroom_2", 3.60, 2.70, 0.66)
 register_tall_grass_exclusion("Right_Dome_Mushroom_3", 4.75, 3.90, 0.52)
 
-# Tall Grass Clumps behind/around the right mushrooms
 def spawn_tall_grass_clump(x, y, z, scale=1.0, num_blades=14, name="TallGrass"): 
     bm = bmesh.new()
     for ib in range(num_blades):
         ang = (ib / float(num_blades)) * math.pi * 2.0 + (ib * 0.2)
         h = (0.75 + (ib % 3) * 0.18) * scale
         tilt = 0.22 * scale
-        
+
         v_base_l = bm.verts.new((x + math.cos(ang) * 0.05, y + math.sin(ang) * 0.05, z))
         v_base_r = bm.verts.new((x + math.cos(ang + 0.3) * 0.05, y + math.sin(ang + 0.3) * 0.05, z))
         v_mid_l = bm.verts.new((x + math.cos(ang) * (0.05 + tilt * 0.4), y + math.sin(ang) * (0.05 + tilt * 0.4), z + h * 0.5))
         v_mid_r = bm.verts.new((x + math.cos(ang + 0.2) * (0.05 + tilt * 0.4), y + math.sin(ang + 0.2) * (0.05 + tilt * 0.4), z + h * 0.5))
         v_tip = bm.verts.new((x + math.cos(ang) * (0.05 + tilt), y + math.sin(ang) * (0.05 + tilt), z + h))
-        
+
         bm.faces.new((v_base_l, v_base_r, v_mid_r, v_mid_l))
         bm.faces.new((v_mid_l, v_mid_r, v_tip))
-        
+
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     mesh = bpy.data.meshes.new(f"{name}_Mesh")
     obj = bpy.data.objects.new(name, mesh)
@@ -1825,7 +1636,7 @@ def spawn_tall_grass_clump(x, y, z, scale=1.0, num_blades=14, name="TallGrass"):
 
 tall_grass_coords = [
     (3.8, 2.6), (4.4, 3.5), (4.9, 3.1), (4.6, 4.1),
-    # Foreground lateral grass tufts framing dirt path
+
     (-2.8, -1.0), (-3.1, -0.2), (-2.8, 0.8),
     (2.8, -1.0), (3.1, -0.2), (2.8, 0.8),
 ]
@@ -1834,44 +1645,9 @@ for idx, (tx, ty) in enumerate(tall_grass_coords):
     tz = get_terrain_surface_z(tx, ty)
     spawn_tall_grass_clump(tx, ty, tz, scale=0.85, name=f"Right_TallGrass_{idx}")
 
-# Glowing Bulb Plants (Repositioned to the right cluster, safely clear of bench)
-def spawn_bulb_plant(x, y, z, name="BulbPlant"):
-    for ib in range(4):
-        ang = (ib / 4.0) * math.pi * 2.0
-        bx = x + math.cos(ang) * 0.18
-        by = y + math.sin(ang) * 0.18
-        bz = z + 0.28 + (ib % 2) * 0.10
-        
-        bpy.ops.mesh.primitive_cylinder_add(vertices=12, radius=0.012, depth=0.35, location=(x + math.cos(ang) * 0.09, y + math.sin(ang) * 0.09, z + 0.16))
-        stem = bpy.context.active_object
-        stem.name = f"{name}_Stem_{ib}"
-        stem.rotation_euler = (0.2 * math.sin(ang), 0.2 * math.cos(ang), 0.0)
-        stem.data.materials.append(mat_cavern_vine)
-        for p in stem.data.polygons:
-            p.use_smooth = True
-        
-        bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=12, radius=0.065, location=(bx, by, bz))
-        bulb = bpy.context.active_object
-        bulb.name = f"{name}_Bulb_{ib}"
-        bulb.data.materials.append(mat_glow_bulb)
-        for p in bulb.data.polygons:
-            p.use_smooth = True
-
-for idx, (bx, by) in enumerate([(4.3, 2.45), (4.9, 3.30), (4.4, 4.10)]):
-    bz = get_terrain_surface_z(bx, by)
-    spawn_bulb_plant(bx, by, bz, name=f"Right_BulbPlant_{idx}")
-
-# ==============================================================================
-# 7. WATERFALL IMPACT FROTH & RIPPLES (Handled dynamically in Bevy runtime engine)
-# ==============================================================================
-
-# ==============================================================================
-# 8. EXPORT COMPLETE GLB MODEL
-# ==============================================================================
 output_path = os.path.abspath("assets/models/cavern_kit.glb")
 os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-# Also save the native .blend file for artists to open, sculpt, and refine manually in Blender
 blend_dir = os.path.abspath("assets/models/source_blend")
 os.makedirs(blend_dir, exist_ok=True)
 blend_path = os.path.join(blend_dir, "cavern_kit.blend")

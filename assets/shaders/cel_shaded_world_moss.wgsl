@@ -1,13 +1,11 @@
 #import bevy_pbr::forward_io::VertexOutput
 #import bevy_pbr::mesh_view_bindings::view
 
-// Material Bindings for Cel-Shaded World-Space Normal Moss Shader
-@group(2) @binding(0) var<uniform> base_color: vec4<f32>;    // Base Rock/Wood color (#26333a or #362215)
-@group(2) @binding(1) var<uniform> moss_color: vec4<f32>;    // Velvet Moss color (#246e34)
-@group(2) @binding(2) var<uniform> light_dir: vec4<f32>;     // Directional key light vector
-@group(2) @binding(3) var<uniform> moss_params: vec4<f32>;   // x: ny_threshold (0.6), y: noise_scale, z: noise_strength, w: toon_steps (3.0)
+@group(2) @binding(0) var<uniform> base_color: vec4<f32>;
+@group(2) @binding(1) var<uniform> moss_color: vec4<f32>;
+@group(2) @binding(2) var<uniform> light_dir: vec4<f32>;
+@group(2) @binding(3) var<uniform> moss_params: vec4<f32>;
 
-// 3D Hash and Value Noise for Organic Fringes
 fn hash3(p: vec3<f32>) -> vec3<f32> {
     let q = vec3<f32>(
         dot(p, vec3<f32>(127.1, 311.7, 74.7)),
@@ -46,27 +44,21 @@ fn noise3d(p: vec3<f32>) -> f32 {
 fn fragment(
     in: VertexOutput,
 ) -> @location(0) vec4<f32> {
-    let ny_threshold = moss_params.x; // default 0.60
-    let noise_scale = moss_params.y;   // default 3.50
-    let noise_strength = moss_params.z; // default 0.22
-    let toon_bands = moss_params.w;    // default 3.0
+    let ny_threshold = moss_params.x;
+    let noise_scale = moss_params.y;
+    let noise_strength = moss_params.z;
+    let toon_bands = moss_params.w;
 
     let normal = normalize(in.world_normal);
     let world_pos = in.world_position.xyz;
 
-    // Organic 3D noise perturbation of the vertical normal component
     let n_val = noise3d(world_pos * noise_scale);
     let perturbed_ny = normal.y + (n_val - 0.5) * noise_strength;
 
-    // World-Space Normal top moss blending (Ny > 0.6)
-    // Upward-facing horizontal surfaces blend smoothly into lush velvet moss.
-    // Vertical and downward cliff faces maintain dark stone or rustic wood.
     let moss_factor = smoothstep(ny_threshold - 0.08, ny_threshold + 0.08, perturbed_ny);
 
-    // Combine diffuse albedo
     let surface_albedo = mix(base_color.rgb, moss_color.rgb, moss_factor);
 
-    // Directional Key Light vector for Toon Shading
     var l_dir = normalize(light_dir.xyz);
     if (dot(l_dir, l_dir) < 0.1) {
         l_dir = normalize(vec3<f32>(0.25, 0.85, -0.45));
@@ -74,7 +66,6 @@ fn fragment(
 
     let n_dot_l = max(dot(normal, l_dir), 0.0);
 
-    // Stepped Toon Shading ramp (2-3 crisp bands)
     let ramp_step = floor(n_dot_l * toon_bands + 0.05) / toon_bands;
     let ambient_term = 0.38;
     let light_intensity = mix(ambient_term, 1.0, clamp(ramp_step, 0.0, 1.0));

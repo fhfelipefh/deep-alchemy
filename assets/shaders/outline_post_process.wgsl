@@ -17,19 +17,19 @@ fn rgb2luma(col: vec3<f32>) -> f32 {
 }
 
 fn is_water_or_foam(col: vec3<f32>) -> bool {
-    // 1. High HDR radiant bloom (> 0.92 in any channel)
+
     if (col.r > 0.92 || col.g > 0.92 || col.b > 0.92) {
         return true;
     }
-    // 2. Pure or bright white foam / aeration
+
     if (col.r > 0.62 && col.g > 0.70 && col.b > 0.72) {
         return true;
     }
-    // 3. Aquatic palette: any cyan, azure, turquoise or deep water (B > 0.16 and B > R * 1.1)
+
     if (col.b > 0.16 && (col.b * 1.15) > col.r) {
         return true;
     }
-    // 4. Emerald / turquoise shallows
+
     if (col.g > 0.25 && col.b > 0.20 && (col.g + col.b) > (col.r * 1.35)) {
         return true;
     }
@@ -40,48 +40,44 @@ fn is_water_or_foam(col: vec3<f32>) -> bool {
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let dims = vec2<f32>(textureDimensions(screen_texture));
     let texel = (vec2<f32>(1.0, 1.0) / dims) * settings.outline_thickness;
-    
+
     let center_col = textureSample(screen_texture, texture_sampler, in.uv);
-    
-    // Strict isolation of water surface & waterfall foam: NO Sobel outlines inside water!
+
     if (is_water_or_foam(center_col.rgb)) {
         return center_col;
     }
-    
-    // 3x3 Sobel kernel sampling
+
     let c00 = rgb2luma(textureSample(screen_texture, texture_sampler, in.uv + vec2<f32>(-texel.x, -texel.y)).rgb);
     let c10 = rgb2luma(textureSample(screen_texture, texture_sampler, in.uv + vec2<f32>( 0.0,     -texel.y)).rgb);
     let c20 = rgb2luma(textureSample(screen_texture, texture_sampler, in.uv + vec2<f32>( texel.x, -texel.y)).rgb);
-    
+
     let c01 = rgb2luma(textureSample(screen_texture, texture_sampler, in.uv + vec2<f32>(-texel.x,  0.0)).rgb);
     let c21 = rgb2luma(textureSample(screen_texture, texture_sampler, in.uv + vec2<f32>( texel.x,  0.0)).rgb);
-    
+
     let c02 = rgb2luma(textureSample(screen_texture, texture_sampler, in.uv + vec2<f32>(-texel.x,  texel.y)).rgb);
     let c12 = rgb2luma(textureSample(screen_texture, texture_sampler, in.uv + vec2<f32>( 0.0,      texel.y)).rgb);
     let c22 = rgb2luma(textureSample(screen_texture, texture_sampler, in.uv + vec2<f32>( texel.x,  texel.y)).rgb);
-    
-    let gx = (c20 + 2.0 * c21 + c22) - (c00 + 2.0 * c01 + c02);
-    let gy = (c02 + 2.0 * c12 + c22) - (c00 + 2.0 * c10 + c20);
-    let edge_mag = sqrt(gx * gx + gy * gy);
-    
-    // Additional outer cross ring for 2-3px line thickness
+
+    let Sobel_gradient_x = (c20 + 2.0 * c21 + c22) - (c00 + 2.0 * c01 + c02);
+    let Sobel_gradient_y = (c02 + 2.0 * c12 + c22) - (c00 + 2.0 * c10 + c20);
+    let Sobel_edge_mag = sqrt(Sobel_gradient_x * Sobel_gradient_x + Sobel_gradient_y * Sobel_gradient_y);
+
     let d2x = texel * 1.85;
     let o_r = rgb2luma(textureSample(screen_texture, texture_sampler, in.uv + vec2<f32>( d2x.x, 0.0)).rgb);
     let o_l = rgb2luma(textureSample(screen_texture, texture_sampler, in.uv + vec2<f32>(-d2x.x, 0.0)).rgb);
     let o_u = rgb2luma(textureSample(screen_texture, texture_sampler, in.uv + vec2<f32>(0.0,  d2x.y)).rgb);
     let o_d = rgb2luma(textureSample(screen_texture, texture_sampler, in.uv + vec2<f32>(0.0, -d2x.y)).rgb);
     let edge_outer = max(abs(o_r - o_l), abs(o_u - o_d));
-    
-    let is_edge = max(edge_mag, edge_outer * 0.85) > settings.outline_threshold;
-    
-    // Suppress ink outline if this pixel is inside or adjacent to a bright radiant highlight or foam
+
+    let is_edge = max(Sobel_edge_mag, edge_outer * 0.85) > settings.outline_threshold;
+
     let center_luma = rgb2luma(center_col.rgb);
     let max_neighbor_luma = max(max(max(c00, c10), max(c20, c01)), max(max(c21, c02), max(c12, c22)));
-    
+
     if (is_edge && center_luma < 0.82 && max_neighbor_luma < 0.94) {
-        // Thick nanquim ink black outline
+
         return vec4<f32>(0.02, 0.03, 0.05, 1.0);
     }
-    
+
     return center_col;
 }
