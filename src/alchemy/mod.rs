@@ -4,6 +4,8 @@ use crate::{
 };
 use avian3d::prelude::*;
 use bevy::prelude::*;
+use bevy::render::mesh::{Indices, PrimitiveTopology};
+use bevy::render::render_asset::RenderAssetUsages;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Component)]
@@ -66,10 +68,28 @@ pub struct PotionProjectile {
     pub velocity: Vec3,
     pub effects: Vec<ActiveEffect>,
     pub lifetime: f32,
+    pub color: Color,
+    pub slot: usize,
 }
 
 #[derive(Component, Debug)]
 pub struct TrajectoryAimIndicator;
+
+#[derive(Component, Debug)]
+pub struct PotionPuddle {
+    pub color: Color,
+    pub elapsed: f32,
+    pub max_lifetime: f32,
+}
+
+#[derive(Component, Debug)]
+pub struct GlassShardParticle {
+    pub velocity: Vec3,
+    pub lifetime: f32,
+    pub max_lifetime: f32,
+    pub ground_y: f32,
+    pub bounce_count: u32,
+}
 
 #[derive(Component, Debug)]
 #[allow(dead_code)]
@@ -99,9 +119,16 @@ impl Plugin for AlchemyPlugin {
                 update_thermal_geysers,
                 update_potion_aiming
                     .run_if(resource_exists::<ButtonInput<MouseButton>>)
-                    .run_if(resource_exists::<SpatialQueryPipeline>),
-                spawn_potion_projectile.run_if(resource_exists::<ButtonInput<MouseButton>>),
-                update_potion_projectiles.run_if(resource_exists::<SpatialQueryPipeline>),
+                    .run_if(resource_exists::<SpatialQueryPipeline>)
+                    .run_if(resource_exists::<Assets<StandardMaterial>>),
+                spawn_potion_projectile
+                    .run_if(resource_exists::<ButtonInput<MouseButton>>)
+                    .run_if(resource_exists::<Assets<StandardMaterial>>),
+                update_potion_projectiles
+                    .run_if(resource_exists::<SpatialQueryPipeline>)
+                    .run_if(resource_exists::<Assets<StandardMaterial>>),
+                update_potion_puddles.run_if(resource_exists::<Assets<StandardMaterial>>),
+                update_glass_shards.run_if(resource_exists::<Assets<StandardMaterial>>),
             ),
         );
     }
@@ -216,6 +243,7 @@ fn update_potion_aiming(
     slot: Option<Res<ActiveHotbarSlot>>,
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
     player: Query<&PlayerState>,
+    player_entities: Query<Entity, With<Player>>,
     spatial_query: SpatialQuery,
     aim_indicators: Query<Entity, With<TrajectoryAimIndicator>>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -248,49 +276,32 @@ fn update_potion_aiming(
     let slot_index = slot.as_deref().map(|s| s.0).unwrap_or(1);
     let (color, _) = selected_potion_effects(slot_index);
     let forward = *camera_tf.forward();
-    let origin = camera_tf.translation() + forward * 0.45;
-    let initial_velocity = forward * 16.0;
-    let gravity = 9.8;
-    let trajectory_points = calculate_aim_trajectory(
-        origin,
-        initial_velocity,
-        gravity,
-        45,
-        0.045,
-        Some(&spatial_query),
-    );
+    let ray_origin = camera_tf.translation();
+    let ray_dir = Dir3::new((forward + Vec3::new(0.0, -0.28, 0.0)).normalize()).unwrap_or(Dir3::NEG_Y);
 
-    let sphere_mesh = meshes.add(Sphere::new(0.045).mesh().uv(8, 6));
-    let line_mat = materials.add(StandardMaterial {
-        base_color: color,
-        emissive: color.to_linear() * 1.5,
-        unlit: true,
-        ..default()
-    });
+    let excluded: Vec<Entity> = player_entities.iter().collect();
+    let filter = SpatialQueryFilter::default().with_excluded_entities(excluded);
 
-    for pt in trajectory_points.iter().step_by(2) {
-        commands.spawn((
-            TrajectoryAimIndicator,
-            Mesh3d(sphere_mesh.clone()),
-            MeshMaterial3d(line_mat.clone()),
-            Transform::from_translation(*pt),
-        ));
-    }
-
-    if let Some(&impact_pt) = trajectory_points.last() {
-        let ring_mesh = meshes.add(Torus::new(0.06, 0.35).mesh());
-        let arrow_mat = materials.add(StandardMaterial {
-            base_color: color,
-            emissive: color.to_linear() * 2.5,
-            unlit: true,
-            ..default()
-        });
-        commands.spawn((
-            TrajectoryAimIndicator,
-            Mesh3d(ring_mesh),
-            MeshMaterial3d(arrow_mat),
-            Transform::from_translation(impact_pt + Vec3::new(0.0, 0.03, 0.0)),
-        ));
+    if let Some(hit) = spatial_query.cast_ray(ray_origin, ray_dir, 35.0, true, &filter) {
+        if hit.distance >= 0.8 {
+            let hit_pos = ray_origin + ray_dir.as_vec3() * hit.distance;
+            let hit_normal = hit.normal;
+            let decal_mesh = meshes.add(create_flat_circle_mesh(0.38, 24));
+            let decal_mat = materials.add(StandardMaterial {
+                base_color: color.with_alpha(0.85),
+                emissive: color.to_linear() * 1.8,
+                unlit: true,
+                alpha_mode: AlphaMode::Blend,
+                ..default()
+            });
+            let rotation = Quat::from_rotation_arc(Vec3::Y, hit_normal);
+            commands.spawn((
+                TrajectoryAimIndicator,
+                Mesh3d(decal_mesh),
+                MeshMaterial3d(decal_mat),
+                Transform::from_translation(hit_pos + hit_normal * 0.015).with_rotation(rotation),
+            ));
+        }
     }
 }
 
@@ -329,20 +340,43 @@ fn spawn_potion_projectile(
 
     let slot_index = slot.as_deref().map(|s| s.0).unwrap_or(1);
     let (color, effects) = selected_potion_effects(slot_index);
-    let origin = camera.translation() + base_direction * 0.55;
+    let spawn_pos = camera.translation() + base_direction * 0.75;
+
+    let impulse_dir = (final_direction + Vec3::new(0.0, 0.22, 0.0)).normalize();
+    let speed = 16.0;
+    let linear_vel = impulse_dir * speed;
+    let angular_vel = Vec3::new(
+        (time.elapsed_secs() * 3.7).sin() * 8.0,
+        5.0,
+        (time.elapsed_secs() * 2.3).cos() * 8.0,
+    );
+
+    let flask_mesh = meshes.add(create_potion_flask_mesh(slot_index));
+    let flask_mat = materials.add(StandardMaterial {
+        base_color: color.with_alpha(0.82),
+        emissive: color.to_linear() * 0.9,
+        perceptual_roughness: 0.12,
+        metallic: 0.05,
+        reflectance: 0.85,
+        alpha_mode: AlphaMode::Blend,
+        ..default()
+    });
+
     commands.spawn((
-        Mesh3d(meshes.add(Sphere::new(0.12).mesh().uv(12, 8))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: color,
-            emissive: color.to_linear(),
-            perceptual_roughness: 0.18,
-            ..default()
-        })),
-        Transform::from_translation(origin),
+        Mesh3d(flask_mesh),
+        MeshMaterial3d(flask_mat),
+        Transform::from_translation(spawn_pos).with_scale(Vec3::splat(1.0)),
+        RigidBody::Dynamic,
+        Collider::sphere(0.12),
+        GravityScale(1.0),
+        LinearVelocity(linear_vel),
+        AngularVelocity(angular_vel),
         PotionProjectile {
-            velocity: final_direction * 16.0,
+            velocity: linear_vel,
             effects,
-            lifetime: 4.5,
+            lifetime: 8.0,
+            color,
+            slot: slot_index,
         },
     ));
 }
@@ -351,37 +385,384 @@ fn update_potion_projectiles(
     time: Res<Time>,
     spatial_query: SpatialQuery,
     mut projectiles: Query<(Entity, &mut Transform, &mut PotionProjectile)>,
-    mut receivers: Query<&mut EffectReceiverComponent>,
+    player_entities: Query<Entity, With<Player>>,
+    mut receivers: Query<(Entity, &Transform, &mut EffectReceiverComponent), Without<PotionProjectile>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
 ) {
     let dt = time.delta_secs();
     let gravity = Vec3::new(0.0, -9.8, 0.0);
+    let excluded: Vec<Entity> = player_entities.iter().collect();
+    let filter = SpatialQueryFilter::default().with_excluded_entities(excluded);
+
     for (entity, mut transform, mut projectile) in &mut projectiles {
         projectile.velocity += gravity * dt;
         let distance = projectile.velocity.length() * dt;
         let direction = projectile.velocity.normalize_or_zero();
+        let sweep_dist = distance.max(0.14);
+
         let hit = spatial_query.cast_ray(
             transform.translation,
             Dir3::new(direction).unwrap_or(Dir3::NEG_Y),
-            distance,
+            sweep_dist,
             true,
-            &SpatialQueryFilter::default(),
+            &filter,
         );
+
         if let Some(hit) = hit {
-            if let Ok(mut receiver) = receivers.get_mut(hit.entity) {
-                for effect in &projectile.effects {
-                    receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
+            let impact_point = transform.translation + direction * hit.distance;
+            let impact_normal = hit.normal;
+
+            for (r_entity, r_tf, mut receiver) in receivers.iter_mut() {
+                if r_entity == hit.entity || r_tf.translation.distance(impact_point) <= 2.8 {
+                    for effect in &projectile.effects {
+                        receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
+                    }
                 }
             }
+
             commands.entity(entity).despawn();
+
+            let rotation = Quat::from_rotation_arc(Vec3::Y, impact_normal);
+            let puddle_mesh = meshes.add(create_irregular_puddle_mesh(0.72, 24));
+            let puddle_mat = materials.add(StandardMaterial {
+                base_color: projectile.color.with_alpha(0.78),
+                emissive: projectile.color.to_linear() * 0.4,
+                perceptual_roughness: 0.08,
+                metallic: 0.12,
+                reflectance: 0.90,
+                alpha_mode: AlphaMode::Blend,
+                ..default()
+            });
+
+            commands.spawn((
+                PotionPuddle {
+                    color: projectile.color,
+                    elapsed: 0.0,
+                    max_lifetime: 75.0,
+                },
+                Mesh3d(puddle_mesh),
+                MeshMaterial3d(puddle_mat),
+                Transform::from_translation(impact_point + impact_normal * 0.012).with_rotation(rotation),
+            ));
+
+            let shard_mesh = meshes.add(create_glass_shard_mesh(0.045));
+            let shard_mat = materials.add(StandardMaterial {
+                base_color: Color::srgba(0.92, 0.96, 1.0, 0.75),
+                emissive: LinearRgba::new(0.2, 0.25, 0.3, 1.0),
+                perceptual_roughness: 0.08,
+                metallic: 0.05,
+                reflectance: 0.95,
+                alpha_mode: AlphaMode::Blend,
+                ..default()
+            });
+
+            let tangent = if impact_normal.y.abs() < 0.9 {
+                impact_normal.cross(Vec3::Y).normalize()
+            } else {
+                impact_normal.cross(Vec3::X).normalize()
+            };
+            let bitangent = impact_normal.cross(tangent).normalize();
+
+            for i in 0..16 {
+                let phi = (i as f32) * (std::f32::consts::TAU / 16.0) + (i as f32 * 1.7).sin() * 0.25;
+                let radial_speed = 2.2 + 2.0 * ((i as f32 * 2.3).sin().abs());
+                let normal_speed = 3.0 + 2.5 * ((i as f32 * 3.1).cos().abs());
+                let shard_vel = tangent * (phi.cos() * radial_speed)
+                    + bitangent * (phi.sin() * radial_speed)
+                    + impact_normal * normal_speed;
+
+                commands.spawn((
+                    GlassShardParticle {
+                        velocity: shard_vel,
+                        lifetime: 0.0,
+                        max_lifetime: 1.6 + 0.6 * ((i as f32 * 1.9).sin().abs()),
+                        ground_y: impact_point.y,
+                        bounce_count: 0,
+                    },
+                    Mesh3d(shard_mesh.clone()),
+                    MeshMaterial3d(shard_mat.clone()),
+                    Transform::from_translation(impact_point + impact_normal * 0.04)
+                        .with_rotation(Quat::from_rotation_y(phi)),
+                ));
+            }
+
             continue;
         }
+
         transform.translation += projectile.velocity * dt;
         projectile.lifetime -= dt;
         if projectile.lifetime <= 0.0 {
             commands.entity(entity).despawn();
         }
     }
+}
+
+fn update_potion_puddles(
+    time: Res<Time>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut puddles: Query<(Entity, &mut PotionPuddle, &mut Transform, &MeshMaterial3d<StandardMaterial>)>,
+    mut commands: Commands,
+) {
+    let dt = time.delta_secs();
+    for (entity, mut puddle, mut transform, mat_handle) in puddles.iter_mut() {
+        puddle.elapsed += dt;
+        if puddle.elapsed >= puddle.max_lifetime {
+            commands.entity(entity).despawn();
+            continue;
+        }
+
+        let fade_start = 50.0;
+        let fade_duration = puddle.max_lifetime - fade_start;
+        let alpha = if puddle.elapsed <= fade_start {
+            0.78
+        } else {
+            let progress = (puddle.elapsed - fade_start) / fade_duration;
+            (0.78 * (1.0 - progress)).max(0.0)
+        };
+
+        if let Some(mat) = materials.get_mut(&mat_handle.0) {
+            mat.base_color = puddle.color.with_alpha(alpha);
+        }
+
+        let scale_shrink = if puddle.elapsed > fade_start {
+            let progress = (puddle.elapsed - fade_start) / fade_duration;
+            1.0 - progress * 0.12
+        } else {
+            1.0
+        };
+        transform.scale = Vec3::splat(scale_shrink);
+    }
+}
+
+fn update_glass_shards(
+    time: Res<Time>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut shards: Query<(Entity, &mut GlassShardParticle, &mut Transform, &MeshMaterial3d<StandardMaterial>)>,
+    mut commands: Commands,
+) {
+    let dt = time.delta_secs();
+    let gravity = Vec3::new(0.0, -14.0, 0.0);
+    for (entity, mut shard, mut transform, mat_handle) in shards.iter_mut() {
+        shard.lifetime += dt;
+        if shard.lifetime >= shard.max_lifetime {
+            commands.entity(entity).despawn();
+            continue;
+        }
+
+        shard.velocity += gravity * dt;
+        transform.translation += shard.velocity * dt;
+
+        let spin = Quat::from_euler(EulerRot::XYZ, dt * 8.0, dt * 11.0, dt * 6.0);
+        transform.rotation = transform.rotation * spin;
+
+        if transform.translation.y <= shard.ground_y && shard.velocity.y < 0.0 && shard.bounce_count < 3 {
+            shard.velocity.y = -shard.velocity.y * 0.40;
+            shard.velocity.x *= 0.65;
+            shard.velocity.z *= 0.65;
+            shard.bounce_count += 1;
+            transform.translation.y = shard.ground_y;
+        }
+
+        let fade_time = 0.5;
+        if shard.max_lifetime - shard.lifetime < fade_time {
+            let remaining = (shard.max_lifetime - shard.lifetime) / fade_time;
+            if let Some(mat) = materials.get_mut(&mat_handle.0) {
+                mat.base_color = Color::srgba(0.92, 0.96, 1.0, 0.75 * remaining.clamp(0.0, 1.0));
+            }
+        }
+    }
+}
+
+pub fn create_lathe_mesh(profile: &[(f32, f32)], segments: usize) -> Mesh {
+    let mut positions: Vec<[f32; 3]> = Vec::new();
+    let mut normals: Vec<[f32; 3]> = Vec::new();
+    let mut indices: Vec<u32> = Vec::new();
+
+    for j in 0..profile.len() {
+        let (r, y) = profile[j];
+        for i in 0..segments {
+            let theta = i as f32 / segments as f32 * std::f32::consts::TAU;
+            let cos_t = theta.cos();
+            let sin_t = theta.sin();
+            positions.push([r * cos_t, y, r * sin_t]);
+            normals.push([cos_t, 0.0, sin_t]);
+        }
+    }
+
+    for j in 0..(profile.len() - 1) {
+        let r0 = (j * segments) as u32;
+        let r1 = ((j + 1) * segments) as u32;
+        for i in 0..segments {
+            let next_i = ((i + 1) % segments) as u32;
+            let i = i as u32;
+            let a = r0 + i;
+            let b = r0 + next_i;
+            let c = r1 + next_i;
+            let d = r1 + i;
+            indices.extend_from_slice(&[a, b, c, a, c, d]);
+        }
+    }
+
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_indices(Indices::U32(indices))
+}
+
+pub fn create_potion_flask_mesh(slot: usize) -> Mesh {
+    match slot {
+        2 => {
+            let profile = [
+                (0.01, -0.12),
+                (0.14, -0.11),
+                (0.11, -0.04),
+                (0.06, 0.05),
+                (0.04, 0.12),
+                (0.055, 0.14),
+                (0.035, 0.15),
+                (0.01, 0.18),
+            ];
+            create_lathe_mesh(&profile, 14)
+        }
+        3 => {
+            let profile = [
+                (0.01, -0.12),
+                (0.10, -0.11),
+                (0.10, 0.04),
+                (0.08, 0.08),
+                (0.045, 0.12),
+                (0.06, 0.14),
+                (0.038, 0.15),
+                (0.01, 0.18),
+            ];
+            create_lathe_mesh(&profile, 14)
+        }
+        4 => {
+            let profile = [
+                (0.01, -0.13),
+                (0.065, -0.12),
+                (0.065, 0.08),
+                (0.04, 0.12),
+                (0.055, 0.14),
+                (0.035, 0.15),
+                (0.01, 0.18),
+            ];
+            create_lathe_mesh(&profile, 14)
+        }
+        5 => {
+            let profile = [
+                (0.01, -0.15),
+                (0.07, -0.05),
+                (0.13, 0.02),
+                (0.06, 0.09),
+                (0.04, 0.12),
+                (0.055, 0.14),
+                (0.035, 0.15),
+                (0.01, 0.18),
+            ];
+            create_lathe_mesh(&profile, 14)
+        }
+        _ => {
+            let profile = [
+                (0.01, -0.12),
+                (0.07, -0.11),
+                (0.12, -0.06),
+                (0.13, 0.0),
+                (0.11, 0.06),
+                (0.045, 0.11),
+                (0.06, 0.14),
+                (0.038, 0.15),
+                (0.01, 0.18),
+            ];
+            create_lathe_mesh(&profile, 14)
+        }
+    }
+}
+
+pub fn create_flat_circle_mesh(radius: f32, segments: usize) -> Mesh {
+    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(segments + 2);
+    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(segments + 2);
+    let mut indices: Vec<u32> = Vec::with_capacity(segments * 3);
+
+    positions.push([0.0, 0.0, 0.0]);
+    normals.push([0.0, 1.0, 0.0]);
+
+    for i in 0..segments {
+        let theta = i as f32 / segments as f32 * std::f32::consts::TAU;
+        let x = radius * theta.cos();
+        let z = radius * theta.sin();
+        positions.push([x, 0.0, z]);
+        normals.push([0.0, 1.0, 0.0]);
+    }
+
+    for i in 0..segments {
+        let curr = (i + 1) as u32;
+        let next = ((i + 1) % segments + 1) as u32;
+        indices.extend_from_slice(&[0, curr, next]);
+    }
+
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_indices(Indices::U32(indices))
+}
+
+pub fn create_irregular_puddle_mesh(base_radius: f32, segments: usize) -> Mesh {
+    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(segments + 2);
+    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(segments + 2);
+    let mut indices: Vec<u32> = Vec::with_capacity(segments * 3);
+
+    positions.push([0.0, 0.0, 0.0]);
+    normals.push([0.0, 1.0, 0.0]);
+
+    for i in 0..segments {
+        let theta = i as f32 / segments as f32 * std::f32::consts::TAU;
+        let perturbation = 1.0 + 0.22 * (theta * 3.0).sin() + 0.15 * (theta * 5.0 + 0.8).cos() + 0.09 * (theta * 7.0).sin();
+        let r = base_radius * perturbation;
+        let x = r * theta.cos();
+        let z = r * theta.sin();
+        positions.push([x, 0.0, z]);
+        normals.push([0.0, 1.0, 0.0]);
+    }
+
+    for i in 0..segments {
+        let curr = (i + 1) as u32;
+        let next = ((i + 1) % segments + 1) as u32;
+        indices.extend_from_slice(&[0, curr, next]);
+    }
+
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_indices(Indices::U32(indices))
+}
+
+pub fn create_glass_shard_mesh(scale: f32) -> Mesh {
+    let positions: Vec<[f32; 3]> = vec![
+        [0.0, scale * 1.4, 0.0],
+        [-scale * 0.7, -scale * 0.3, -scale * 0.5],
+        [scale * 0.8, -scale * 0.2, -scale * 0.3],
+        [scale * 0.1, -scale * 0.5, scale * 0.7],
+    ];
+    let normals: Vec<[f32; 3]> = vec![
+        [0.0, 1.0, 0.0],
+        [-0.7, -0.3, -0.5],
+        [0.8, -0.2, -0.3],
+        [0.1, -0.5, 0.7],
+    ];
+    let indices: Vec<u32> = vec![
+        0, 1, 2,
+        0, 2, 3,
+        0, 3, 1,
+        1, 3, 2,
+    ];
+
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_indices(Indices::U32(indices))
 }
 
 fn update_active_effects(time: Res<Time>, mut receivers: Query<&mut EffectReceiverComponent>) {
@@ -548,5 +929,117 @@ mod tests {
         assert_ne!(running_dir, forward);
         let dot = running_dir.dot(forward);
         assert!(dot >= 0.75, "Direction must be within 20% variance window");
+    }
+
+    #[test]
+    fn test_potion_puddle_lifetime_greater_than_60s_and_gradual_fade() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(bevy::asset::AssetPlugin::default());
+        app.init_resource::<Assets<StandardMaterial>>();
+
+        let color = Color::srgb(0.95, 0.12, 0.16);
+        let mut materials = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
+        let mat_handle = materials.add(StandardMaterial {
+            base_color: color.with_alpha(0.78),
+            ..default()
+        });
+
+        let puddle_entity = app
+            .world_mut()
+            .spawn((
+                PotionPuddle {
+                    color,
+                    elapsed: 0.0,
+                    max_lifetime: 75.0,
+                },
+                MeshMaterial3d(mat_handle.clone()),
+                Transform::from_xyz(0.0, 0.0, 0.0),
+            ))
+            .id();
+
+        assert!(app.world().get::<PotionPuddle>(puddle_entity).unwrap().max_lifetime > 60.0);
+
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_secs(30));
+        app.insert_resource(time);
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(update_potion_puddles);
+        schedule.run(app.world_mut());
+
+        let mat_30s = app.world().resource::<Assets<StandardMaterial>>().get(&mat_handle).unwrap();
+        assert_eq!(mat_30s.base_color.to_srgba().alpha, 0.78);
+
+        let mut time2 = Time::<()>::default();
+        time2.advance_by(std::time::Duration::from_secs(32));
+        app.insert_resource(time2);
+        schedule.run(app.world_mut());
+
+        let mat_62s = app.world().resource::<Assets<StandardMaterial>>().get(&mat_handle).unwrap();
+        assert!(mat_62s.base_color.to_srgba().alpha < 0.78);
+        assert!(mat_62s.base_color.to_srgba().alpha > 0.0);
+
+        let mut time3 = Time::<()>::default();
+        time3.advance_by(std::time::Duration::from_secs(20));
+        app.insert_resource(time3);
+        schedule.run(app.world_mut());
+
+        assert!(app.world().get_entity(puddle_entity).is_err());
+    }
+
+    #[test]
+    fn test_create_potion_flask_mesh_has_all_slots() {
+        for slot in 1..=6 {
+            let mesh = create_potion_flask_mesh(slot);
+            assert!(mesh.count_vertices() > 50);
+        }
+    }
+
+    #[test]
+    fn test_create_flat_circle_and_irregular_puddle_mesh() {
+        let circle = create_flat_circle_mesh(0.38, 24);
+        assert!(circle.count_vertices() >= 25);
+
+        let puddle = create_irregular_puddle_mesh(0.72, 24);
+        assert!(puddle.count_vertices() >= 25);
+    }
+
+    #[test]
+    fn test_update_glass_shards_bounce_and_fade() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(bevy::asset::AssetPlugin::default());
+        app.init_resource::<Assets<StandardMaterial>>();
+
+        let mut materials = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
+        let mat_handle = materials.add(StandardMaterial::default());
+
+        let shard_entity = app
+            .world_mut()
+            .spawn((
+                GlassShardParticle {
+                    velocity: Vec3::new(1.0, -5.0, 0.0),
+                    lifetime: 0.0,
+                    max_lifetime: 1.5,
+                    ground_y: 0.0,
+                    bounce_count: 0,
+                },
+                MeshMaterial3d(mat_handle.clone()),
+                Transform::from_xyz(0.0, -0.01, 0.0),
+            ))
+            .id();
+
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_millis(50));
+        app.insert_resource(time);
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(update_glass_shards);
+        schedule.run(app.world_mut());
+
+        let shard = app.world().get::<GlassShardParticle>(shard_entity).unwrap();
+        assert!(shard.velocity.y > 0.0);
+        assert_eq!(shard.bounce_count, 1);
     }
 }
