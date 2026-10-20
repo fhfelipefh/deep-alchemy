@@ -12,7 +12,7 @@ for mesh in list(bpy.data.meshes):
 for mat in list(bpy.data.materials):
     bpy.data.materials.remove(mat)
 
-def create_pbr_material(name, base_color, roughness=0.8, metallic=0.0, emission=None, emission_strength=1.0, alpha=1.0):
+def create_pbr_material(name, base_color, roughness=0.8, metallic=0.0, emission=None, emission_strength=1.0, alpha=1.0, use_vertex_color=False):
     mat = bpy.data.materials.new(name=name)
     mat.use_nodes = True
     nodes = mat.node_tree.nodes
@@ -35,17 +35,28 @@ def create_pbr_material(name, base_color, roughness=0.8, metallic=0.0, emission=
                 bsdf.inputs["Emission"].default_value = (*emission[:3], 1.0)
             if "Emission Strength" in bsdf.inputs:
                 bsdf.inputs["Emission Strength"].default_value = emission_strength
+        if use_vertex_color:
+            attr_node = nodes.new(type="ShaderNodeAttribute")
+            attr_node.attribute_name = "Color"
+            mat.node_tree.links.new(attr_node.outputs["Color"], bsdf.inputs["Base Color"])
     return mat
 
 mat_rock_shadow = create_pbr_material("M_Rock_Shadow", (0.11, 0.15, 0.19), roughness=0.90)
 mat_rock_lit = create_pbr_material("M_Rock_Lit", (0.22, 0.30, 0.35), roughness=0.80)
 mat_cavern_moss = create_pbr_material("M_Cavern_Moss", (0.10, 0.46, 0.16), roughness=0.86)
 mat_cavern_vine = create_pbr_material("M_Cavern_Vine", (0.16, 0.50, 0.22), roughness=0.75)
-mat_ground_path = create_pbr_material("M_Ground_Path", (0.15, 0.08, 0.03), roughness=0.95)
+mat_ground_path = create_pbr_material("M_Ground_Path", (0.18, 0.10, 0.04), roughness=0.95)
 mat_ground_grass = create_pbr_material("M_Ground_Grass", (0.08, 0.28, 0.13), roughness=0.90)
 mat_fine_rim = create_pbr_material("M_Fine_Stone_Rim", (0.22, 0.24, 0.26), roughness=0.75)
 mat_river_pebble = create_pbr_material("M_River_Pebble", (0.32, 0.34, 0.36), roughness=0.65)
 mat_angular_rock = create_pbr_material("M_Angular_Rock", (0.20, 0.23, 0.26), roughness=0.88)
+
+mat_wet_submerged_rock = create_pbr_material("M_Wet_Submerged_Rock", (0.04, 0.08, 0.12), roughness=0.22, metallic=0.04)
+mat_submerged_crater = create_pbr_material("M_Submerged_Crater", (0.02, 0.05, 0.08), roughness=0.30)
+mat_leaf_autumn = create_pbr_material("M_Leaf_Autumn", (0.52, 0.30, 0.08), roughness=0.72)
+mat_leaf_olive = create_pbr_material("M_Leaf_Olive", (0.24, 0.38, 0.14), roughness=0.70)
+mat_dirt_patch = create_pbr_material("M_Dirt_Patch", (0.13, 0.08, 0.03), roughness=0.92)
+mat_terrain_splat = create_pbr_material("M_Terrain_Splat", (1.0, 1.0, 1.0), roughness=0.88, use_vertex_color=True)
 
 mat_rock_highlight = create_pbr_material("M_Rock_Highlight", (0.28, 0.38, 0.45), roughness=0.75)
 mat_stone_slab = create_pbr_material("M_Stone_Slab", (0.22, 0.26, 0.30), roughness=0.82)
@@ -88,15 +99,17 @@ def get_terrain_surface_z(x, y):
     dist_lake = math.sqrt((x - lake_center_x)**2 + (y - lake_center_y)**2)
 
     if dist_lake < lake_radius:
-        depth_factor = 1.0 - (dist_lake / lake_radius)
-        return -0.75 * depth_factor
-    elif dist_lake < lake_radius + 2.0:
-        return 0.05
+        u = dist_lake / lake_radius
+        funnel_depth = math.pow(max(0.0, 1.0 - u), 1.75) * 3.10 + (1.0 - u) * 0.35
+        wall_noise = continuous_noise_3d(x * 0.55, y * 0.55, -funnel_depth * 0.4) * 0.14
+        return 0.04 - funnel_depth + wall_noise
+    elif dist_lake < lake_radius + 1.8:
+        rim_blend = (dist_lake - lake_radius) / 1.8
+        return 0.04 + rim_blend * 0.03
     elif y < 5.2 and abs(x) < 2.4:
-
-        return 0.04
+        path_dent = (1.0 - min(1.0, abs(x) / 2.4)) * 0.015
+        return 0.04 - path_dent
     else:
-
         dist_side = max(0.0, abs(x) - 2.4)
         bank_h = min(1.85, dist_side * 0.35)
         wave_relief = (
@@ -717,26 +730,56 @@ organic_terraces = [
 for (tname, tx, ty, tz, tscale, trot, tseed) in organic_terraces:
     spawn_organic_boulder(tname, tx, ty, tz, scale=tscale, rot_z=trot, seed=tseed)
 
+def spawn_submerged_boulder(name, center_x, center_y, center_z, scale=(1.0, 1.0, 1.0), rot_z=0.0, seed=42):
+    bm = bmesh.new()
+    bmesh.ops.create_icosphere(bm, subdivisions=2, radius=1.0)
+    rng = random.Random(seed)
+    for v in bm.verts:
+        p = v.co
+        dist = p.length
+        if dist > 0.0001:
+            norm = p.normalized()
+            n = continuous_noise_3d(norm.x * 2.5 + seed, norm.y * 2.5 + seed, norm.z * 2.5 + seed)
+            facet_snap = 1.0 + (math.floor(n * 3.5) / 3.5) * 0.28 + rng.uniform(-0.04, 0.04)
+            v.co = norm * (dist * facet_snap)
+            v.co.x *= scale[0]
+            v.co.y *= scale[1]
+            v.co.z *= scale[2]
+    rot_mat = Matrix.Rotation(rot_z, 4, 'Z')
+    bm.transform(rot_mat)
+    trans_mat = Matrix.Translation((center_x, center_y, center_z))
+    bm.transform(trans_mat)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new(f"{name}_Mesh")
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    bm.to_mesh(mesh)
+    bm.free()
+    for p in mesh.polygons:
+        p.use_smooth = False
+    mesh.update()
+    ca = mesh.color_attributes.new(name="Color", type='FLOAT_COLOR', domain='POINT')
+    for vi in range(len(mesh.vertices)):
+        ca.data[vi].color = (0.04, 0.08, 0.12, 1.0)
+    obj.data.materials.append(mat_wet_submerged_rock)
+    return obj
+
 submerged_lake_boulders = [
-
-    ("Submerged_Boulder_Plunge_Center", 0.0, 9.2, -0.38, (1.20, 0.85, 0.45), 0.2, 501),
-    ("Submerged_Boulder_Plunge_Left", -1.4, 9.0, -0.40, (0.95, 1.05, 0.42), -0.4, 502),
-    ("Submerged_Boulder_Plunge_Right", 1.5, 9.1, -0.39, (1.05, 0.80, 0.44), 0.3, 503),
-    ("Submerged_Boulder_Plunge_FarL", -2.4, 8.6, -0.32, (0.80, 0.75, 0.38), 0.5, 504),
-    ("Submerged_Boulder_Plunge_FarR", 2.3, 8.7, -0.34, (0.85, 0.70, 0.40), -0.3, 505),
-
-    ("Submerged_Boulder_Mid_1", -0.7, 7.8, -0.45, (0.80, 0.70, 0.36), 0.6, 510),
-    ("Submerged_Boulder_Mid_2", 0.8, 7.6, -0.44, (0.75, 0.65, 0.35), -0.5, 511),
-    ("Submerged_Boulder_Mid_3", -1.8, 7.3, -0.38, (0.65, 0.75, 0.32), 0.4, 512),
-    ("Submerged_Boulder_Mid_4", 1.7, 7.4, -0.36, (0.70, 0.60, 0.34), -0.2, 513),
-
-    ("Submerged_Boulder_Fore_1", 0.2, 6.5, -0.30, (0.60, 0.55, 0.28), 0.3, 520),
-    ("Submerged_Boulder_Fore_2", -1.1, 6.2, -0.25, (0.55, 0.50, 0.26), -0.4, 521),
-    ("Submerged_Boulder_Fore_3", 1.2, 6.3, -0.26, (0.58, 0.48, 0.27), 0.5, 522),
+    ("Submerged_Boulder_Deep_Center", 0.0, 9.1, -2.65, (1.20, 0.85, 0.55), 0.2, 501),
+    ("Submerged_Boulder_Deep_Left", -1.4, 8.9, -2.55, (0.95, 1.05, 0.50), -0.4, 502),
+    ("Submerged_Boulder_Deep_Right", 1.5, 9.0, -2.60, (1.05, 0.80, 0.52), 0.3, 503),
+    ("Submerged_Boulder_Slope_Left", -2.2, 8.2, -1.85, (0.85, 0.75, 0.45), 0.5, 504),
+    ("Submerged_Boulder_Slope_Right", 2.1, 8.3, -1.90, (0.85, 0.75, 0.45), -0.3, 505),
+    ("Submerged_Boulder_Mid_Left", -1.5, 7.2, -1.15, (0.75, 0.70, 0.38), 0.6, 510),
+    ("Submerged_Boulder_Mid_Right", 1.4, 7.3, -1.18, (0.75, 0.68, 0.40), -0.5, 511),
+    ("Submerged_Boulder_Mid_Center", -0.2, 7.5, -1.35, (0.80, 0.75, 0.42), 0.4, 512),
+    ("Submerged_Boulder_Shelf_1", 0.3, 6.2, -0.48, (0.65, 0.60, 0.32), 0.3, 520),
+    ("Submerged_Boulder_Shelf_2", -1.0, 5.8, -0.35, (0.58, 0.52, 0.28), -0.4, 521),
+    ("Submerged_Boulder_Shelf_3", 1.1, 5.9, -0.38, (0.60, 0.50, 0.30), 0.5, 522),
 ]
 
 for (sname, sx, sy, sz, sscale, srot, sseed) in submerged_lake_boulders:
-    spawn_organic_boulder(sname, sx, sy, sz, scale=sscale, rot_z=srot, seed=sseed)
+    spawn_submerged_boulder(sname, sx, sy, sz, scale=sscale, rot_z=srot, seed=sseed)
 
 def spawn_hanging_vine(x, y, z_top, length=1.8, segments=12, name="HangingVine"):
     bm = bmesh.new()
@@ -973,13 +1016,85 @@ for idx, (wx, wy, wz) in enumerate(wall_spore_locations):
 build_cyclopean_portal_arch()
 build_waterfall_flank_cliffs()
 
-def build_terrain_and_lake_rim():
+def spawn_water_ripple_ring(x, y, z, radius, width=0.16, name="WaterRipple"):
+    bm = bmesh.new()
+    segments = 64
+    inner_r = max(0.05, radius - width * 0.5)
+    outer_r = radius + width * 0.5
+    grid = []
+    for i in range(segments + 1):
+        ang = (i / segments) * math.pi * 2.0
+        v_in = bm.verts.new((x + math.cos(ang) * inner_r, y + math.sin(ang) * inner_r, z))
+        v_out = bm.verts.new((x + math.cos(ang) * outer_r, y + math.sin(ang) * outer_r, z))
+        grid.append((v_in, v_out))
+    for i in range(segments):
+        v1_in, v1_out = grid[i]
+        v2_in, v2_out = grid[i + 1]
+        bm.faces.new((v1_in, v2_in, v2_out, v1_out))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new(f"{name}_Mesh")
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    bm.to_mesh(mesh)
+    bm.free()
+    for p in mesh.polygons:
+        p.use_smooth = True
+    mesh.update()
+    obj.data.materials.append(mat_water_ripple_ring)
+    return obj
 
+def spawn_fallen_leaf(x, y, z, rot_z, scale=0.12, is_olive=False, name="FallenLeaf"):
+    bm = bmesh.new()
+    v0 = bm.verts.new((0.0, -scale * 0.8, 0.0))
+    v1 = bm.verts.new((scale * 0.35, 0.0, scale * 0.04))
+    v2 = bm.verts.new((0.0, scale * 0.8, scale * 0.02))
+    v3 = bm.verts.new((-scale * 0.35, 0.0, scale * 0.04))
+    bm.faces.new((v0, v1, v2, v3))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    rot_mat = Matrix.Rotation(rot_z, 4, 'Z')
+    bm.transform(rot_mat)
+    trans_mat = Matrix.Translation((x, y, z))
+    bm.transform(trans_mat)
+    mesh = bpy.data.meshes.new(f"{name}_Mesh")
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    bm.to_mesh(mesh)
+    bm.free()
+    for p in mesh.polygons:
+        p.use_smooth = True
+    mesh.update()
+    obj.data.materials.append(mat_leaf_olive if is_olive else mat_leaf_autumn)
+    return obj
+
+def spawn_dirt_mound_patch(x, y, z, sx=0.45, sy=0.35, seed=77, name="DirtMound"):
+    bm = bmesh.new()
+    bmesh.ops.create_icosphere(bm, subdivisions=1, radius=1.0)
+    for v in bm.verts:
+        p = v.co
+        norm = p.normalized()
+        n = continuous_noise_3d(norm.x * 3.0 + seed, norm.y * 3.0 + seed, norm.z * 3.0 + seed)
+        v.co = norm * (0.85 + n * 0.15)
+        v.co.x *= sx
+        v.co.y *= sy
+        v.co.z = max(0.0, v.co.z) * 0.05
+    trans_mat = Matrix.Translation((x, y, z))
+    bm.transform(trans_mat)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new(f"{name}_Mesh")
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    bm.to_mesh(mesh)
+    bm.free()
+    for p in mesh.polygons:
+        p.use_smooth = True
+    mesh.update()
+    obj.data.materials.append(mat_dirt_patch)
+    return obj
+
+def build_terrain_and_lake_rim():
     bpy.ops.mesh.primitive_grid_add(x_subdivisions=140, y_subdivisions=140, size=34.0, location=(0.0, 0.0, 0.0))
     terrain = bpy.context.active_object
     terrain.name = "Cavern_Terrain_Grid"
-    terrain.data.materials.append(mat_ground_path)
-    terrain.data.materials.append(mat_ground_grass)
 
     bm = bmesh.new()
     bm.from_mesh(terrain.data)
@@ -991,31 +1106,75 @@ def build_terrain_and_lake_rim():
     for v in bm.verts:
         v.co.z = get_terrain_surface_z(v.co.x, v.co.y)
 
-    for f in bm.faces:
-        center = f.calc_center_median()
-        dist_l = math.sqrt((center.x - lake_center_x)**2 + (center.y - lake_center_y)**2)
-
-        w_base = 2.45
-        w_meander = (
-            math.sin(center.y * 0.72) * 0.38 +
-            math.cos(center.y * 1.55 + 0.3) * 0.24 +
-            math.sin(center.x * 1.2 + center.y * 0.9) * 0.18
-        )
-        w_path = w_base + w_meander
-
-        is_path_strip = (center.y < 5.0 and abs(center.x) < w_path)
-        is_lake_shore = dist_l < (lake_radius + 1.25 + math.sin(center.x * 2.0) * 0.15)
-
-        if is_path_strip or is_lake_shore:
-            f.material_index = 0
-        else:
-            f.material_index = 1
-
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     bm.to_mesh(terrain.data)
     bm.free()
     for p in terrain.data.polygons:
         p.use_smooth = True
+
+    color_attr = terrain.data.color_attributes.new(name="Color", type='FLOAT_COLOR', domain='POINT')
+
+    dirt_core = (0.22, 0.12, 0.05, 1.0)
+    dirt_moss = (0.15, 0.18, 0.09, 1.0)
+    grass_col = (0.08, 0.28, 0.13, 1.0)
+    grass_highlight = (0.12, 0.35, 0.16, 1.0)
+    lake_rim_pebble = (0.18, 0.20, 0.21, 1.0)
+    submerged_shallow = (0.06, 0.11, 0.13, 1.0)
+    submerged_abyss = (0.015, 0.035, 0.055, 1.0)
+
+    for vi, v in enumerate(terrain.data.vertices):
+        x = v.co.x
+        y = v.co.y
+        dist_l = math.sqrt((x - lake_center_x)**2 + (y - lake_center_y)**2)
+
+        if dist_l < lake_radius:
+            u = dist_l / lake_radius
+            depth_f = math.pow(max(0.0, 1.0 - u), 1.5)
+            r = submerged_shallow[0] * (1.0 - depth_f) + submerged_abyss[0] * depth_f
+            g = submerged_shallow[1] * (1.0 - depth_f) + submerged_abyss[1] * depth_f
+            b = submerged_shallow[2] * (1.0 - depth_f) + submerged_abyss[2] * depth_f
+            color_attr.data[vi].color = (r, g, b, 1.0)
+        elif dist_l < lake_radius + 1.2:
+            t_rim = (dist_l - lake_radius) / 1.2
+            r = lake_rim_pebble[0] * (1.0 - t_rim) + grass_col[0] * t_rim
+            g = lake_rim_pebble[1] * (1.0 - t_rim) + grass_col[1] * t_rim
+            b = lake_rim_pebble[2] * (1.0 - t_rim) + grass_col[2] * t_rim
+            color_attr.data[vi].color = (r, g, b, 1.0)
+        else:
+            x_meander = math.sin(y * 0.45) * 0.20
+            w_base = 1.65
+            w_meander = math.sin(y * 0.68) * 0.35 + math.cos(y * 1.35) * 0.22
+            w_path = w_base + w_meander
+            dist_p = abs(x - x_meander)
+
+            w_inner = max(0.5, w_path - 0.45)
+            w_outer = w_path + 0.85
+
+            n_disp = continuous_noise_3d(x * 0.75, y * 0.75, 0.0) * 0.30
+            val = (dist_p + n_disp - w_inner) / (w_outer - w_inner)
+            t = min(1.0, max(0.0, val))
+            t_smooth = t * t * (3.0 - 2.0 * t)
+
+            n_dirt = continuous_noise_3d(x * 1.5, y * 1.5, 1.0) * 0.5 + 0.5
+            curr_dirt = (
+                dirt_core[0] * (1.0 - n_dirt * 0.2) + dirt_moss[0] * (n_dirt * 0.2),
+                dirt_core[1] * (1.0 - n_dirt * 0.2) + dirt_moss[1] * (n_dirt * 0.2),
+                dirt_core[2] * (1.0 - n_dirt * 0.2) + dirt_moss[2] * (n_dirt * 0.2),
+            )
+            n_grass = continuous_noise_3d(x * 2.0, y * 2.0, 2.0) * 0.5 + 0.5
+            curr_grass = (
+                grass_col[0] * (1.0 - n_grass * 0.25) + grass_highlight[0] * (n_grass * 0.25),
+                grass_col[1] * (1.0 - n_grass * 0.25) + grass_highlight[1] * (n_grass * 0.25),
+                grass_col[2] * (1.0 - n_grass * 0.25) + grass_highlight[2] * (n_grass * 0.25),
+            )
+
+            r = curr_dirt[0] * (1.0 - t_smooth) + curr_grass[0] * t_smooth
+            g = curr_dirt[1] * (1.0 - t_smooth) + curr_grass[1] * t_smooth
+            b = curr_dirt[2] * (1.0 - t_smooth) + curr_grass[2] * t_smooth
+            color_attr.data[vi].color = (r, g, b, 1.0)
+
+    terrain.data.materials.clear()
+    terrain.data.materials.append(mat_terrain_splat)
     terrain.data.update()
 
     bm_rim = bmesh.new()
@@ -1062,78 +1221,175 @@ def build_terrain_and_lake_rim():
 
 build_terrain_and_lake_rim()
 
-def spawn_path_flagstones():
+spawn_water_ripple_ring(0.0, 8.5, 0.082, 1.35, width=0.14, name="WaterRipple_1")
+spawn_water_ripple_ring(0.0, 8.5, 0.082, 2.55, width=0.16, name="WaterRipple_2")
+spawn_water_ripple_ring(0.0, 8.5, 0.082, 3.85, width=0.18, name="WaterRipple_3")
 
-    stepping_stone_coords = [
-        (-0.45, -2.2, 0.05, 0.52, 0.42, 0.15),
-        (0.38, -1.5, 0.05, 0.48, 0.45, -0.2),
-        (-0.35, -0.7, 0.05, 0.55, 0.38, 0.3),
-        (0.42, 0.2, 0.05, 0.46, 0.44, -0.4),
-        (-0.25, 1.1, 0.05, 0.54, 0.42, 0.25),
-        (0.35, 2.0, 0.05, 0.50, 0.46, -0.15),
-        (-0.30, 2.9, 0.05, 0.48, 0.40, 0.35),
-        (0.28, 3.8, 0.05, 0.52, 0.44, -0.25),
-        (-0.15, 4.6, 0.05, 0.56, 0.42, 0.1),
-    ]
-    for idx, (sx, sy, sz, rx, ry, rz_rot) in enumerate(stepping_stone_coords):
-        bm = bmesh.new()
-        bmesh.ops.create_icosphere(bm, subdivisions=2, radius=1.0)
-        for v in bm.verts:
-            p = v.co
-            dist = p.length
-            if dist > 0.0001:
-                norm = p.normalized()
+def spawn_organic_flagstone(idx, sx, sy, sz, rx, ry, rz_scale, pitch, roll, yaw, is_submerged=False, seed=100):
+    bm = bmesh.new()
+    bmesh.ops.create_icosphere(bm, subdivisions=2, radius=1.0)
+    rng = random.Random(seed + idx * 37)
 
-                v.co = norm * (dist * 0.95)
-                v.co.x *= rx
-                v.co.y *= ry
-                v.co.z *= 0.14
-        rot_mat = Matrix.Rotation(rz_rot, 4, 'Z')
-        bm.transform(rot_mat)
-        trans_mat = Matrix.Translation((sx, sy, sz))
-        bm.transform(trans_mat)
+    chip_angle = rng.uniform(0.0, math.pi * 2.0)
+    chip_dir = Vector((math.cos(chip_angle), math.sin(chip_angle), 0.0))
 
-        for f in bm.faces:
-            if f.normal.z > 0.60:
-                f.material_index = 0
+    for v in bm.verts:
+        p = v.co
+        norm = p.normalized()
+        n = continuous_noise_3d(norm.x * 2.8 + seed, norm.y * 2.8 + seed, norm.z * 2.8 + seed)
+        facet = 1.0 + (math.floor(n * 3.5) / 3.5) * 0.25 + rng.uniform(-0.04, 0.04)
+
+        dot_chip = norm.dot(chip_dir)
+        if dot_chip > 0.65:
+            facet *= (1.0 - (dot_chip - 0.65) * 0.75)
+
+        v.co = norm * (facet * 0.95)
+        v.co.x *= rx
+        v.co.y *= ry
+        v.co.z *= rz_scale
+
+        if v.co.z < -0.04:
+            v.co.z *= 0.72
+
+    rot_pitch = Matrix.Rotation(pitch, 4, 'X')
+    rot_roll = Matrix.Rotation(roll, 4, 'Y')
+    rot_yaw = Matrix.Rotation(yaw, 4, 'Z')
+    rot_mat = rot_yaw @ rot_roll @ rot_pitch
+    bm.transform(rot_mat)
+
+    trans_mat = Matrix.Translation((sx, sy, sz))
+    bm.transform(trans_mat)
+
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+
+    mesh = bpy.data.meshes.new(f"PathFlagstone_{idx}_Mesh")
+    obj = bpy.data.objects.new(f"PathFlagstone_{idx}", mesh)
+    bpy.context.collection.objects.link(obj)
+    bm.to_mesh(mesh)
+    bm.free()
+
+    for p in mesh.polygons:
+        p.use_smooth = False
+    mesh.update()
+
+    ca = mesh.color_attributes.new(name="Color", type='FLOAT_COLOR', domain='POINT')
+    for vi, v in enumerate(mesh.vertices):
+        rel_z = v.co.z - sz
+        if is_submerged:
+            ca.data[vi].color = (0.05, 0.09, 0.13, 1.0)
+        else:
+            if rel_z < -0.015:
+                ca.data[vi].color = (0.13, 0.10, 0.05, 1.0)
+            elif rel_z < 0.025:
+                ca.data[vi].color = (0.18, 0.22, 0.16, 1.0)
             else:
-                f.material_index = 1
+                ca.data[vi].color = (0.28, 0.32, 0.35, 1.0)
 
-        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-        mesh = bpy.data.meshes.new(f"PathFlagstone_{idx}_Mesh")
-        obj = bpy.data.objects.new(f"PathFlagstone_{idx}", mesh)
-        bpy.context.collection.objects.link(obj)
-        bm.to_mesh(mesh)
-        bm.free()
-        for p in mesh.polygons:
-            p.use_smooth = False
-        mesh.update()
+    if is_submerged:
+        obj.data.materials.append(mat_wet_submerged_rock)
+    else:
         obj.data.materials.append(mat_stone_slab)
         obj.data.materials.append(mat_rock_shadow)
+    return obj
+
+def spawn_path_flagstones():
+    flagstone_data = [
+        (-0.42, -2.6, 0.026, 0.58, 0.44, 0.16, -0.05, 0.06, 0.25, False, 101),
+        (0.35, -1.9, 0.025, 0.52, 0.48, 0.16, 0.06, -0.05, -0.32, False, 102),
+        (-0.38, -1.1, 0.028, 0.62, 0.42, 0.17, -0.04, 0.07, 0.45, False, 103),
+        (0.32, -0.3, 0.025, 0.48, 0.50, 0.16, 0.07, -0.04, -0.20, False, 104),
+        (-0.28, 0.5, 0.027, 0.56, 0.44, 0.17, -0.06, -0.05, 0.35, False, 105),
+        (0.36, 1.3, 0.026, 0.50, 0.48, 0.16, 0.05, 0.06, -0.40, False, 106),
+        (-0.25, 2.1, 0.027, 0.54, 0.46, 0.17, -0.04, 0.05, 0.18, False, 107),
+        (0.30, 2.8, 0.028, 0.50, 0.44, 0.16, 0.06, -0.06, -0.25, False, 108),
+        (-0.10, 3.4, 0.022, 0.58, 0.46, 0.17, -0.05, 0.04, 0.15, False, 109),
+        (0.18, 4.0, 0.012, 0.52, 0.48, 0.16, 0.04, -0.05, 0.30, True, 110),
+        (-0.15, 4.6, -0.012, 0.56, 0.50, 0.17, -0.06, 0.06, -0.20, True, 111),
+        (0.20, 5.2, -0.038, 0.50, 0.45, 0.16, 0.05, -0.04, 0.40, True, 112),
+    ]
+    for idx, (sx, sy, sz, rx, ry, rz, pitch, roll, yaw, is_subm, seed) in enumerate(flagstone_data):
+        spawn_organic_flagstone(idx, sx, sy, sz, rx, ry, rz, pitch, roll, yaw, is_submerged=is_subm, seed=seed)
 
 spawn_path_flagstones()
 
-def spawn_river_pebble(x, y, z, sx, sy):
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=12, radius=0.10, location=(x, y, z))
+def spawn_river_pebble(x, y, z, sx, sy, rot_z=0.0):
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=12, ring_count=8, radius=0.09, location=(x, y, z))
     peb = bpy.context.active_object
-    peb.scale = (sx, sy, 0.45)
-    bpy.ops.object.transform_apply(scale=True)
+    peb.scale = (sx, sy, 0.40)
+    peb.rotation_euler.z = rot_z
+    bpy.ops.object.transform_apply(scale=True, rotation=True)
     peb.data.materials.append(mat_river_pebble)
     for p in peb.data.polygons:
         p.use_smooth = True
 
 pebble_coords = [
-    (-2.2, 0.8, 0.06, 0.28, 0.22),
-    (-2.3, 1.8, 0.07, 0.35, 0.26),
-    (-2.1, 2.7, 0.08, 0.26, 0.20),
-    (-2.4, 3.6, 0.09, 0.32, 0.25),
-    (2.1, 0.8, 0.06, 0.25, 0.20),
-    (2.2, 1.8, 0.08, 0.32, 0.24),
-    (2.3, 2.9, 0.09, 0.28, 0.22),
-    (2.5, 3.8, 0.10, 0.35, 0.28),
+    (-2.1, -2.6, 0.04, 0.26, 0.20, 0.3),
+    (-1.8, -1.9, 0.04, 0.32, 0.24, -0.5),
+    (-2.2, -1.2, 0.04, 0.28, 0.22, 0.8),
+    (-1.9, -0.5, 0.04, 0.35, 0.26, -0.2),
+    (-2.3, 0.2, 0.04, 0.30, 0.22, 0.4),
+    (-2.0, 0.9, 0.04, 0.34, 0.25, -0.6),
+    (-2.3, 1.7, 0.05, 0.32, 0.24, 0.2),
+    (-1.9, 2.4, 0.05, 0.28, 0.20, 0.7),
+    (-2.2, 3.1, 0.05, 0.35, 0.26, -0.4),
+    (-1.8, 3.7, 0.05, 0.26, 0.20, 0.5),
+
+    (2.1, -2.6, 0.04, 0.28, 0.22, -0.4),
+    (1.8, -1.9, 0.04, 0.30, 0.24, 0.6),
+    (2.2, -1.2, 0.04, 0.34, 0.25, -0.2),
+    (1.9, -0.5, 0.04, 0.26, 0.20, 0.5),
+    (2.3, 0.2, 0.04, 0.32, 0.24, -0.7),
+    (2.0, 0.9, 0.04, 0.35, 0.26, 0.3),
+    (2.3, 1.7, 0.05, 0.28, 0.22, -0.5),
+    (1.9, 2.4, 0.05, 0.34, 0.25, 0.2),
+    (2.2, 3.1, 0.05, 0.30, 0.22, -0.3),
+    (1.8, 3.7, 0.05, 0.32, 0.24, 0.6),
+
+    (-1.3, -2.1, 0.035, 0.18, 0.15, 0.2),
+    (1.2, -1.5, 0.035, 0.20, 0.16, -0.4),
+    (-1.1, -0.2, 0.035, 0.19, 0.14, 0.5),
+    (1.3, 0.8, 0.035, 0.22, 0.17, -0.3),
+    (-1.2, 1.8, 0.04, 0.18, 0.15, 0.4),
+    (1.1, 2.7, 0.04, 0.21, 0.16, -0.6),
+    (-0.9, 3.5, 0.04, 0.24, 0.18, 0.1),
+    (0.8, 3.6, 0.04, 0.22, 0.17, -0.2),
 ]
-for (px, py, pz, psx, psy) in pebble_coords:
-    spawn_river_pebble(px, py, pz, psx, psy)
+for (px, py, pz, psx, psy, prot) in pebble_coords:
+    spawn_river_pebble(px, py, pz, psx, psy, prot)
+
+leaf_coords = [
+    (-1.85, -2.2, 0.042, 0.4, 0.13, False, "AutumnLeaf_0"),
+    (-1.65, -1.4, 0.042, 1.2, 0.11, True, "OliveLeaf_1"),
+    (-2.05, -0.6, 0.042, -0.7, 0.14, False, "AutumnLeaf_2"),
+    (-1.75, 0.3, 0.042, 2.1, 0.12, True, "OliveLeaf_3"),
+    (-2.10, 1.2, 0.045, -1.5, 0.13, False, "AutumnLeaf_4"),
+    (-1.70, 2.0, 0.045, 0.8, 0.11, True, "OliveLeaf_5"),
+    (-1.95, 2.9, 0.045, -0.4, 0.14, False, "AutumnLeaf_6"),
+
+    (1.85, -2.0, 0.042, -0.8, 0.12, True, "OliveLeaf_7"),
+    (1.65, -1.2, 0.042, 1.5, 0.14, False, "AutumnLeaf_8"),
+    (2.05, -0.3, 0.042, -1.1, 0.11, True, "OliveLeaf_9"),
+    (1.75, 0.6, 0.042, 0.6, 0.13, False, "AutumnLeaf_10"),
+    (2.10, 1.5, 0.045, -2.0, 0.12, True, "OliveLeaf_11"),
+    (1.70, 2.3, 0.045, 1.1, 0.14, False, "AutumnLeaf_12"),
+    (1.95, 3.2, 0.045, -0.5, 0.12, True, "OliveLeaf_13"),
+]
+for (lx, ly, lz, lrot, lscale, lolive, lname) in leaf_coords:
+    spawn_fallen_leaf(lx, ly, lz, lrot, scale=lscale, is_olive=lolive, name=lname)
+
+dirt_mound_coords = [
+    (-2.15, -1.6, 0.038, 0.48, 0.36, 71, "DirtMound_0"),
+    (-2.25, 0.0, 0.038, 0.52, 0.38, 72, "DirtMound_1"),
+    (-2.20, 1.5, 0.042, 0.46, 0.34, 73, "DirtMound_2"),
+    (-2.30, 2.8, 0.042, 0.50, 0.38, 74, "DirtMound_3"),
+
+    (2.15, -1.4, 0.038, 0.50, 0.36, 81, "DirtMound_4"),
+    (2.25, 0.3, 0.038, 0.48, 0.35, 82, "DirtMound_5"),
+    (2.20, 1.8, 0.042, 0.54, 0.40, 83, "DirtMound_6"),
+    (2.30, 3.0, 0.042, 0.46, 0.36, 84, "DirtMound_7"),
+]
+for (mx, my, mz, msx, msy, mseed, mname) in dirt_mound_coords:
+    spawn_dirt_mound_patch(mx, my, mz, sx=msx, sy=msy, seed=mseed, name=mname)
 
 def spawn_organic_transition_rock(x, y, z, sx=0.55, sy=0.45, sz=0.35, rot_z=0.0, seed=42):
 
@@ -1726,6 +1982,10 @@ def spawn_tall_grass_clump(x, y, z, scale=1.0, num_blades=14, name="TallGrass"):
         p.use_smooth = True
     mesh.update()
     obj.data.materials.append(mat_tall_grass)
+    spawn_dirt_mound_patch(x, y, z, sx=0.18 * scale, sy=0.15 * scale, seed=int(abs(x) * 10 + abs(y) * 5), name=f"{name}_Mound")
+    spawn_river_pebble(x + 0.12 * scale, y + 0.05 * scale, z, 0.08 * scale, 0.06 * scale)
+    spawn_river_pebble(x - 0.10 * scale, y - 0.08 * scale, z, 0.06 * scale, 0.05 * scale)
+    return obj
 
 tall_grass_coords = [
     (3.8, 2.6), (4.4, 3.5), (4.9, 3.1), (4.6, 4.1),
@@ -1753,6 +2013,7 @@ bpy.ops.export_scene.gltf(
     use_selection=False,
     export_apply=True,
     export_materials='EXPORT',
+    export_attributes=True,
 )
 
 print(f">>> [BLENDER 4.5] Successfully exported Anti-Low-Poly Cavern Kit to: {output_path}")

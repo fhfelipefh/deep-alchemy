@@ -93,44 +93,52 @@ fn fragment(
     } else {
 
         let dist_to_impact = length(in.world_position.xz - vec2<f32>(0.0, -8.5));
+        let lake_max_radius = 5.85;
+        let depth_factor = clamp(1.0 - (dist_to_impact / lake_max_radius), 0.0, 1.0);
+        let depth_curve = pow(depth_factor, 1.65);
 
-        let ripple_phase = dist_to_impact * 3.6 - t * 3.2;
-        let ripple_sine = sin(ripple_phase);
+        let shallow_transparent_cyan = material_base.rgb;
+        let deep_abyssal_navy = material_deep.rgb;
 
-        let ripple_crest = smoothstep(0.40, 0.88, ripple_sine) * smoothstep(5.6, 0.6, dist_to_impact);
+        let lake_water = mix(shallow_transparent_cyan, deep_abyssal_navy, depth_curve);
+        let clear_water_alpha = mix(material_base.a, material_deep.a, depth_curve);
 
-        let uv_surface = in.uv * vec2<f32>(12.0, 12.0) + vec2<f32>(cos(t * 0.7) * 0.3, sin(t * 0.7) * 0.3);
-        let surface_caustic = 1.0 - voronoi(uv_surface);
+        let ripple_speed = 2.8;
+        let ripple_freq_1 = 4.2;
+        let ripple_freq_2 = 7.0;
 
-        let shore_zone = smoothstep(4.8, 5.75, dist_to_impact);
+        let ripple_p1 = dist_to_impact * ripple_freq_1 - t * ripple_speed;
+        let ripple_p2 = dist_to_impact * ripple_freq_2 - t * (ripple_speed * 1.35);
+
+        let ripple_sin1 = sin(ripple_p1);
+        let ripple_sin2 = sin(ripple_p2);
+
+        let ripple_envelope = smoothstep(0.35, 1.3, dist_to_impact) * smoothstep(5.6, 2.0, dist_to_impact);
+        let ripple_crests = (smoothstep(0.70, 0.96, ripple_sin1) * 0.70 + smoothstep(0.78, 0.98, ripple_sin2) * 0.30) * ripple_envelope;
+
+        let uv_distort = in.uv * vec2<f32>(12.0, 12.0) + vec2<f32>(cos(ripple_p1 * 0.5) * 0.08, sin(ripple_p1 * 0.5) * 0.08);
+        let surface_caustic = 1.0 - voronoi(uv_distort + vec2<f32>(cos(t * 0.6) * 0.25, sin(t * 0.6) * 0.25));
+
+        let shore_zone = smoothstep(4.7, 5.75, dist_to_impact);
         let shoreline_foam = smoothstep(0.45, 0.78, surface_caustic) * shore_zone;
 
-        let uv_plunge = in.uv * vec2<f32>(14.0, 18.0) + vec2<f32>(0.0, -t * 2.0);
+        let uv_plunge = in.uv * vec2<f32>(14.0, 18.0) + vec2<f32>(0.0, -t * 2.2);
         let plunge_noise = 1.0 - voronoi(uv_plunge);
-        let plunge_zone = smoothstep(2.4, 0.3, dist_to_impact);
-        let plunge_froth = smoothstep(0.40, 0.75, plunge_noise) * plunge_zone;
+        let plunge_zone = smoothstep(2.0, 0.25, dist_to_impact);
+        let plunge_froth = smoothstep(0.38, 0.75, plunge_noise) * plunge_zone;
 
-        let lake_froth = clamp(ripple_crest * 0.35 + shoreline_foam * 0.65 + plunge_froth * 0.75, 0.0, 1.0);
+        let lake_froth = clamp(ripple_crests * 0.65 + shoreline_foam * 0.45 + plunge_froth * 0.80, 0.0, 1.0);
 
-        let lake_abyss = vec3<f32>(0.02, 0.16, 0.26);
-        let lake_mid = vec3<f32>(0.08, 0.62, 0.74);
-        let lake_shore = vec3<f32>(0.10, 0.72, 0.60);
-        let froth_white = vec3<f32>(0.92, 0.98, 1.0);
-
-        let depth_metric = smoothstep(0.5, 5.5, dist_to_impact);
-        let lake_water = mix(lake_abyss, mix(lake_mid, lake_shore, smoothstep(0.4, 0.9, depth_metric)), depth_metric);
-
-        let col_rgb = mix(lake_water, froth_white, lake_froth * 0.85);
+        let col_rgb = mix(lake_water, material_foam.rgb, lake_froth * 0.88);
 
         let V = normalize(view.world_position.xyz - in.world_position.xyz);
         let N = normalize(in.world_normal);
         let lake_fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
-        let lake_specular = vec3<f32>(0.85, 0.96, 1.0) * (lake_fresnel * 0.28);
+        let lake_specular = vec3<f32>(0.85, 0.96, 1.0) * (lake_fresnel * 0.24);
 
-        let lake_glow = froth_white * (lake_froth * bloom_boost * 0.15);
+        let lake_glow = material_foam.rgb * (lake_froth * bloom_boost * 0.12);
 
-        let clear_water_alpha = mix(0.28, 0.15, depth_metric);
-        let lake_alpha = clamp(clear_water_alpha + lake_froth * 0.40 + lake_fresnel * 0.15, 0.10, 0.60);
+        let lake_alpha = clamp(clear_water_alpha + lake_froth * 0.35 + lake_fresnel * 0.12, 0.08, 0.98);
 
         return vec4<f32>(col_rgb + lake_specular + lake_glow, lake_alpha);
     }

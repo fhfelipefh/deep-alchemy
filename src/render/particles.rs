@@ -43,9 +43,9 @@ pub fn spawn_particles(
                         (fastrand::f32() - 0.5) * 0.4,
                     );
                     commands.spawn((
-                        Mesh3d(meshes.add(Sphere::new(0.12).mesh().uv(8, 6))),
+                        Mesh3d(meshes.add(Sphere::new(0.08).mesh().uv(8, 6))),
                         MeshMaterial3d(materials.add(StandardMaterial {
-                            base_color: Color::srgba(0.9, 0.95, 1.0, 0.35),
+                            base_color: Color::srgba(0.85, 0.94, 1.0, 0.16),
                             alpha_mode: AlphaMode::Blend,
                             unlit: true,
                             ..default()
@@ -66,10 +66,10 @@ pub fn spawn_particles(
                         (fastrand::f32() - 0.5) * 1.8,
                     );
                     commands.spawn((
-                        Mesh3d(meshes.add(Sphere::new(0.22).mesh().uv(8, 6))),
+                        Mesh3d(meshes.add(Sphere::new(0.09).mesh().uv(8, 6))),
                         MeshMaterial3d(materials.add(StandardMaterial {
-                            base_color: Color::LinearRgba(LinearRgba::new(2.2, 4.2, 5.0, 0.40)),
-                            alpha_mode: AlphaMode::Blend,
+                            base_color: Color::LinearRgba(LinearRgba::new(0.28, 0.55, 0.75, 0.18)),
+                            alpha_mode: AlphaMode::Add,
                             unlit: true,
                             ..default()
                         })),
@@ -141,7 +141,7 @@ pub fn update_particles(
             }
             ParticleType::WaterSplash => {
                 let progress = p.lifetime / p.max_lifetime;
-                let scale = 1.0 + progress * 2.2;
+                let scale = 1.0 + progress * 1.1;
                 tf.scale = Vec3::splat(scale);
                 p.velocity.y += 0.2 * dt;
             }

@@ -631,9 +631,9 @@ pub fn setup_cavern_world(
     commands.spawn((
         Mesh3d(meshes.add(create_water_disk_mesh(5.85, 64))),
         MeshMaterial3d(water_materials.add(WaterMaterial {
-            base_color: LinearRgba::new(0.08, 0.72, 0.85, 0.28),
-            deep_color: LinearRgba::new(0.02, 0.20, 0.30, 0.45),
-            foam_color: LinearRgba::new(0.92, 0.98, 1.0, 0.65),
+            base_color: LinearRgba::new(0.12, 0.85, 0.92, 0.12),
+            deep_color: LinearRgba::new(0.012, 0.045, 0.14, 0.96),
+            foam_color: LinearRgba::new(0.92, 0.98, 1.0, 0.88),
             params: Vec4::new(0.0, 1.0, 0.0, 0.45),
         })),
         bevy::pbr::NotShadowCaster,
@@ -643,18 +643,18 @@ pub fn setup_cavern_world(
 
     for x_off in [-3.6, -2.4, -1.2, 0.0, 1.2, 2.4, 3.6] {
         commands.spawn((
-            Transform::from_xyz(x_off, 0.28, -8.5),
+            Transform::from_xyz(x_off, 0.22, -8.55),
             ParticleEmitter {
                 spawn_timer: 0.0,
-                spawn_rate: 0.035,
+                spawn_rate: 0.08,
                 particle_type: ParticleType::WaterSplash,
             },
         ));
         commands.spawn((
-            Transform::from_xyz(x_off * 0.8, 0.35, -8.7),
+            Transform::from_xyz(x_off * 0.8, 0.28, -8.7),
             ParticleEmitter {
                 spawn_timer: 0.0,
-                spawn_rate: 0.06,
+                spawn_rate: 0.10,
                 particle_type: ParticleType::Steam,
             },
         ));

@@ -164,7 +164,8 @@ pub struct PlayerBodyScene;
 pub fn configure_player_model_layers(
     mut commands: Commands,
     player_query: Query<&PlayerState, With<Player>>,
-    mut body_query: Query<(Entity, &mut Visibility, Option<&Children>), With<PlayerBodyScene>>,
+    mut body_query: Query<(Entity, &mut Visibility), With<PlayerBodyScene>>,
+    children_query: Query<&Children>,
     names: Query<(Entity, &Name), Added<Name>>,
 ) {
     if let Ok(state) = player_query.get_single() {
@@ -173,16 +174,11 @@ pub fn configure_player_model_layers(
             PlayerState::Dead => Visibility::Inherited,
         };
 
-        for (body_entity, mut vis, children) in body_query.iter_mut() {
+        for (body_entity, mut vis) in body_query.iter_mut() {
             if *vis != target_vis {
                 *vis = target_vis;
             }
-            commands.entity(body_entity).insert(RenderLayers::layer(1));
-            if let Some(children) = children {
-                for child in children.iter() {
-                    commands.entity(*child).insert(RenderLayers::layer(1));
-                }
-            }
+            apply_layer_to_descendants(body_entity, RenderLayers::layer(1), &mut commands, &children_query);
         }
     }
 
@@ -203,10 +199,29 @@ pub fn configure_player_model_layers(
             || n.contains("CoatTail")
             || n.contains("Thigh")
             || n.contains("Shin")
+            || n.contains("Backpack")
+            || n.contains("Belt")
+            || n.contains("Pouch")
+            || n.contains("Strap")
+            || n.contains("Player_")
         {
             commands.entity(entity).insert((
                 RenderLayers::layer(1),
             ));
+        }
+    }
+}
+
+fn apply_layer_to_descendants(
+    entity: Entity,
+    layer: RenderLayers,
+    commands: &mut Commands,
+    children_query: &Query<&Children>,
+) {
+    commands.entity(entity).insert(layer.clone());
+    if let Ok(children) = children_query.get(entity) {
+        for child in children.iter() {
+            apply_layer_to_descendants(*child, layer.clone(), commands, children_query);
         }
     }
 }
