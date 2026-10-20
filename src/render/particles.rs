@@ -12,6 +12,7 @@ pub enum ParticleType {
     Steam,
     WaterSplash,
     GlowSpore,
+    FireFlame,
 }
 
 #[derive(Component)]
@@ -113,6 +114,39 @@ pub fn spawn_particles(
                         },
                     ));
                 }
+                ParticleType::FireFlame => {
+                    let angle = fastrand::f32() * std::f32::consts::TAU;
+                    let radius_offset = fastrand::f32().sqrt() * 0.22;
+                    let spawn_pos = pos
+                        + Vec3::new(
+                            angle.cos() * radius_offset,
+                            fastrand::f32() * 0.12,
+                            angle.sin() * radius_offset,
+                        );
+                    let vel = Vec3::new(
+                        (fastrand::f32() - 0.5) * 0.35,
+                        0.9 + fastrand::f32() * 0.75,
+                        (fastrand::f32() - 0.5) * 0.35,
+                    );
+                    let fire_color = Color::srgba(1.0, 0.42 + fastrand::f32() * 0.28, 0.05, 0.82);
+                    commands.spawn((
+                        Mesh3d(meshes.add(Sphere::new(0.045).mesh().uv(8, 6))),
+                        MeshMaterial3d(materials.add(StandardMaterial {
+                            base_color: fire_color,
+                            emissive: Color::srgb(1.0, 0.35, 0.02).to_linear() * 3.8,
+                            alpha_mode: AlphaMode::Blend,
+                            unlit: true,
+                            ..default()
+                        })),
+                        Transform::from_translation(spawn_pos),
+                        Particle {
+                            lifetime: 0.0,
+                            max_lifetime: 0.85 + fastrand::f32() * 0.35,
+                            velocity: vel,
+                            p_type: ParticleType::FireFlame,
+                        },
+                    ));
+                }
             }
         }
     }
@@ -155,6 +189,14 @@ pub fn update_particles(
                 let progress = p.lifetime / p.max_lifetime;
                 let scale = (1.0 - progress * 0.75).max(0.1);
                 tf.scale = Vec3::splat(scale);
+            }
+            ParticleType::FireFlame => {
+                let progress = p.lifetime / p.max_lifetime;
+                let scale = (1.2 - progress * 0.95).max(0.05);
+                tf.scale = Vec3::splat(scale);
+                p.velocity.y += 0.25 * dt;
+                let flutter = ((p.lifetime * 14.0).sin()) * 0.06;
+                tf.translation.x += flutter * dt;
             }
         }
     }

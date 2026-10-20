@@ -28,6 +28,9 @@ pub struct WaterfallBaseMesh {
 #[derive(Component)]
 pub struct CavernObstacle;
 
+#[derive(Component, Debug, Clone)]
+pub struct BenchObstacle;
+
 #[derive(Component)]
 pub struct TallGrassClump;
 
@@ -106,6 +109,7 @@ pub fn mark_imported_tall_grass(
             let base_rot = tf_opt.map(|t| t.rotation).unwrap_or(Quat::IDENTITY);
             commands.entity(entity).insert((
                 TallGrassClump,
+                crate::alchemy::Flammable::with_duration(2.2),
                 GrassBending {
                     base_rotation: base_rot,
                     current_bend: Vec2::ZERO,
@@ -141,6 +145,7 @@ pub fn attach_mushroom_spore_emitters(
                 .insert((
                     MushroomCap,
                     MushroomSporeAttached,
+                    crate::alchemy::Flammable::with_duration(3.2),
                     BioluminescentMushroom {
                         base_intensity: 1.0,
                         base_color: Color::srgb(0.12, 0.96, 0.88),
@@ -1008,6 +1013,7 @@ pub fn setup_cavern_world(
         Transform::from_xyz(-3.6, 0.5, -3.2),
         GlobalTransform::default(),
         Collider::cylinder(0.4, 0.8),
+        crate::alchemy::Flammable::with_duration(3.0),
     ));
 
     commands.spawn((
@@ -1034,6 +1040,7 @@ pub fn setup_cavern_world(
         },
         SceneRoot(registry.load_scene(&asset_server, "prop_wooden_bench")),
         Transform::from_translation(bench_position).with_rotation(bench_rotation),
+        crate::alchemy::Flammable::with_duration(4.5),
     ));
 
     let bench_colliders = [
@@ -1072,6 +1079,7 @@ pub fn setup_cavern_world(
         commands.spawn((
             Name::new(name),
             CavernObstacle,
+            BenchObstacle,
             ObstacleShape::Cuboid {
                 half_extents: dimensions * 0.5,
             },

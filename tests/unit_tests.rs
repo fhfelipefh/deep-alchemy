@@ -1102,5 +1102,100 @@ fn test_unit_ballistic_aim_dynamic_droplets_and_splash_ring() {
     assert!(indicator_count > 10);
 }
 
+#[test]
+fn test_unit_flammable_combustion_and_despawn() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(50)));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.add_systems(Update, deep_alchemy::alchemy::update_flammable_combustion);
+
+    let flammable_ent = app
+        .world_mut()
+        .spawn((
+            Name::new("TestFlammableProp"),
+            Transform::from_xyz(1.0, 0.0, 1.0),
+            deep_alchemy::alchemy::Flammable::with_duration(0.3),
+        ))
+        .id();
+
+    let flammable_before = app.world().get::<deep_alchemy::alchemy::Flammable>(flammable_ent);
+    assert!(flammable_before.is_some());
+    assert!(!flammable_before.unwrap().is_burning);
+
+    app.world_mut()
+        .get_mut::<deep_alchemy::alchemy::Flammable>(flammable_ent)
+        .unwrap()
+        .ignite();
+
+    app.update();
+    app.update();
+
+    let flammable_burning = app.world().get::<deep_alchemy::alchemy::Flammable>(flammable_ent);
+    assert!(flammable_burning.is_some());
+    assert!(flammable_burning.unwrap().is_burning);
+    assert!(flammable_burning.unwrap().elapsed > 0.0);
+
+    for _ in 0..15 {
+        app.update();
+    }
+
+    let flammable_after = app.world().get_entity(flammable_ent);
+    assert!(flammable_after.is_err());
+}
+
+#[test]
+fn test_unit_fire_potion_impact_ignites_flammable() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::transform::TransformPlugin,
+        bevy::asset::AssetPlugin::default(),
+        bevy::scene::ScenePlugin::default(),
+        avian3d::prelude::PhysicsPlugins::default(),
+    ));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(25)));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.insert_resource(deep_alchemy::player::camera::CameraShake::default());
+    app.add_systems(Update, deep_alchemy::alchemy::update_potion_projectiles);
+
+    let flammable_ent = app
+        .world_mut()
+        .spawn((
+            Transform::from_xyz(1.0, 0.0, 1.0),
+            deep_alchemy::alchemy::Flammable::with_duration(2.0),
+        ))
+        .id();
+
+    let _proj_ent = app
+        .world_mut()
+        .spawn((
+            Transform::from_xyz(1.2, 0.1, 1.2),
+            deep_alchemy::alchemy::PotionProjectile {
+                velocity: Vec3::ZERO,
+                effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                    kind: deep_alchemy::alchemy::AlchemicalEffectKind::ThermalHeat,
+                    duration: 5.0,
+                    magnitude: 20.0,
+                    elapsed: 0.0,
+                }],
+                lifetime: 8.0,
+                color: Color::srgb(0.95, 0.12, 0.16),
+                slot: 2,
+                hitstop_timer: 0.001,
+            },
+        ))
+        .id();
+
+    app.update();
+    app.update();
+
+    let flammable = app.world().get::<deep_alchemy::alchemy::Flammable>(flammable_ent);
+    assert!(flammable.is_some());
+    assert!(flammable.unwrap().is_burning);
+}
+
 
 

@@ -141,6 +141,37 @@ pub struct ThermalGeyser {
     pub heat_radius: f32,
 }
 
+#[derive(Component, Debug, Clone)]
+pub struct Flammable {
+    pub burn_duration: f32,
+    pub elapsed: f32,
+    pub is_burning: bool,
+    pub fire_light: Option<Entity>,
+    pub fire_emitter: Option<Entity>,
+    pub initial_scale: Option<Vec3>,
+}
+
+impl Flammable {
+    pub fn new(burn_duration: f32) -> Self {
+        Self {
+            burn_duration,
+            elapsed: 0.0,
+            is_burning: false,
+            fire_light: None,
+            fire_emitter: None,
+            initial_scale: None,
+        }
+    }
+
+    pub fn with_duration(burn_duration: f32) -> Self {
+        Self::new(burn_duration)
+    }
+
+    pub fn ignite(&mut self) {
+        self.is_burning = true;
+    }
+}
+
 #[derive(Resource, Debug, Clone)]
 pub struct PotionCooldowns {
     pub timers: [f32; 6],
@@ -227,6 +258,7 @@ impl Plugin for AlchemyPlugin {
                     update_glass_shards.run_if(resource_exists::<Assets<StandardMaterial>>),
                     update_frozen_water_sheets,
                     update_ice_footprints,
+                    update_flammable_combustion,
                 ),
             );
     }
@@ -632,6 +664,7 @@ pub fn update_potion_projectiles(
     mut projectiles: Query<(Entity, &mut Transform, &mut PotionProjectile), Without<Player>>,
     mut player_query: Query<(Entity, &Transform, &mut LocomotionState, &mut EffectReceiverComponent), (With<Player>, Without<PotionProjectile>)>,
     mut receivers: Query<(Entity, &Transform, &mut EffectReceiverComponent), (Without<PotionProjectile>, Without<PotionPuddle>, Without<Player>)>,
+    mut flammables: Query<(Entity, &Transform, &mut Flammable), (Without<PotionProjectile>, Without<PotionPuddle>, Without<Player>)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
@@ -667,6 +700,15 @@ pub fn update_potion_projectiles(
                 if p_tf.translation.distance(impact_point) <= 2.8 {
                     for effect in &projectile.effects {
                         p_recv.apply_effect(effect.kind, effect.duration, effect.magnitude);
+                    }
+                }
+            }
+
+            let is_fire_impact = projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat) || projectile.slot == 2;
+            if is_fire_impact {
+                for (_f_entity, f_tf, mut flammable) in flammables.iter_mut() {
+                    if f_tf.translation.distance(impact_point) <= 2.8 {
+                        flammable.ignite();
                     }
                 }
             }
@@ -950,6 +992,15 @@ pub fn update_potion_projectiles(
                     }
                 }
 
+                let is_fire_impact = projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat) || projectile.slot == 2;
+                if is_fire_impact {
+                    for (_f_entity, f_tf, mut flammable) in flammables.iter_mut() {
+                        if f_tf.translation.distance(impact_point) <= 2.8 {
+                            flammable.ignite();
+                        }
+                    }
+                }
+
                 let puddle_mesh = meshes.add(create_irregular_puddle_mesh(1.15, 32));
                 let puddle_mat = materials.add(StandardMaterial {
                     base_color: projectile.color.with_alpha(0.88),
@@ -1087,6 +1138,7 @@ pub fn update_potion_puddles(
         &MeshMaterial3d<StandardMaterial>,
     ), Without<PotionPuddle>>,
     mut receivers: Query<(&Transform, &mut EffectReceiverComponent), (Without<PotionPuddle>, Without<PotionContactZone>)>,
+    mut flammables: Query<(&Transform, &mut Flammable), (Without<PotionPuddle>, Without<PotionContactZone>)>,
     mut commands: Commands,
 ) {
     let dt = time.delta_secs();
@@ -1155,6 +1207,13 @@ pub fn update_potion_puddles(
         }
 
         let has_thermal = puddle.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat);
+        if has_thermal {
+            for (f_tf, mut flammable) in flammables.iter_mut() {
+                if f_tf.translation.distance(transform.translation) <= puddle.radius * 1.25 {
+                    flammable.ignite();
+                }
+            }
+        }
         if has_thermal && puddle.elapsed <= dt && crate::dungeon::modular_kit::is_in_lake_water(transform.translation) {
             commands.spawn((
                 Transform::from_translation(transform.translation + Vec3::new(0.0, 0.22, 0.0)),
@@ -1461,6 +1520,132 @@ pub fn update_ice_footprints(
             let progress = footprint.lifetime / footprint.max_lifetime;
             let scale_factor = (1.0 - progress * 0.35).max(0.1);
             tf.scale = Vec3::new(scale_factor, scale_factor, scale_factor);
+        }
+    }
+}
+
+pub fn update_flammable_combustion(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut flammables: Query<(
+        Entity,
+        &mut Transform,
+        &mut Flammable,
+        Option<&Name>,
+    )>,
+    bench_obstacles: Query<Entity, With<crate::dungeon::modular_kit::BenchObstacle>>,
+    mut point_lights: Query<&mut PointLight>,
+) {
+    let dt = time.delta_secs();
+    if dt <= 0.0 {
+        return;
+    }
+
+    let burning_sources: Vec<Vec3> = flammables
+        .iter()
+        .filter(|(_, _, f, _)| f.is_burning && f.elapsed >= 0.25)
+        .map(|(_, tf, _, _)| tf.translation)
+        .collect();
+
+    for (entity, mut transform, mut flammable, name) in flammables.iter_mut() {
+        if !flammable.is_burning {
+            for source_pos in &burning_sources {
+                if transform.translation.distance(*source_pos) <= 0.95 {
+                    flammable.ignite();
+                    break;
+                }
+            }
+        }
+
+        if !flammable.is_burning {
+            continue;
+        }
+
+        if flammable.initial_scale.is_none() {
+            flammable.initial_scale = Some(transform.scale);
+        }
+        let base_scale = flammable.initial_scale.unwrap_or(transform.scale);
+
+        if flammable.fire_light.is_none() {
+            let mut fire_l_ent = None;
+            let mut fire_e_ent = None;
+            commands.entity(entity).with_children(|parent| {
+                let l = parent
+                    .spawn((
+                        PointLight {
+                            color: Color::srgb(1.0, 0.42, 0.08),
+                            intensity: 3200.0,
+                            range: 4.8,
+                            shadows_enabled: false,
+                            ..default()
+                        },
+                        Transform::from_xyz(0.0, 0.35, 0.0),
+                    ))
+                    .id();
+                fire_l_ent = Some(l);
+
+                let e = parent
+                    .spawn((
+                        crate::render::particles::ParticleEmitter {
+                            spawn_timer: 0.0,
+                            spawn_rate: 0.045,
+                            particle_type: crate::render::particles::ParticleType::FireFlame,
+                        },
+                        Transform::from_xyz(0.0, 0.25, 0.0),
+                    ))
+                    .id();
+                fire_e_ent = Some(e);
+            });
+            flammable.fire_light = fire_l_ent;
+            flammable.fire_emitter = fire_e_ent;
+        }
+
+        if let Some(light_ent) = flammable.fire_light {
+            if let Ok(mut light) = point_lights.get_mut(light_ent) {
+                let flicker = ((time.elapsed_secs() * 18.0).sin() * 550.0)
+                    + ((time.elapsed_secs() * 33.0).cos() * 320.0);
+                light.intensity = (3200.0 + flicker).max(1200.0);
+            }
+        }
+
+        flammable.elapsed += dt;
+        let progress = (flammable.elapsed / flammable.burn_duration).clamp(0.0, 1.0);
+
+        if progress < 0.60 {
+            let shudder = ((flammable.elapsed * 32.0).sin()) * 0.035 * (progress * 1.5);
+            transform.scale = base_scale * (1.0 + shudder);
+        } else {
+            let collapse_t = (progress - 0.60) / 0.40;
+            let scale_y = (1.0 - collapse_t * 0.94).max(0.03);
+            let scale_xz = (1.0 - collapse_t * 0.85).max(0.06);
+            transform.scale = base_scale * Vec3::new(scale_xz, scale_y, scale_xz);
+            transform.translation.y -= 0.05 * dt;
+        }
+
+        if flammable.elapsed >= flammable.burn_duration {
+            let ash_pos = transform.translation + Vec3::new(0.0, 0.20, 0.0);
+            commands.spawn((
+                Transform::from_translation(ash_pos),
+                crate::render::particles::ParticleEmitter {
+                    spawn_timer: 0.0,
+                    spawn_rate: 0.05,
+                    particle_type: crate::render::particles::ParticleType::Steam,
+                },
+                AlchemyTransientEmitter {
+                    elapsed: 0.0,
+                    max_lifetime: 1.8,
+                },
+            ));
+
+            if let Some(n) = name {
+                if n.as_str().contains("Bench") {
+                    for obstacle_ent in &bench_obstacles {
+                        commands.entity(obstacle_ent).despawn_recursive();
+                    }
+                }
+            }
+
+            commands.entity(entity).despawn_recursive();
         }
     }
 }

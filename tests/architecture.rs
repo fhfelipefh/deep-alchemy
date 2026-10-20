@@ -1045,6 +1045,7 @@ fn test_architecture_full_game_app_schedule_integrity_and_disjoint_queries_gate(
         deep_alchemy::alchemy::update_ice_footprints,
     ));
     schedule.add_systems((
+        deep_alchemy::alchemy::update_flammable_combustion,
         deep_alchemy::ui::hud::update_hotbar_cooldown_visuals,
         deep_alchemy::ui::hud::update_hotbar_selection_visuals,
         deep_alchemy::ui::hud::update_hotbar_pop_animations,
