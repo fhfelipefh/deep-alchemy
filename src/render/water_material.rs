@@ -14,6 +14,11 @@ pub struct WaterMaterial {
     pub foam_color: LinearRgba,
     #[uniform(3)]
     pub params: Vec4,
+    #[texture(4)]
+    #[sampler(5)]
+    pub reflection_texture: Option<Handle<Image>>,
+    #[uniform(6)]
+    pub reflection_params: Vec4,
 }
 
 impl Default for WaterMaterial {
@@ -23,6 +28,8 @@ impl Default for WaterMaterial {
             deep_color: LinearRgba::new(0.02, 0.22, 0.35, 0.95),
             foam_color: LinearRgba::new(0.92, 0.98, 1.0, 0.95),
             params: Vec4::new(0.0, 1.0, 0.15, 0.8),
+            reflection_texture: None,
+            reflection_params: Vec4::new(0.18, 0.045, 0.85, 0.70),
         }
     }
 }

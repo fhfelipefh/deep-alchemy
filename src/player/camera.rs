@@ -224,7 +224,7 @@ pub fn setup_player(mut commands: Commands, asset_server: Res<AssetServer>) {
                 PlayerBodyScene,
                 SceneRoot(asset_server.load("models/player.glb#Scene0")),
                 Transform::from_xyz(0.0, -0.9, 0.0),
-                Visibility::Hidden,
+                Visibility::Inherited,
                 RenderLayers::layer(1),
             ));
 
@@ -274,16 +274,15 @@ pub fn configure_player_model_layers(
     names: Query<(Entity, &Name), Added<Name>>,
 ) {
     if let Ok(state) = player_query.get_single() {
-        let target_vis = match state {
-            PlayerState::Active => Visibility::Hidden,
-            PlayerState::Dead => Visibility::Inherited,
-        };
+        let target_vis = Visibility::Inherited;
 
         for (body_entity, mut vis) in body_query.iter_mut() {
             if *vis != target_vis {
                 *vis = target_vis;
             }
-            apply_layer_to_descendants(body_entity, RenderLayers::layer(1), &mut commands, &children_query);
+            if *state == PlayerState::Active {
+                apply_layer_to_descendants(body_entity, RenderLayers::layer(1), &mut commands, &children_query);
+            }
         }
     }
 

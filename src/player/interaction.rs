@@ -78,6 +78,8 @@ pub fn player_raycast_interaction(
         }
     }
 
+    interaction_state.hovered_entity = found_target;
+
     let interact_pressed = keys.as_ref().map(|k| k.just_pressed(KeyCode::KeyE)).unwrap_or(false)
         || gamepads.iter().any(|g| g.just_pressed(GamepadButton::West));
 

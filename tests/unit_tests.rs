@@ -8,6 +8,10 @@ use deep_alchemy::{
     },
     render::{
         particles::{Particle, ParticleType},
+        planar_reflection::{
+            create_planar_reflection_image, sync_planar_reflection_to_water,
+            update_planar_reflection_camera, PlanarReflectionCamera, PlanarReflectionTexture,
+        },
         water_material::WaterMaterial,
     },
 };
@@ -203,6 +207,96 @@ fn test_unit_water_material_defaults_and_time_update() {
         water.deep_color.to_vec4().w > 0.0,
         "Water deep alpha must be > 0"
     );
+}
+
+#[test]
+fn test_unit_water_planar_reflection_parameters_and_bounds() {
+    let water = WaterMaterial::default();
+    assert_eq!(water.reflection_params.x, 0.18, "Water height should default to 0.18");
+    assert!((water.reflection_params.y - 0.045).abs() < 1e-4, "Distortion strength should be ~0.045");
+    assert!((water.reflection_params.z - 0.85).abs() < 1e-4, "Edge foam threshold should be ~0.85");
+    assert!((water.reflection_params.w - 0.70).abs() < 1e-4, "Reflection blend should be ~0.70");
+    assert!(water.reflection_texture.is_none(), "Initial reflection texture should be None fallback");
+}
+
+#[test]
+fn test_unit_planar_reflection_camera_mirrored_across_water_plane() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
+    app.init_asset::<Image>();
+
+    let image_handle = {
+        let mut images = app.world_mut().resource_mut::<Assets<Image>>();
+        images.add(create_planar_reflection_image(512, 512))
+    };
+
+    app.insert_resource(PlanarReflectionTexture {
+        texture: image_handle,
+        water_height: 0.18,
+    });
+
+    let player_tf = Transform::from_xyz(3.0, 2.0, -5.0)
+        .with_rotation(Quat::from_euler(EulerRot::YXZ, 0.8, -0.4, 0.1));
+
+    app.world_mut().spawn((
+        deep_alchemy::player::camera::PlayerCamera,
+        player_tf,
+        GlobalTransform::from(player_tf),
+    ));
+
+    let refl_cam = app.world_mut().spawn((
+        PlanarReflectionCamera,
+        Transform::default(),
+    )).id();
+
+    app.add_systems(Update, update_planar_reflection_camera);
+    app.update();
+
+    let refl_tf = app.world().get::<Transform>(refl_cam).unwrap();
+    let expected_y = 2.0 * 0.18 - 2.0;
+    assert!((refl_tf.translation.y - expected_y).abs() < 1e-4, "Planar reflection Y must be inverted across 0.18");
+    assert_eq!(refl_tf.translation.x, 3.0);
+    assert_eq!(refl_tf.translation.z, -5.0);
+
+    let (yaw, pitch, roll) = refl_tf.rotation.to_euler(EulerRot::YXZ);
+    assert!((yaw - 0.8).abs() < 1e-4, "Yaw must match player look direction");
+    assert!((pitch - 0.4).abs() < 1e-4, "Pitch must be inverted");
+    assert!((roll - (-0.1)).abs() < 1e-4, "Roll must be inverted");
+}
+
+#[test]
+fn test_unit_planar_reflection_lake_sync_and_fallback() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
+    app.init_asset::<Image>();
+    app.init_asset::<WaterMaterial>();
+
+    let image_handle = {
+        let mut images = app.world_mut().resource_mut::<Assets<Image>>();
+        images.add(create_planar_reflection_image(512, 512))
+    };
+
+    app.insert_resource(PlanarReflectionTexture {
+        texture: image_handle.clone(),
+        water_height: 0.18,
+    });
+
+    let water_mat_handle = {
+        let mut mats = app.world_mut().resource_mut::<Assets<WaterMaterial>>();
+        mats.add(WaterMaterial::default())
+    };
+
+    app.world_mut().spawn((
+        deep_alchemy::dungeon::modular_kit::LakeWaterPool,
+        MeshMaterial3d(water_mat_handle.clone()),
+    ));
+
+    app.add_systems(Update, sync_planar_reflection_to_water);
+    app.update();
+
+    let mats = app.world().resource::<Assets<WaterMaterial>>();
+    let mat = mats.get(&water_mat_handle).unwrap();
+    assert_eq!(mat.reflection_texture, Some(image_handle), "Water material must receive planar reflection texture");
 }
 
 #[test]
