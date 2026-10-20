@@ -202,6 +202,7 @@ pub fn setup_player(mut commands: Commands, asset_server: Res<AssetServer>) {
                 bevy::core_pipeline::prepass::DepthPrepass,
                 bevy::core_pipeline::prepass::NormalPrepass,
                 crate::render::outline::OutlineSettings::default(),
+                crate::render::heat_haze::HeatHazeSettings::default(),
                 bevy::core_pipeline::bloom::Bloom::NATURAL,
                 RenderLayers::layer(0),
                 Transform::from_xyz(0.0, 0.55, 0.0),

@@ -1954,3 +1954,139 @@ fn test_unit_frost_potion_water_sinking_and_ice_puzzle_mechanics() {
     assert!(d_sheet.top_y <= -1.80, "Deep water ice block must remain submerged");
 }
 
+#[test]
+fn test_unit_heat_haze_thermal_sources_sync_and_projection() {
+    use deep_alchemy::render::heat_haze::{
+        project_world_to_viewport, sync_heat_sources_system, update_heat_haze_uniforms,
+        HeatHazeSettings, HeatHazeSource,
+    };
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_systems(
+        Update,
+        (sync_heat_sources_system, update_heat_haze_uniforms).chain(),
+    );
+
+    let geyser_entity = app
+        .world_mut()
+        .spawn((
+            Transform::from_xyz(0.0, 0.0, -5.0),
+            GlobalTransform::from_xyz(0.0, 0.0, -5.0),
+            deep_alchemy::alchemy::ThermalGeyser {
+                eruption_timer: 1.0,
+                eruption_interval: 5.0,
+                is_erupting: true,
+                heat_radius: 3.5,
+            },
+        ))
+        .id();
+
+    let puddle_entity = app
+        .world_mut()
+        .spawn((
+            Transform::from_xyz(2.0, 0.0, -4.0),
+            GlobalTransform::from_xyz(2.0, 0.0, -4.0),
+            deep_alchemy::alchemy::PotionPuddle {
+                radius: 2.0,
+                color: Color::srgb(1.0, 0.3, 0.0),
+                effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                    kind: deep_alchemy::alchemy::AlchemicalEffectKind::ThermalHeat,
+                    duration: 10.0,
+                    magnitude: 15.0,
+                    elapsed: 0.0,
+                }],
+                max_lifetime: 15.0,
+                elapsed: 0.0,
+                is_wall: false,
+            },
+        ))
+        .id();
+
+    let projectile_entity = app
+        .world_mut()
+        .spawn((
+            Transform::from_xyz(-2.0, 1.0, -3.0),
+            GlobalTransform::from_xyz(-2.0, 1.0, -3.0),
+            deep_alchemy::alchemy::PotionProjectile {
+                velocity: Vec3::new(0.0, 0.0, -10.0),
+                effects: vec![],
+                lifetime: 5.0,
+                color: Color::srgb(1.0, 0.2, 0.0),
+                slot: 2,
+                hitstop_timer: 0.0,
+                entered_water: false,
+            },
+        ))
+        .id();
+
+    let flammable_entity = app
+        .world_mut()
+        .spawn((
+            Transform::from_xyz(1.0, 0.5, -6.0),
+            GlobalTransform::from_xyz(1.0, 0.5, -6.0),
+            deep_alchemy::alchemy::Flammable {
+                burn_duration: 6.0,
+                elapsed: 1.0,
+                is_burning: true,
+                fire_light: None,
+                fire_emitter: None,
+                initial_scale: None,
+            },
+        ))
+        .id();
+
+    let camera_entity = app
+        .world_mut()
+        .spawn((
+            Camera3d::default(),
+            Camera {
+                viewport: Some(bevy::render::camera::Viewport {
+                    physical_position: UVec2::ZERO,
+                    physical_size: UVec2::new(1280, 720),
+                    depth: 0.0..1.0,
+                }),
+                ..default()
+            },
+            Transform::from_xyz(0.0, 1.5, 0.0).looking_at(Vec3::new(0.0, 1.0, -5.0), Vec3::Y),
+            GlobalTransform::from(
+                Transform::from_xyz(0.0, 1.5, 0.0).looking_at(Vec3::new(0.0, 1.0, -5.0), Vec3::Y),
+            ),
+            HeatHazeSettings::default(),
+        ))
+        .id();
+
+    app.update();
+    app.update();
+
+    let geyser_haze = app.world().get::<HeatHazeSource>(geyser_entity);
+    assert!(geyser_haze.is_some(), "ThermalGeyser must have HeatHazeSource attached");
+    assert!(geyser_haze.unwrap().radius >= 3.0, "Erupting geyser must have wide thermal radius");
+
+    let puddle_haze = app.world().get::<HeatHazeSource>(puddle_entity);
+    assert!(puddle_haze.is_some(), "Thermal PotionPuddle must have HeatHazeSource attached");
+
+    let proj_haze = app.world().get::<HeatHazeSource>(projectile_entity);
+    assert!(proj_haze.is_some(), "Fire PotionProjectile must have HeatHazeSource attached");
+
+    let flam_haze = app.world().get::<HeatHazeSource>(flammable_entity);
+    assert!(flam_haze.is_some(), "Burning Flammable must have HeatHazeSource attached");
+
+    let cam_settings = app.world().get::<HeatHazeSettings>(camera_entity).unwrap();
+    assert!(cam_settings.count > 0, "HeatHazeSettings must track in-view thermal sources");
+    assert!(cam_settings.count <= 16, "HeatHazeSettings count must be within bounds");
+
+    for i in 0..(cam_settings.count as usize) {
+        let src = cam_settings.sources[i];
+        assert!(src.radius > 0.0, "Projected source radius must be positive");
+        assert!(src.intensity > 0.0, "Projected source intensity must be positive");
+    }
+
+    let cam_ref = app.world().get::<Camera>(camera_entity).unwrap();
+    let cam_gt = app.world().get::<GlobalTransform>(camera_entity).unwrap();
+    let behind_pos = Vec3::new(0.0, 1.5, 10.0);
+    let proj_behind = project_world_to_viewport(behind_pos, 2.0, cam_ref, cam_gt);
+    assert!(proj_behind.is_none(), "Sources behind camera must be rejected");
+}
+
+

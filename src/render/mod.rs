@@ -1,4 +1,5 @@
 pub mod cel_moss_material;
+pub mod heat_haze;
 pub mod outline;
 pub mod particles;
 pub mod planar_reflection;
@@ -7,6 +8,7 @@ pub mod water_material;
 
 use bevy::prelude::*;
 use cel_moss_material::CelShadedMossMaterial;
+use heat_haze::{sync_heat_sources_system, update_heat_haze_uniforms, HeatHazePlugin};
 use outline::OutlinePostProcessPlugin;
 use particles::{spawn_particles, update_particles};
 use planar_reflection::PlanarReflectionPlugin;
@@ -21,6 +23,7 @@ impl Plugin for RenderPipelinePlugin {
             MaterialPlugin::<WaterMaterial>::default(),
             MaterialPlugin::<CelShadedMossMaterial>::default(),
             MaterialPlugin::<PotionFluidMaterial>::default(),
+            HeatHazePlugin,
             OutlinePostProcessPlugin,
             PlanarReflectionPlugin,
         ))
@@ -29,6 +32,8 @@ impl Plugin for RenderPipelinePlugin {
             (
                 update_water_time,
                 update_potion_sloshing,
+                sync_heat_sources_system,
+                update_heat_haze_uniforms,
                 spawn_particles,
                 update_particles,
             ),

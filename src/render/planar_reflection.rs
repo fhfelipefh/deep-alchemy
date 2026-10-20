@@ -24,7 +24,6 @@ pub struct PlanarReflectionPlugin;
 
 impl Plugin for PlanarReflectionPlugin {
     fn build(&self, app: &mut App) {
-        app.init_asset::<Image>();
         app.add_systems(Startup, setup_planar_reflection);
         app.add_systems(
             Update,

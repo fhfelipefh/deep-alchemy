@@ -172,6 +172,15 @@ fn test_architecture_wgsl_shaders_integrity() {
     assert!(fluid_code.contains("VertexOutput"), "Fluid shader must import VertexOutput");
     assert!(fluid_code.contains("slosh_normal"), "Fluid shader must bind slosh_normal uniform");
     assert!(fluid_code.contains("fluid_params"), "Fluid shader must bind fluid_params uniform");
+
+    let heat_haze_shader_path = Path::new("assets/shaders/heat_haze.wgsl");
+    assert!(heat_haze_shader_path.exists(), "heat_haze.wgsl must exist");
+    let heat_haze_code = fs::read_to_string(heat_haze_shader_path).expect("Failed to read heat haze shader");
+    assert!(!heat_haze_code.is_empty(), "Heat haze shader must not be empty");
+    assert!(heat_haze_code.contains("@fragment"), "Heat haze shader must contain @fragment");
+    assert!(heat_haze_code.contains("FullscreenVertexOutput"), "Heat haze shader must import FullscreenVertexOutput");
+    assert!(heat_haze_code.contains("HeatHazeSettings"), "Heat haze shader must bind HeatHazeSettings uniform");
+    assert!(heat_haze_code.contains("sources"), "Heat haze shader must process sources array");
 }
 
 #[test]

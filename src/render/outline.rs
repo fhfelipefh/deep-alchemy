@@ -239,6 +239,7 @@ impl Plugin for OutlinePostProcessPlugin {
                 Core3d,
                 (
                     Node3d::Tonemapping,
+                    crate::render::heat_haze::HeatHazeLabel,
                     OutlineLabel,
                     Node3d::EndMainPassPostProcessing,
                 ),
