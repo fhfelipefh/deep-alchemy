@@ -31,6 +31,30 @@ pub struct CavernObstacle;
 #[derive(Component)]
 pub struct TallGrassClump;
 
+#[derive(Component, Debug, Clone)]
+pub struct GrassBending {
+    pub base_rotation: Quat,
+    pub current_bend: Vec2,
+    pub bend_velocity: Vec2,
+}
+
+#[derive(Component, Debug, Clone)]
+pub struct WaterRipple {
+    pub elapsed: f32,
+    pub max_lifetime: f32,
+    pub initial_radius: f32,
+    pub max_radius: f32,
+    pub initial_alpha: f32,
+}
+
+#[derive(Component, Debug, Clone)]
+pub struct BioluminescentMushroom {
+    pub base_intensity: f32,
+    pub base_color: Color,
+    pub phase: f32,
+    pub surge_timer: f32,
+}
+
 #[derive(Component)]
 pub struct MushroomCap;
 
@@ -65,6 +89,9 @@ impl Plugin for DungeonPlugin {
                 mark_imported_tall_grass,
                 keep_tall_grass_clear_of_obstacles,
                 attach_mushroom_spore_emitters,
+                update_grass_bending,
+                update_water_ripples,
+                update_bioluminescent_mushrooms,
             ),
         );
     }
@@ -72,11 +99,19 @@ impl Plugin for DungeonPlugin {
 
 pub fn mark_imported_tall_grass(
     mut commands: Commands,
-    named_entities: Query<(Entity, &Name), Added<Name>>,
+    named_entities: Query<(Entity, &Name, Option<&Transform>), Added<Name>>,
 ) {
-    for (entity, name) in &named_entities {
+    for (entity, name, tf_opt) in &named_entities {
         if name.as_str().contains("TallGrass") {
-            commands.entity(entity).insert(TallGrassClump);
+            let base_rot = tf_opt.map(|t| t.rotation).unwrap_or(Quat::IDENTITY);
+            commands.entity(entity).insert((
+                TallGrassClump,
+                GrassBending {
+                    base_rotation: base_rot,
+                    current_bend: Vec2::ZERO,
+                    bend_velocity: Vec2::ZERO,
+                },
+            ));
         }
     }
 }
@@ -103,7 +138,16 @@ pub fn attach_mushroom_spore_emitters(
         if is_target {
             commands
                 .entity(entity)
-                .insert((MushroomCap, MushroomSporeAttached))
+                .insert((
+                    MushroomCap,
+                    MushroomSporeAttached,
+                    BioluminescentMushroom {
+                        base_intensity: 1.0,
+                        base_color: Color::srgb(0.12, 0.96, 0.88),
+                        phase: 0.0,
+                        surge_timer: 0.0,
+                    },
+                ))
                 .with_children(|parent| {
                     parent.spawn((
                         Transform::from_xyz(0.0, -0.06, 0.0),
@@ -204,9 +248,254 @@ pub fn keep_tall_grass_clear_of_obstacles(
 
         let correction = corrected - Vec2::new(grass_pos.x, grass_pos.z);
         if correction.length_squared() > 0.000001 {
-
             grass_transform.translation.x += correction.x;
             grass_transform.translation.z += correction.y;
+        }
+    }
+}
+
+pub fn update_grass_bending(
+    time: Res<Time>,
+    player_query: Query<&GlobalTransform, (With<crate::player::camera::Player>, Without<TallGrassClump>)>,
+    mut grass_query: Query<(&mut Transform, &GlobalTransform, &mut GrassBending), With<TallGrassClump>>,
+) {
+    let dt = time.delta_secs();
+    if dt <= 0.0 || dt > 0.1 {
+        return;
+    }
+    let Ok(player_gt) = player_query.get_single() else {
+        return;
+    };
+    let player_pos = player_gt.translation();
+    let player_p = Vec2::new(player_pos.x, player_pos.z);
+
+    const CONTACT_RADIUS: f32 = 0.65;
+    const MAX_BEND_ANGLE: f32 = 0.48;
+    const SPRING_K: f32 = 42.0;
+    const DAMPING_C: f32 = 8.5;
+
+    for (mut tf, gt, mut bending) in grass_query.iter_mut() {
+        let grass_pos = gt.translation();
+        let grass_p = Vec2::new(grass_pos.x, grass_pos.z);
+        let delta = grass_p - player_p;
+        let dist = delta.length();
+
+        let target_bend = if dist < CONTACT_RADIUS && dist > 1e-4 {
+            let factor = ((CONTACT_RADIUS - dist) / CONTACT_RADIUS).clamp(0.0, 1.0);
+            let dir = delta / dist;
+            dir * (factor * MAX_BEND_ANGLE)
+        } else {
+            Vec2::ZERO
+        };
+
+        let diff = target_bend - bending.current_bend;
+        let spring_acc = diff * SPRING_K - bending.bend_velocity * DAMPING_C;
+        let new_vel = bending.bend_velocity + spring_acc * dt;
+        bending.bend_velocity = new_vel;
+        bending.current_bend += new_vel * dt;
+
+        let bend_axis = Vec3::new(bending.current_bend.y, 0.0, -bending.current_bend.x).normalize_or_zero();
+        let bend_mag = bending.current_bend.length();
+        let bend_quat = if bend_mag > 1e-4 && bend_axis.length_squared() > 0.5 {
+            Quat::from_axis_angle(bend_axis, bend_mag)
+        } else {
+            Quat::IDENTITY
+        };
+
+        tf.rotation = bending.base_rotation * bend_quat;
+    }
+}
+
+pub fn create_water_ring_mesh(radius: f32, inner_ratio: f32, segments: usize) -> Mesh {
+    let inner_radius = radius * inner_ratio;
+    let num_verts = (segments + 1) * 2;
+    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(num_verts);
+    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(num_verts);
+    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(num_verts);
+    let mut indices: Vec<u32> = Vec::with_capacity(segments * 6);
+
+    for i in 0..=segments {
+        let angle = (i as f32 / segments as f32) * std::f32::consts::TAU;
+        let cos_a = angle.cos();
+        let sin_a = angle.sin();
+
+        positions.push([cos_a * radius, 0.0, sin_a * radius]);
+        normals.push([0.0, 1.0, 0.0]);
+        uvs.push([0.5 + 0.5 * cos_a, 0.5 + 0.5 * sin_a]);
+
+        positions.push([cos_a * inner_radius, 0.0, sin_a * inner_radius]);
+        normals.push([0.0, 1.0, 0.0]);
+        uvs.push([0.5 + 0.5 * inner_ratio * cos_a, 0.5 + 0.5 * inner_ratio * sin_a]);
+    }
+
+    for i in 0..segments as u32 {
+        let o1 = i * 2;
+        let i1 = i * 2 + 1;
+        let o2 = (i + 1) * 2;
+        let i2 = (i + 1) * 2 + 1;
+
+        indices.push(o1);
+        indices.push(o2);
+        indices.push(i1);
+
+        indices.push(i1);
+        indices.push(o2);
+        indices.push(i2);
+    }
+
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    );
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_indices(Indices::U32(indices));
+    mesh
+}
+
+pub fn spawn_water_ripple(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    position: Vec3,
+    initial_radius: f32,
+    max_radius: f32,
+    lifetime: f32,
+    alpha: f32,
+) {
+    let ring_mesh = meshes.add(create_water_ring_mesh(1.0, 0.80, 32));
+    let ring_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.85, 0.96, 1.0, alpha),
+        emissive: LinearRgba::new(0.20, 0.65, 0.85, alpha * 0.45),
+        unlit: true,
+        alpha_mode: AlphaMode::Blend,
+        depth_bias: 450.0,
+        cull_mode: None,
+        ..default()
+    });
+
+    commands.spawn((
+        WaterRipple {
+            elapsed: 0.0,
+            max_lifetime: lifetime,
+            initial_radius,
+            max_radius,
+            initial_alpha: alpha,
+        },
+        Mesh3d(ring_mesh),
+        MeshMaterial3d(ring_mat),
+        Transform::from_translation(position).with_scale(Vec3::new(initial_radius, 1.0, initial_radius)),
+    ));
+}
+
+pub fn update_water_ripples(
+    time: Res<Time>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut ripples: Query<(
+        Entity,
+        &mut WaterRipple,
+        &mut Transform,
+        &MeshMaterial3d<StandardMaterial>,
+    )>,
+    mut commands: Commands,
+) {
+    let dt = time.delta_secs();
+    if dt <= 0.0 {
+        return;
+    }
+    for (entity, mut ripple, mut tf, mat_handle) in ripples.iter_mut() {
+        ripple.elapsed += dt;
+        if ripple.elapsed >= ripple.max_lifetime {
+            commands.entity(entity).despawn();
+            continue;
+        }
+
+        let progress = (ripple.elapsed / ripple.max_lifetime).clamp(0.0, 1.0);
+        let current_radius = ripple.initial_radius + (ripple.max_radius - ripple.initial_radius) * (1.0 - (1.0 - progress).powi(2));
+        tf.scale = Vec3::new(current_radius, 1.0, current_radius);
+
+        if let Some(mat) = materials.get_mut(&mat_handle.0) {
+            let alpha = ripple.initial_alpha * (1.0 - progress);
+            mat.base_color = Color::srgba(0.85, 0.96, 1.0, alpha);
+        }
+    }
+}
+
+pub fn update_bioluminescent_mushrooms(
+    time: Res<Time>,
+    player_query: Query<&GlobalTransform, (With<crate::player::camera::Player>, Without<BioluminescentMushroom>)>,
+    puddles_query: Query<&GlobalTransform, (With<crate::alchemy::PotionPuddle>, Without<BioluminescentMushroom>)>,
+    mut mushrooms: Query<(
+        Entity,
+        &GlobalTransform,
+        &mut BioluminescentMushroom,
+        Option<&mut PointLight>,
+    )>,
+    mut commands: Commands,
+) {
+    let dt = time.delta_secs();
+    if dt <= 0.0 {
+        return;
+    }
+
+    let player_pos = player_query.get_single().map(|gt| gt.translation()).unwrap_or(Vec3::splat(9999.0));
+
+    for (_entity, gt, mut shroom, light_opt) in mushrooms.iter_mut() {
+        let shroom_pos = gt.translation();
+
+        let dist_to_player = shroom_pos.distance(player_pos);
+        if dist_to_player < 2.5 {
+            shroom.surge_timer = shroom.surge_timer.max(2.5);
+        }
+
+        for p_gt in puddles_query.iter() {
+            if p_gt.translation().distance(shroom_pos) < 4.0 {
+                shroom.surge_timer = shroom.surge_timer.max(3.0);
+                break;
+            }
+        }
+
+        let is_surging = shroom.surge_timer > 0.0;
+        if is_surging {
+            shroom.surge_timer = (shroom.surge_timer - dt).max(0.0);
+        }
+
+        let frequency = if is_surging { 0.85 } else { 0.20 };
+        shroom.phase += std::f32::consts::TAU * frequency * dt;
+
+        let wave = shroom.phase.sin();
+        let amp = if is_surging { 0.40 } else { 0.18 };
+        let intensity_mult = 1.0 + wave * amp;
+
+        if let Some(mut light) = light_opt {
+            light.intensity = shroom.base_intensity * intensity_mult;
+            let hue_shift = (wave * 0.08).clamp(-0.1, 0.1);
+            let base_srgb = shroom.base_color.to_srgba();
+            light.color = Color::srgb(
+                (base_srgb.red + hue_shift * 0.1).clamp(0.05, 0.4),
+                (base_srgb.green + hue_shift * 0.05).clamp(0.7, 1.0),
+                (base_srgb.blue + hue_shift * 0.12).clamp(0.7, 1.0),
+            );
+        }
+
+        if is_surging && wave > 0.95 && crate::render::particles::fastrand::f32() < 0.25 {
+            commands.spawn((
+                Transform::from_translation(shroom_pos + Vec3::new(
+                    (crate::render::particles::fastrand::f32() - 0.5) * 0.6,
+                    -0.15,
+                    (crate::render::particles::fastrand::f32() - 0.5) * 0.6,
+                )),
+                ParticleEmitter {
+                    spawn_timer: 0.0,
+                    spawn_rate: 0.04,
+                    particle_type: ParticleType::GlowSpore,
+                },
+                crate::alchemy::AlchemyTransientEmitter {
+                    elapsed: 0.0,
+                    max_lifetime: 1.5,
+                },
+            ));
         }
     }
 }
@@ -277,6 +566,12 @@ pub fn setup_cavern_world(
             ..default()
         },
         Transform::from_xyz(-3.4, 2.4, -2.8),
+        BioluminescentMushroom {
+            base_intensity: 46000.0,
+            base_color: Color::srgb(0.12, 0.96, 0.88),
+            phase: 0.0,
+            surge_timer: 0.0,
+        },
         KeyShadowLight,
     ));
 
@@ -289,6 +584,12 @@ pub fn setup_cavern_world(
             ..default()
         },
         Transform::from_xyz(4.1, 2.4, -3.3),
+        BioluminescentMushroom {
+            base_intensity: 46000.0,
+            base_color: Color::srgb(0.12, 0.96, 0.88),
+            phase: 1.57,
+            surge_timer: 0.0,
+        },
     ));
 
     commands.spawn((

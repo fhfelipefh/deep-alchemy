@@ -803,6 +803,19 @@ pub fn update_potion_projectiles(
         let in_water = crate::dungeon::modular_kit::is_in_lake_water(current_pos);
 
         if in_water {
+            if current_pos.y <= 0.24 && projectile.velocity.y < 0.0 && projectile.lifetime > 7.5 {
+                crate::dungeon::modular_kit::spawn_water_ripple(
+                    &mut commands,
+                    &mut meshes,
+                    &mut materials,
+                    Vec3::new(current_pos.x, 0.20, current_pos.z),
+                    0.25,
+                    2.20,
+                    1.6,
+                    0.85,
+                );
+            }
+
             if is_frost && current_pos.y <= 0.24 {
                 let freeze_center = Vec2::new(current_pos.x, current_pos.z);
                 let freeze_radius = 2.85;

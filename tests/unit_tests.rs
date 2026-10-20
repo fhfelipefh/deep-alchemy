@@ -785,5 +785,166 @@ fn test_unit_puddle_thermal_shock_and_luminescent_reaction() {
     assert!(emitter_count >= 1);
 }
 
+#[test]
+fn test_unit_grass_bending_spring_damping_and_player_contact() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_plugins(bevy::transform::TransformPlugin);
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(20),
+    ));
+    app.add_systems(Update, deep_alchemy::dungeon::modular_kit::update_grass_bending);
+
+    let player_entity = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            Transform::from_xyz(0.0, 0.0, 0.0),
+            GlobalTransform::from_translation(Vec3::ZERO),
+        ))
+        .id();
+
+    let grass_entity = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::dungeon::modular_kit::TallGrassClump,
+            deep_alchemy::dungeon::modular_kit::GrassBending {
+                base_rotation: Quat::IDENTITY,
+                current_bend: Vec2::ZERO,
+                bend_velocity: Vec2::ZERO,
+            },
+            Transform::from_xyz(0.35, 0.0, 0.0),
+            GlobalTransform::from_translation(Vec3::new(0.35, 0.0, 0.0)),
+        ))
+        .id();
+
+    app.update();
+    app.update();
+
+    let grass = app
+        .world()
+        .get::<deep_alchemy::dungeon::modular_kit::GrassBending>(grass_entity)
+        .unwrap();
+    assert!(grass.current_bend.x > 0.0);
+
+    let mut player_tf = app.world_mut().get_mut::<Transform>(player_entity).unwrap();
+    player_tf.translation = Vec3::new(10.0, 0.0, 0.0);
+    let mut player_gt = app.world_mut().get_mut::<GlobalTransform>(player_entity).unwrap();
+    *player_gt = GlobalTransform::from_translation(Vec3::new(10.0, 0.0, 0.0));
+
+    for _ in 0..40 {
+        app.update();
+    }
+
+    let grass_returned = app
+        .world()
+        .get::<deep_alchemy::dungeon::modular_kit::GrassBending>(grass_entity)
+        .unwrap();
+    assert!(grass_returned.current_bend.length() < 0.08);
+}
+
+#[test]
+fn test_unit_water_ripple_radial_expansion_and_fade() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(50),
+    ));
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.add_systems(Update, deep_alchemy::dungeon::modular_kit::update_water_ripples);
+
+    let mut materials = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
+    let mat_handle = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.85, 0.96, 1.0, 0.8),
+        ..default()
+    });
+
+    let ripple_entity = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::dungeon::modular_kit::WaterRipple {
+                elapsed: 0.0,
+                max_lifetime: 1.0,
+                initial_radius: 0.2,
+                max_radius: 1.6,
+                initial_alpha: 0.8,
+            },
+            Transform::from_xyz(0.0, 0.20, 0.0).with_scale(Vec3::splat(0.2)),
+            MeshMaterial3d(mat_handle.clone()),
+        ))
+        .id();
+
+    app.update();
+    app.update();
+
+    let tf = app.world().get::<Transform>(ripple_entity).unwrap();
+    assert!(tf.scale.x > 0.2);
+
+    for _ in 0..25 {
+        app.update();
+    }
+
+    assert!(app.world().get_entity(ripple_entity).is_err());
+}
+
+#[test]
+fn test_unit_bioluminescent_mushroom_respiration_and_surge() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_plugins(bevy::transform::TransformPlugin);
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(50),
+    ));
+    app.add_systems(Update, deep_alchemy::dungeon::modular_kit::update_bioluminescent_mushrooms);
+
+    let shroom_entity = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::dungeon::modular_kit::BioluminescentMushroom {
+                base_intensity: 1000.0,
+                base_color: Color::srgb(0.12, 0.96, 0.88),
+                phase: 0.0,
+                surge_timer: 0.0,
+            },
+            PointLight {
+                intensity: 1000.0,
+                ..default()
+            },
+            Transform::from_xyz(0.0, 0.0, 0.0),
+            GlobalTransform::from_translation(Vec3::ZERO),
+        ))
+        .id();
+
+    app.update();
+    app.update();
+
+    let shroom = app
+        .world()
+        .get::<deep_alchemy::dungeon::modular_kit::BioluminescentMushroom>(shroom_entity)
+        .unwrap();
+    assert_eq!(shroom.surge_timer, 0.0);
+    assert!(shroom.phase > 0.0);
+
+    let _player_close = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            Transform::from_xyz(0.8, 0.0, 0.0),
+            GlobalTransform::from_translation(Vec3::new(0.8, 0.0, 0.0)),
+        ))
+        .id();
+
+    app.update();
+
+    let shroom_surging = app
+        .world()
+        .get::<deep_alchemy::dungeon::modular_kit::BioluminescentMushroom>(shroom_entity)
+        .unwrap();
+    assert!(shroom_surging.surge_timer > 0.0);
+
+    let light = app.world().get::<PointLight>(shroom_entity).unwrap();
+    assert!(light.intensity > 0.0);
+}
+
 
 

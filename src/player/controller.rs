@@ -607,6 +607,16 @@ pub fn player_movement(
                                     },
                                 ));
                             }
+                            crate::dungeon::modular_kit::spawn_water_ripple(
+                                &mut commands,
+                                mesh_assets,
+                                mat_assets,
+                                Vec3::new(tf.translation.x, 0.19, tf.translation.z),
+                                0.22,
+                                1.45,
+                                1.5,
+                                0.85,
+                            );
                         } else {
                             for _ in 0..5 {
                                 let angle = crate::render::particles::fastrand::f32() * std::f32::consts::TAU;
@@ -710,6 +720,16 @@ pub fn player_movement(
                                 },
                             ));
                         }
+                        crate::dungeon::modular_kit::spawn_water_ripple(
+                            &mut commands,
+                            mesh_assets,
+                            mat_assets,
+                            Vec3::new(foot_pos.x, 0.19, foot_pos.z),
+                            0.12,
+                            0.75,
+                            1.1,
+                            0.70,
+                        );
                     } else if !locomotion.is_on_ice {
                         if is_sprinting {
                             for _ in 0..2 {

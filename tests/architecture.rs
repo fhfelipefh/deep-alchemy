@@ -1044,6 +1044,9 @@ fn test_architecture_full_game_app_schedule_integrity_and_disjoint_queries_gate(
         deep_alchemy::alchemy::update_frozen_water_sheets,
         deep_alchemy::alchemy::update_ice_footprints,
         deep_alchemy::ui::hud::update_hotbar_cooldown_visuals,
+        deep_alchemy::dungeon::modular_kit::update_grass_bending,
+        deep_alchemy::dungeon::modular_kit::update_water_ripples,
+        deep_alchemy::dungeon::modular_kit::update_bioluminescent_mushrooms,
     ));
 
     let _ = schedule.initialize(app.world_mut());
