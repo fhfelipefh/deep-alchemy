@@ -1,6 +1,9 @@
 use crate::{
     player::camera::{LocomotionState, Player, PlayerCamera, PlayerState},
-    ui::{hud::ActiveHotbarSlot, menu::GameState},
+    ui::{
+        hud::ActiveHotbarSlot,
+        menu::{GameSettings, GameState},
+    },
 };
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -83,6 +86,15 @@ pub struct PotionPuddle {
     pub radius: f32,
     pub effects: Vec<ActiveEffect>,
     pub is_wall: bool,
+}
+
+#[derive(Component, Debug, Clone)]
+pub struct PotionContactZone {
+    pub puddle_a: Entity,
+    pub puddle_b: Entity,
+    pub color: Color,
+    pub effects: Vec<ActiveEffect>,
+    pub radius: f32,
 }
 
 #[derive(Component, Debug)]
@@ -470,9 +482,9 @@ pub fn spawn_potion_projectile(
 
 pub fn update_potion_projectiles(
     time: Res<Time>,
+    settings: Option<Res<GameSettings>>,
     spatial_query: SpatialQuery,
     mut projectiles: Query<(Entity, &mut Transform, &mut PotionProjectile)>,
-    mut puddles: Query<(Entity, &mut PotionPuddle, &mut Transform, &MeshMaterial3d<StandardMaterial>), Without<PotionProjectile>>,
     player_entities: Query<Entity, With<Player>>,
     mut receivers: Query<(Entity, &Transform, &mut EffectReceiverComponent), (Without<PotionProjectile>, Without<PotionPuddle>)>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -511,93 +523,70 @@ pub fn update_potion_projectiles(
                 let impact_point = transform.translation + direction * hit.distance;
                 let impact_normal = hit.normal;
 
-                let mut merged = false;
-                let mut final_color = projectile.color;
-
-                for (_p_ent, mut puddle, mut p_tf, mat_handle) in puddles.iter_mut() {
-                    let dist = p_tf.translation.distance(impact_point);
-                    if dist <= puddle.radius + 0.65 {
-                        final_color = mix_potion_colors(puddle.color, projectile.color);
-                        puddle.color = final_color;
-                        merge_potion_effects(&mut puddle.effects, &projectile.effects);
-                        puddle.radius = (puddle.radius + 0.38).min(2.8);
-                        puddle.elapsed = (puddle.elapsed * 0.30).max(0.0);
-                        if let Some(mat) = materials.get_mut(&mat_handle.0) {
-                            mat.base_color = final_color.with_alpha(0.88);
-                            mat.emissive = final_color.to_linear() * 1.9;
+                for (r_entity, r_tf, mut receiver) in receivers.iter_mut() {
+                    if r_entity == hit.entity || r_tf.translation.distance(impact_point) <= 2.8 {
+                        for effect in &projectile.effects {
+                            receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
                         }
-                        p_tf.scale = Vec3::new(puddle.radius, 1.0, puddle.radius);
-
-                        for (r_entity, r_tf, mut receiver) in receivers.iter_mut() {
-                            if r_entity == hit.entity || r_tf.translation.distance(p_tf.translation) <= puddle.radius * 1.6 {
-                                for effect in &puddle.effects {
-                                    receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
-                                }
-                            }
-                        }
-
-                        merged = true;
-                        break;
                     }
                 }
 
-                if !merged {
-                    for (r_entity, r_tf, mut receiver) in receivers.iter_mut() {
-                        if r_entity == hit.entity || r_tf.translation.distance(impact_point) <= 2.8 {
-                            for effect in &projectile.effects {
-                                receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
-                            }
-                        }
-                    }
-
-                    let is_wall = impact_normal.y.abs() < 0.65;
-                    let (puddle_mesh_handle, puddle_rot, puddle_pos) = if is_wall {
-                        let grav = Vec3::NEG_Y;
-                        let down_proj = (grav - impact_normal * grav.dot(impact_normal)).normalize_or_zero();
-                        let down = if down_proj.length_squared() > 0.01 {
-                            down_proj
-                        } else {
-                            Vec3::NEG_Y
-                        };
-                        let right = impact_normal.cross(down).normalize();
-                        let rot = Quat::from_mat3(&Mat3::from_cols(right, impact_normal, -down));
-                        let mesh = meshes.add(create_wall_splatter_mesh(1.10, 32));
-                        (mesh, rot, impact_point + impact_normal * 0.038)
+                let is_wall = impact_normal.y.abs() < 0.65;
+                let (puddle_mesh_handle, puddle_rot, puddle_pos) = if is_wall {
+                    let grav = Vec3::NEG_Y;
+                    let down_proj = (grav - impact_normal * grav.dot(impact_normal)).normalize_or_zero();
+                    let down = if down_proj.length_squared() > 0.01 {
+                        down_proj
                     } else {
-                        let rot = Quat::from_rotation_arc(Vec3::Y, impact_normal);
-                        let mesh = meshes.add(create_irregular_puddle_mesh(1.15, 32));
-                        (mesh, rot, impact_point + impact_normal * 0.055)
+                        Vec3::NEG_Y
                     };
+                    let right = impact_normal.cross(down).normalize();
+                    let rot = Quat::from_mat3(&Mat3::from_cols(right, impact_normal, -down));
+                    let mesh = meshes.add(create_wall_splatter_mesh(1.10, 32));
+                    (mesh, rot, impact_point + impact_normal * 0.038)
+                } else {
+                    let rot = Quat::from_rotation_arc(Vec3::Y, impact_normal);
+                    let mesh = meshes.add(create_irregular_puddle_mesh(1.15, 32));
+                    (mesh, rot, impact_point + impact_normal * 0.055)
+                };
 
-                    let puddle_mat = materials.add(StandardMaterial {
-                        base_color: projectile.color.with_alpha(0.88),
-                        emissive: projectile.color.to_linear() * 1.8,
-                        perceptual_roughness: 0.04,
-                        metallic: 0.15,
-                        reflectance: 0.98,
-                        cull_mode: None,
-                        double_sided: true,
-                        alpha_mode: AlphaMode::Blend,
-                        depth_bias: 600.0,
+                let puddle_mat = materials.add(StandardMaterial {
+                    base_color: projectile.color.with_alpha(0.88),
+                    emissive: projectile.color.to_linear() * 0.32,
+                    perceptual_roughness: 0.85,
+                    metallic: 0.0,
+                    reflectance: 0.12,
+                    cull_mode: None,
+                    double_sided: true,
+                    alpha_mode: AlphaMode::Blend,
+                    depth_bias: 600.0,
+                    ..default()
+                });
+
+                let is_rtx = settings.as_ref().map(|s| s.rtx_enabled).unwrap_or(false);
+
+                commands.spawn((
+                    PotionPuddle {
+                        color: projectile.color,
+                        elapsed: 0.0,
+                        max_lifetime: 75.0,
+                        radius: 1.15,
+                        effects: projectile.effects.clone(),
+                        is_wall,
+                    },
+                    Mesh3d(puddle_mesh_handle),
+                    MeshMaterial3d(puddle_mat),
+                    Transform::from_translation(puddle_pos)
+                        .with_rotation(puddle_rot)
+                        .with_scale(Vec3::new(0.15, 1.0, 0.15)),
+                    PointLight {
+                        color: projectile.color,
+                        intensity: if is_rtx { 2400.0 } else { 0.0 },
+                        range: 3.8,
+                        shadows_enabled: false,
                         ..default()
-                    });
-
-                    commands.spawn((
-                        PotionPuddle {
-                            color: projectile.color,
-                            elapsed: 0.0,
-                            max_lifetime: 75.0,
-                            radius: 1.15,
-                            effects: projectile.effects.clone(),
-                            is_wall,
-                        },
-                        Mesh3d(puddle_mesh_handle),
-                        MeshMaterial3d(puddle_mat),
-                        Transform::from_translation(puddle_pos)
-                            .with_rotation(puddle_rot)
-                            .with_scale(Vec3::new(0.15, 1.0, 0.15)),
-                    ));
-                }
+                    },
+                ));
 
                 commands.entity(entity).despawn();
 
@@ -622,13 +611,13 @@ pub fn update_potion_projectiles(
                 };
                 let bitangent = impact_normal.cross(tangent).normalize();
 
-                let c = final_color.to_srgba();
+                let c = projectile.color.to_srgba();
                 let stain_base = Color::srgb(
                     c.red * 0.78 + 0.18,
                     c.green * 0.78 + 0.18,
                     c.blue * 0.78 + 0.18,
                 );
-                let stain_emissive = final_color.to_linear() * 1.6;
+                let stain_emissive = projectile.color.to_linear() * 0.6;
 
                 for i in 0..16 {
                     let angle_noise = (i as f32 * 4.37).sin() * 0.35;
@@ -674,7 +663,7 @@ pub fn update_potion_projectiles(
                             max_lifetime: 60.0 + 15.0 * ((i as f32 * 1.9).sin().abs()),
                             ground_y: floor_y,
                             settled: false,
-                            color: final_color,
+                            color: projectile.color,
                         },
                         Mesh3d(shard_mesh),
                         MeshMaterial3d(shard_mat),
@@ -699,56 +688,31 @@ pub fn update_potion_projectiles(
 
 pub fn update_potion_puddles(
     time: Res<Time>,
+    settings: Option<Res<GameSettings>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut puddles: Query<(Entity, &mut PotionPuddle, &mut Transform, &MeshMaterial3d<StandardMaterial>)>,
-    mut receivers: Query<(&Transform, &mut EffectReceiverComponent), Without<PotionPuddle>>,
+    mut meshes: Option<ResMut<Assets<Mesh>>>,
+    mut puddles: Query<(
+        Entity,
+        &mut PotionPuddle,
+        &mut Transform,
+        &MeshMaterial3d<StandardMaterial>,
+        Option<&mut PointLight>,
+    )>,
+    mut contact_zones: Query<(
+        Entity,
+        &PotionContactZone,
+        &mut Transform,
+        &MeshMaterial3d<StandardMaterial>,
+    ), Without<PotionPuddle>>,
+    mut receivers: Query<(&Transform, &mut EffectReceiverComponent), (Without<PotionPuddle>, Without<PotionContactZone>)>,
     mut commands: Commands,
 ) {
     let dt = time.delta_secs();
+    let is_rtx = settings.as_ref().map(|s| s.rtx_enabled).unwrap_or(false);
 
-    let puddle_snapshots: Vec<(Entity, Vec3, f32, Color, Vec<ActiveEffect>)> = puddles
-        .iter()
-        .map(|(e, p, tf, _)| (e, tf.translation, p.radius, p.color, p.effects.clone()))
-        .collect();
+    let mut active_puddles: Vec<(Entity, Vec3, f32, Color, Vec<ActiveEffect>, f32)> = Vec::new();
 
-    let mut despawned = Vec::new();
-    for i in 0..puddle_snapshots.len() {
-        if despawned.contains(&puddle_snapshots[i].0) {
-            continue;
-        }
-        for j in (i + 1)..puddle_snapshots.len() {
-            if despawned.contains(&puddle_snapshots[j].0) {
-                continue;
-            }
-            let dist = puddle_snapshots[i].1.distance(puddle_snapshots[j].1);
-            if dist <= (puddle_snapshots[i].2 + puddle_snapshots[j].2) * 0.65 {
-                let absorbed_id = puddle_snapshots[j].0;
-                let absorbed_color = puddle_snapshots[j].3;
-                let absorbed_effects = puddle_snapshots[j].4.clone();
-                despawned.push(absorbed_id);
-                commands.entity(absorbed_id).despawn();
-
-                if let Ok((_, mut p_main, mut tf_main, mat_main)) = puddles.get_mut(puddle_snapshots[i].0) {
-                    let mixed_color = mix_potion_colors(p_main.color, absorbed_color);
-                    p_main.color = mixed_color;
-                    merge_potion_effects(&mut p_main.effects, &absorbed_effects);
-                    p_main.radius = (p_main.radius + 0.40).min(3.0);
-                    p_main.elapsed = (p_main.elapsed * 0.5).max(0.0);
-                    if let Some(mat) = materials.get_mut(&mat_main.0) {
-                        mat.base_color = mixed_color.with_alpha(0.88);
-                        mat.emissive = mixed_color.to_linear() * 1.9;
-                    }
-                    tf_main.scale = Vec3::new(p_main.radius, 1.0, p_main.radius);
-                }
-            }
-        }
-    }
-
-    for (entity, mut puddle, mut transform, mat_handle) in puddles.iter_mut() {
-        if despawned.contains(&entity) {
-            continue;
-        }
-
+    for (entity, mut puddle, mut transform, mat_handle, mut point_light) in puddles.iter_mut() {
         puddle.elapsed += dt;
         if puddle.elapsed >= puddle.max_lifetime {
             commands.entity(entity).despawn();
@@ -757,15 +721,26 @@ pub fn update_potion_puddles(
 
         let fade_start = 50.0;
         let fade_duration = puddle.max_lifetime - fade_start;
-        let alpha = if puddle.elapsed <= fade_start {
-            0.88
+        let (alpha, fade_factor) = if puddle.elapsed <= fade_start {
+            (0.88, 1.0)
         } else {
-            let progress = (puddle.elapsed - fade_start) / fade_duration;
-            (0.88 * (1.0 - progress)).max(0.0)
+            let progress = ((puddle.elapsed - fade_start) / fade_duration).clamp(0.0, 1.0);
+            (0.88 * (1.0 - progress), 1.0 - progress)
         };
 
         if let Some(mat) = materials.get_mut(&mat_handle.0) {
             mat.base_color = puddle.color.with_alpha(alpha);
+            mat.emissive = puddle.color.to_linear() * (0.32 * fade_factor);
+            mat.perceptual_roughness = 0.85;
+            mat.metallic = 0.0;
+            mat.reflectance = 0.12;
+        }
+
+        if let Some(ref mut light) = point_light {
+            light.intensity = if is_rtx { 2400.0 * fade_factor } else { 0.0 };
+            light.color = puddle.color;
+            light.range = 3.8;
+            light.shadows_enabled = false;
         }
 
         let spread_duration = 0.38;
@@ -780,10 +755,125 @@ pub fn update_potion_puddles(
         };
         transform.scale = Vec3::new(scale_spread, 1.0, scale_spread);
 
+        active_puddles.push((
+            entity,
+            transform.translation,
+            puddle.radius,
+            puddle.color,
+            puddle.effects.clone(),
+            puddle.elapsed,
+        ));
+
         for (r_tf, mut receiver) in receivers.iter_mut() {
-            if r_tf.translation.distance(transform.translation) <= puddle.radius * 1.25 {
+            if r_tf.translation.distance(transform.translation) <= puddle.radius * 1.15 {
                 for effect in &puddle.effects {
                     receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
+                }
+            }
+        }
+    }
+
+    let mut existing_contacts: Vec<(Entity, Entity, Entity)> = Vec::new();
+    for (cz_ent, cz, mut cz_tf, cz_mat) in contact_zones.iter_mut() {
+        let p_a = active_puddles.iter().find(|(e, _, _, _, _, _)| *e == cz.puddle_a);
+        let p_b = active_puddles.iter().find(|(e, _, _, _, _, _)| *e == cz.puddle_b);
+        if let (Some(a), Some(b)) = (p_a, p_b) {
+            let dist = a.1.distance(b.1);
+            if dist < a.2 + b.2 {
+                let overlap = (a.2 + b.2 - dist).max(0.0);
+                let contact_r = (overlap * 0.5).clamp(0.18, a.2.min(b.2));
+                let mid = (a.1 + b.1) * 0.5;
+                cz_tf.translation = mid + Vec3::Y * 0.003;
+                cz_tf.scale = Vec3::new(contact_r, 1.0, contact_r);
+
+                let oldest_elapsed = a.5.max(b.5);
+                let fade_factor = if oldest_elapsed <= 50.0 {
+                    1.0
+                } else {
+                    (1.0 - (oldest_elapsed - 50.0) / 25.0).clamp(0.0, 1.0)
+                };
+
+                if let Some(mat) = materials.get_mut(&cz_mat.0) {
+                    mat.base_color = cz.color.with_alpha(0.88 * fade_factor);
+                    mat.emissive = cz.color.to_linear() * (0.35 * fade_factor);
+                    mat.perceptual_roughness = 0.85;
+                    mat.metallic = 0.0;
+                    mat.reflectance = 0.12;
+                }
+
+                for (r_tf, mut receiver) in receivers.iter_mut() {
+                    if r_tf.translation.distance(mid) <= contact_r * 1.25 {
+                        for effect in &cz.effects {
+                            receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
+                        }
+                    }
+                }
+
+                existing_contacts.push((cz_ent, cz.puddle_a, cz.puddle_b));
+                continue;
+            }
+        }
+        commands.entity(cz_ent).despawn();
+    }
+
+    for i in 0..active_puddles.len() {
+        for j in (i + 1)..active_puddles.len() {
+            let a = &active_puddles[i];
+            let b = &active_puddles[j];
+            let dist = a.1.distance(b.1);
+            if dist < a.2 + b.2 {
+                let already_exists = existing_contacts.iter().any(|(_, ea, eb)| {
+                    (*ea == a.0 && *eb == b.0) || (*ea == b.0 && *eb == a.0)
+                });
+                if !already_exists {
+                    let overlap = (a.2 + b.2 - dist).max(0.0);
+                    let contact_r = (overlap * 0.5).clamp(0.18, a.2.min(b.2));
+                    let mid = (a.1 + b.1) * 0.5;
+
+                    let mixed_color = mix_potion_colors(a.3, b.3);
+                    let mut mixed_effects = a.4.clone();
+                    merge_potion_effects(&mut mixed_effects, &b.4);
+
+                    let mat = materials.add(StandardMaterial {
+                        base_color: mixed_color.with_alpha(0.88),
+                        emissive: mixed_color.to_linear() * 0.35,
+                        perceptual_roughness: 0.85,
+                        metallic: 0.0,
+                        reflectance: 0.12,
+                        cull_mode: None,
+                        double_sided: true,
+                        alpha_mode: AlphaMode::Blend,
+                        depth_bias: 750.0,
+                        ..default()
+                    });
+
+                    let mesh = if let Some(ref mut meshes_res) = meshes {
+                        meshes_res.add(create_irregular_puddle_mesh(1.0, 24))
+                    } else {
+                        Handle::default()
+                    };
+
+                    commands.spawn((
+                        PotionContactZone {
+                            puddle_a: a.0,
+                            puddle_b: b.0,
+                            color: mixed_color,
+                            effects: mixed_effects.clone(),
+                            radius: contact_r,
+                        },
+                        Mesh3d(mesh),
+                        MeshMaterial3d(mat),
+                        Transform::from_translation(mid + Vec3::Y * 0.003)
+                            .with_scale(Vec3::new(contact_r, 1.0, contact_r)),
+                    ));
+
+                    for (r_tf, mut receiver) in receivers.iter_mut() {
+                        if r_tf.translation.distance(mid) <= contact_r * 1.25 {
+                            for effect in &mixed_effects {
+                                receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1921,11 +2011,12 @@ mod tests {
     }
 
     #[test]
-    fn test_inter_puddle_merging_absorbs_and_expands() {
+    fn test_touching_puddles_mix_only_at_contact_without_increasing_size() {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
         app.add_plugins(bevy::asset::AssetPlugin::default());
         app.init_resource::<Assets<StandardMaterial>>();
+        app.init_resource::<Assets<Mesh>>();
 
         let red = Color::srgb(0.95, 0.12, 0.16);
         let blue = Color::srgb(0.12, 0.42, 0.95);
@@ -1985,11 +2076,196 @@ mod tests {
         schedule.run(app.world_mut());
 
         assert!(app.world().get_entity(p1).is_ok());
-        assert!(app.world().get_entity(p2).is_err());
+        assert!(app.world().get_entity(p2).is_ok());
 
-        let mixed_puddle = app.world().get::<PotionPuddle>(p1).unwrap();
-        assert!(mixed_puddle.radius > 1.15);
-        assert!(mixed_puddle.effects.iter().any(|e| e.kind == AlchemicalEffectKind::Vaporize));
+        let puddle1 = app.world().get::<PotionPuddle>(p1).unwrap();
+        assert_eq!(puddle1.radius, 1.15);
+        let puddle2 = app.world().get::<PotionPuddle>(p2).unwrap();
+        assert_eq!(puddle2.radius, 1.15);
+
+        let mut contact_query = app.world_mut().query::<&PotionContactZone>();
+        let contacts: Vec<&PotionContactZone> = contact_query.iter(app.world()).collect();
+        assert_eq!(contacts.len(), 1);
+        assert!(contacts[0].effects.iter().any(|e| e.kind == AlchemicalEffectKind::Vaporize));
+        assert!(contacts[0].radius <= 1.15);
+    }
+
+    #[test]
+    fn test_non_touching_puddles_do_not_mix() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(bevy::asset::AssetPlugin::default());
+        app.init_resource::<Assets<StandardMaterial>>();
+        app.init_resource::<Assets<Mesh>>();
+
+        let red = Color::srgb(0.95, 0.12, 0.16);
+        let blue = Color::srgb(0.12, 0.42, 0.95);
+
+        let mut materials = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
+        let mat1 = materials.add(StandardMaterial::default());
+        let mat2 = materials.add(StandardMaterial::default());
+
+        let p1 = app
+            .world_mut()
+            .spawn((
+                PotionPuddle {
+                    color: red,
+                    elapsed: 5.0,
+                    max_lifetime: 75.0,
+                    radius: 1.15,
+                    effects: vec![ActiveEffect {
+                        kind: AlchemicalEffectKind::ThermalHeat,
+                        duration: 6.0,
+                        elapsed: 0.0,
+                        magnitude: 25.0,
+                    }],
+                    is_wall: false,
+                },
+                MeshMaterial3d(mat1),
+                Transform::from_xyz(0.0, 0.0, 0.0),
+            ))
+            .id();
+
+        let p2 = app
+            .world_mut()
+            .spawn((
+                PotionPuddle {
+                    color: blue,
+                    elapsed: 1.0,
+                    max_lifetime: 75.0,
+                    radius: 1.15,
+                    effects: vec![ActiveEffect {
+                        kind: AlchemicalEffectKind::Frost,
+                        duration: 5.0,
+                        elapsed: 0.0,
+                        magnitude: 20.0,
+                    }],
+                    is_wall: false,
+                },
+                MeshMaterial3d(mat2),
+                Transform::from_xyz(4.0, 0.0, 0.0),
+            ))
+            .id();
+
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_millis(50));
+        app.insert_resource(time);
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(update_potion_puddles);
+        schedule.run(app.world_mut());
+
+        assert!(app.world().get_entity(p1).is_ok());
+        assert!(app.world().get_entity(p2).is_ok());
+
+        let mut contact_query = app.world_mut().query::<&PotionContactZone>();
+        let contacts: Vec<&PotionContactZone> = contact_query.iter(app.world()).collect();
+        assert_eq!(contacts.len(), 0);
+    }
+
+    #[test]
+    fn test_puddle_subtle_bioluminescence_and_non_mirrored_properties() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(bevy::asset::AssetPlugin::default());
+        app.init_resource::<Assets<StandardMaterial>>();
+
+        let color = Color::srgb(0.2, 0.7, 0.9);
+        let mut materials = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
+        let mat_handle = materials.add(StandardMaterial {
+            base_color: color.with_alpha(0.88),
+            emissive: color.to_linear() * 0.32,
+            perceptual_roughness: 0.85,
+            metallic: 0.0,
+            reflectance: 0.12,
+            ..default()
+        });
+
+        app.world_mut().spawn((
+            PotionPuddle {
+                color,
+                elapsed: 2.0,
+                max_lifetime: 75.0,
+                radius: 1.15,
+                effects: Vec::new(),
+                is_wall: false,
+            },
+            MeshMaterial3d(mat_handle.clone()),
+            Transform::from_xyz(0.0, 0.0, 0.0),
+        ));
+
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_millis(50));
+        app.insert_resource(time);
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(update_potion_puddles);
+        schedule.run(app.world_mut());
+
+        let mat = app.world().resource::<Assets<StandardMaterial>>().get(&mat_handle).unwrap();
+        assert!(mat.perceptual_roughness >= 0.80);
+        assert_eq!(mat.metallic, 0.0);
+        assert!(mat.reflectance <= 0.20);
+        let emissive_linear = color.to_linear() * 0.35;
+        assert!(mat.emissive.red <= emissive_linear.red);
+    }
+
+    #[test]
+    fn test_puddle_rtx_light_subtle_and_less_than_half_of_mushrooms() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(bevy::asset::AssetPlugin::default());
+        app.init_resource::<Assets<StandardMaterial>>();
+
+        let color = Color::srgb(0.12, 0.85, 0.35);
+        let mut materials = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
+        let mat_handle = materials.add(StandardMaterial::default());
+
+        let puddle_entity = app
+            .world_mut()
+            .spawn((
+                PotionPuddle {
+                    color,
+                    elapsed: 2.0,
+                    max_lifetime: 75.0,
+                    radius: 1.15,
+                    effects: Vec::new(),
+                    is_wall: false,
+                },
+                MeshMaterial3d(mat_handle),
+                Transform::from_xyz(0.0, 0.0, 0.0),
+                PointLight {
+                    color,
+                    intensity: 0.0,
+                    range: 3.8,
+                    shadows_enabled: false,
+                    ..default()
+                },
+            ))
+            .id();
+
+        let mut settings = GameSettings::default();
+        settings.rtx_enabled = true;
+        app.insert_resource(settings);
+
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_millis(50));
+        app.insert_resource(time);
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(update_potion_puddles);
+        schedule.run(app.world_mut());
+
+        let light_on = app.world().get::<PointLight>(puddle_entity).unwrap();
+        assert_eq!(light_on.color, color);
+        assert_eq!(light_on.intensity, 2400.0);
+        assert!(light_on.intensity < 13000.0);
+
+        app.world_mut().resource_mut::<GameSettings>().rtx_enabled = false;
+        schedule.run(app.world_mut());
+
+        let light_off = app.world().get::<PointLight>(puddle_entity).unwrap();
+        assert_eq!(light_off.intensity, 0.0);
     }
 }
 
