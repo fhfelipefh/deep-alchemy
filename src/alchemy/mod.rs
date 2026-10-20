@@ -591,7 +591,7 @@ pub fn spawn_potion_projectile(
             return;
         }
     }
-    if !mouse.pressed(MouseButton::Left) {
+    if !mouse.just_pressed(MouseButton::Left) {
         return;
     }
     let slot_index = slot.as_deref().map(|s| s.0).unwrap_or(1);

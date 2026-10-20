@@ -1197,5 +1197,96 @@ fn test_unit_fire_potion_impact_ignites_flammable() {
     assert!(flammable.unwrap().is_burning);
 }
 
+#[test]
+fn test_unit_menu_start_button_click_does_not_fire_potion_and_pauses_game() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::state::app::StatesPlugin,
+        bevy::asset::AssetPlugin::default(),
+    ));
+    app.init_state::<deep_alchemy::ui::GameState>();
+    app.init_resource::<ButtonInput<MouseButton>>();
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.init_resource::<deep_alchemy::alchemy::PotionCooldowns>();
+    app.add_systems(
+        OnEnter(deep_alchemy::ui::GameState::MainMenu),
+        deep_alchemy::ui::menu::on_enter_menu_state,
+    );
+    app.add_systems(
+        OnEnter(deep_alchemy::ui::GameState::InGame),
+        deep_alchemy::ui::menu::on_enter_ingame_state,
+    );
+    app.add_systems(Update, deep_alchemy::alchemy::spawn_potion_projectile);
+
+    app.world_mut().spawn((
+        deep_alchemy::player::camera::Player,
+        deep_alchemy::player::camera::PlayerState::Active,
+        deep_alchemy::player::camera::LocomotionState::default(),
+    ));
+
+    app.world_mut().spawn((
+        deep_alchemy::player::camera::PlayerCamera,
+        Transform::from_xyz(0.0, 1.75, 0.0),
+        GlobalTransform::from_translation(Vec3::new(0.0, 1.75, 0.0)),
+    ));
+
+    app.update();
+
+    let state = app
+        .world()
+        .resource::<State<deep_alchemy::ui::GameState>>();
+    assert_eq!(*state.get(), deep_alchemy::ui::GameState::MainMenu);
+
+    let virtual_time = app.world().resource::<Time<Virtual>>();
+    assert!(virtual_time.is_paused());
+
+    app.world_mut()
+        .resource_mut::<ButtonInput<MouseButton>>()
+        .press(MouseButton::Left);
+    app.update();
+
+    let proj_count_menu = app
+        .world_mut()
+        .query::<&deep_alchemy::alchemy::PotionProjectile>()
+        .iter(app.world())
+        .count();
+    assert_eq!(proj_count_menu, 0);
+
+    app.world_mut()
+        .resource_mut::<NextState<deep_alchemy::ui::GameState>>()
+        .set(deep_alchemy::ui::GameState::InGame);
+    app.update();
+
+    let state_ingame = app
+        .world()
+        .resource::<State<deep_alchemy::ui::GameState>>();
+    assert_eq!(*state_ingame.get(), deep_alchemy::ui::GameState::InGame);
+
+    let virtual_time_ingame = app.world().resource::<Time<Virtual>>();
+    assert!(!virtual_time_ingame.is_paused());
+
+    let proj_count_transition = app
+        .world_mut()
+        .query::<&deep_alchemy::alchemy::PotionProjectile>()
+        .iter(app.world())
+        .count();
+    assert_eq!(proj_count_transition, 0);
+
+    app.world_mut()
+        .resource_mut::<ButtonInput<MouseButton>>()
+        .press(MouseButton::Left);
+    app.update();
+
+    let proj_count_fire = app
+        .world_mut()
+        .query::<&deep_alchemy::alchemy::PotionProjectile>()
+        .iter(app.world())
+        .count();
+    assert_eq!(proj_count_fire, 1);
+}
+
+
 
 

@@ -989,7 +989,8 @@ pub fn handle_menu_button_interactions(
 }
 
 pub fn update_menu_spores(
-    time: Res<Time>,
+    time_real: Option<Res<Time<Real>>>,
+    time_default: Option<Res<Time>>,
     current_state: Option<Res<State<GameState>>>,
     mut spores: Query<(&mut MenuSpore, &mut Node)>,
 ) {
@@ -998,8 +999,13 @@ pub fn update_menu_spores(
             return;
         }
     }
-    let dt = time.delta_secs();
-    let elapsed = time.elapsed_secs();
+    let (dt, elapsed) = if let Some(tr) = time_real {
+        (tr.delta_secs(), tr.elapsed_secs())
+    } else if let Some(td) = time_default {
+        (td.delta_secs(), td.elapsed_secs())
+    } else {
+        return;
+    };
     for (mut spore, mut node) in spores.iter_mut() {
         spore.current_y -= spore.speed * dt;
         if spore.current_y < -5.0 {
@@ -1313,6 +1319,7 @@ pub fn apply_window_settings(
 pub fn on_enter_menu_state(
     mut menu_query: Query<&mut Visibility, With<MenuRoot>>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
+    virtual_time: Option<ResMut<Time<Virtual>>>,
 ) {
     for mut vis in menu_query.iter_mut() {
         *vis = Visibility::Inherited;
@@ -1322,11 +1329,17 @@ pub fn on_enter_menu_state(
         window.cursor_options.grab_mode = CursorGrabMode::None;
         window.cursor_options.visible = true;
     }
+
+    if let Some(mut time) = virtual_time {
+        time.pause();
+    }
 }
 
 pub fn on_enter_ingame_state(
     mut menu_query: Query<&mut Visibility, With<MenuRoot>>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
+    virtual_time: Option<ResMut<Time<Virtual>>>,
+    mouse_input: Option<ResMut<ButtonInput<MouseButton>>>,
 ) {
     for mut vis in menu_query.iter_mut() {
         *vis = Visibility::Hidden;
@@ -1335,6 +1348,15 @@ pub fn on_enter_ingame_state(
     if let Ok(mut window) = windows.get_single_mut() {
         window.cursor_options.grab_mode = CursorGrabMode::Locked;
         window.cursor_options.visible = false;
+    }
+
+    if let Some(mut time) = virtual_time {
+        time.unpause();
+    }
+
+    if let Some(mut mouse) = mouse_input {
+        mouse.reset(MouseButton::Left);
+        mouse.clear_just_pressed(MouseButton::Left);
     }
 }
 
