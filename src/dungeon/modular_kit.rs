@@ -235,12 +235,12 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.96, 0.84, 0.48),
-            intensity: 36000.0,
+            intensity: 7500.0,
             range: 15.0,
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(0.0, 1.8, 0.8),
+        Transform::from_xyz(0.0, 3.2, 0.8),
     ));
 
     commands.spawn((
@@ -408,12 +408,12 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.22, 0.92, 0.96),
-            intensity: 45000.0,
+            intensity: 8500.0,
             range: 16.0,
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(0.0, 3.2, 2.2),
+        Transform::from_xyz(0.0, 4.0, 2.2),
     ));
 
     for (name, x) in [

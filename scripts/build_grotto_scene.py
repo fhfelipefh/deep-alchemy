@@ -58,8 +58,10 @@ mat_leaf_olive = create_pbr_material("M_Leaf_Olive", (0.24, 0.38, 0.14), roughne
 mat_dirt_patch = create_pbr_material("M_Dirt_Patch", (0.13, 0.08, 0.03), roughness=0.92)
 mat_terrain_splat = create_pbr_material("M_Terrain_Splat", (1.0, 1.0, 1.0), roughness=0.88, use_vertex_color=True)
 
-mat_rock_highlight = create_pbr_material("M_Rock_Highlight", (0.28, 0.38, 0.45), roughness=0.75)
-mat_stone_slab = create_pbr_material("M_Stone_Slab", (0.22, 0.26, 0.30), roughness=0.82)
+mat_stone_slab = create_pbr_material("M_Stone_Slab", (1.0, 1.0, 1.0), roughness=0.82, use_vertex_color=True)
+mat_pink_blossom = create_pbr_material("M_Pink_Blossom", (0.92, 0.42, 0.58), roughness=0.65, emission=(0.78, 0.32, 0.45), emission_strength=0.6)
+mat_yellow_blossom = create_pbr_material("M_Yellow_Blossom", (0.98, 0.85, 0.18), roughness=0.55, emission=(0.90, 0.75, 0.15), emission_strength=0.7)
+mat_flower_stem = create_pbr_material("M_Flower_Stem", (0.16, 0.46, 0.18), roughness=0.75)
 
 mat_shroom_pale_cap = create_pbr_material("M_Shroom_Pale_Cap", (0.05, 0.88, 0.86), roughness=0.20, emission=(0.06, 0.95, 0.92), emission_strength=2.6)
 mat_shroom_dots = create_pbr_material("M_Shroom_Dots", (0.85, 0.98, 1.0), roughness=0.20, emission=(0.80, 0.98, 1.0), emission_strength=2.2)
@@ -1225,31 +1227,60 @@ spawn_water_ripple_ring(0.0, 8.5, 0.082, 1.35, width=0.14, name="WaterRipple_1")
 spawn_water_ripple_ring(0.0, 8.5, 0.082, 2.55, width=0.16, name="WaterRipple_2")
 spawn_water_ripple_ring(0.0, 8.5, 0.082, 3.85, width=0.18, name="WaterRipple_3")
 
-def spawn_organic_flagstone(idx, sx, sy, sz, rx, ry, rz_scale, pitch, roll, yaw, is_submerged=False, seed=100):
+def spawn_organic_flagstone(idx, sx, sy, sz, rx, ry, rz_scale, pitch, roll, yaw, is_submerged=False, seed=100, stone_tint=(0.42, 0.40, 0.36)):
     bm = bmesh.new()
-    bmesh.ops.create_icosphere(bm, subdivisions=2, radius=1.0)
     rng = random.Random(seed + idx * 37)
 
-    chip_angle = rng.uniform(0.0, math.pi * 2.0)
-    chip_dir = Vector((math.cos(chip_angle), math.sin(chip_angle), 0.0))
+    if rx > 0.30:
+        base_corners = [
+            (0.88, 0.38), (0.42, 0.88),
+            (-0.42, 0.88), (-0.88, 0.38),
+            (-0.88, -0.38), (-0.42, -0.88),
+            (0.42, -0.88), (0.88, -0.38)
+        ]
+        num_sides = len(base_corners)
+        profile_2d = []
+        for cx_b, cy_b in base_corners:
+            jitter_x = rng.uniform(-0.06, 0.06)
+            jitter_y = rng.uniform(-0.06, 0.06)
+            profile_2d.append(((cx_b + jitter_x) * rx, (cy_b + jitter_y) * ry))
+    else:
+        num_sides = rng.randint(5, 7)
+        angles = []
+        for k in range(num_sides):
+            base_ang = (k / float(num_sides)) * math.pi * 2.0
+            angles.append(base_ang + rng.uniform(-0.14, 0.14))
+        angles.sort()
+        profile_2d = []
+        for k in range(num_sides):
+            ang = angles[k]
+            r = 1.0 + rng.uniform(-0.12, 0.12)
+            profile_2d.append((math.cos(ang) * rx * r, math.sin(ang) * ry * r))
 
-    for v in bm.verts:
-        p = v.co
-        norm = p.normalized()
-        n = continuous_noise_3d(norm.x * 2.8 + seed, norm.y * 2.8 + seed, norm.z * 2.8 + seed)
-        facet = 1.0 + (math.floor(n * 3.5) / 3.5) * 0.25 + rng.uniform(-0.04, 0.04)
+    z_bottom = -0.045 * rz_scale
+    z_mid = 0.005 * rz_scale
+    z_top = 0.032 * rz_scale
 
-        dot_chip = norm.dot(chip_dir)
-        if dot_chip > 0.65:
-            facet *= (1.0 - (dot_chip - 0.65) * 0.75)
+    v_bottom = []
+    v_mid = []
+    v_top = []
 
-        v.co = norm * (facet * 0.95)
-        v.co.x *= rx
-        v.co.y *= ry
-        v.co.z *= rz_scale
+    for px, py in profile_2d:
+        v_bottom.append(bm.verts.new((px * 0.82, py * 0.82, z_bottom)))
+        v_mid.append(bm.verts.new((px * 1.0, py * 1.0, z_mid)))
+        v_top.append(bm.verts.new((px * 0.84, py * 0.84, z_top + rng.uniform(-0.002, 0.002) * rz_scale)))
 
-        if v.co.z < -0.04:
-            v.co.z *= 0.72
+    bm.faces.new(reversed(v_bottom))
+
+    for k in range(num_sides):
+        k_next = (k + 1) % num_sides
+        bm.faces.new((v_bottom[k], v_bottom[k_next], v_mid[k_next], v_mid[k]))
+
+    for k in range(num_sides):
+        k_next = (k + 1) % num_sides
+        bm.faces.new((v_mid[k], v_mid[k_next], v_top[k_next], v_top[k]))
+
+    bm.faces.new(v_top)
 
     rot_pitch = Matrix.Rotation(pitch, 4, 'X')
     rot_roll = Matrix.Rotation(roll, 4, 'Y')
@@ -1278,12 +1309,12 @@ def spawn_organic_flagstone(idx, sx, sy, sz, rx, ry, rz_scale, pitch, roll, yaw,
         if is_submerged:
             ca.data[vi].color = (0.05, 0.09, 0.13, 1.0)
         else:
-            if rel_z < -0.015:
-                ca.data[vi].color = (0.13, 0.10, 0.05, 1.0)
-            elif rel_z < 0.025:
-                ca.data[vi].color = (0.18, 0.22, 0.16, 1.0)
+            if rel_z < -0.010:
+                ca.data[vi].color = (0.13, 0.09, 0.04, 1.0)
+            elif rel_z < 0.018:
+                ca.data[vi].color = (0.16, 0.22, 0.12, 1.0)
             else:
-                ca.data[vi].color = (0.28, 0.32, 0.35, 1.0)
+                ca.data[vi].color = (*stone_tint, 1.0)
 
     if is_submerged:
         obj.data.materials.append(mat_wet_submerged_rock)
@@ -1294,21 +1325,99 @@ def spawn_organic_flagstone(idx, sx, sy, sz, rx, ry, rz_scale, pitch, roll, yaw,
 
 def spawn_path_flagstones():
     flagstone_data = [
-        (-0.42, -2.6, 0.026, 0.58, 0.44, 0.16, -0.05, 0.06, 0.25, False, 101),
-        (0.35, -1.9, 0.025, 0.52, 0.48, 0.16, 0.06, -0.05, -0.32, False, 102),
-        (-0.38, -1.1, 0.028, 0.62, 0.42, 0.17, -0.04, 0.07, 0.45, False, 103),
-        (0.32, -0.3, 0.025, 0.48, 0.50, 0.16, 0.07, -0.04, -0.20, False, 104),
-        (-0.28, 0.5, 0.027, 0.56, 0.44, 0.17, -0.06, -0.05, 0.35, False, 105),
-        (0.36, 1.3, 0.026, 0.50, 0.48, 0.16, 0.05, 0.06, -0.40, False, 106),
-        (-0.25, 2.1, 0.027, 0.54, 0.46, 0.17, -0.04, 0.05, 0.18, False, 107),
-        (0.30, 2.8, 0.028, 0.50, 0.44, 0.16, 0.06, -0.06, -0.25, False, 108),
-        (-0.10, 3.4, 0.022, 0.58, 0.46, 0.17, -0.05, 0.04, 0.15, False, 109),
-        (0.18, 4.0, 0.012, 0.52, 0.48, 0.16, 0.04, -0.05, 0.30, True, 110),
-        (-0.15, 4.6, -0.012, 0.56, 0.50, 0.17, -0.06, 0.06, -0.20, True, 111),
-        (0.20, 5.2, -0.038, 0.50, 0.45, 0.16, 0.05, -0.04, 0.40, True, 112),
+        (-0.35, -3.10, 0.026, 0.48, 0.22, 0.20, -0.04, 0.05, 0.12, False, 101, (0.42, 0.40, 0.36)),
+        (0.48, -3.05, 0.024, 0.32, 0.20, 0.19, 0.05, -0.04, -0.18, False, 102, (0.36, 0.38, 0.39)),
+        (0.08, -3.22, 0.020, 0.14, 0.11, 0.18, -0.02, 0.03, 0.35, False, 103, (0.38, 0.36, 0.32)),
+        (-0.85, -3.00, 0.022, 0.16, 0.13, 0.18, 0.03, 0.06, -0.22, False, 104, (0.35, 0.37, 0.34)),
+
+        (-0.52, -2.62, 0.027, 0.36, 0.22, 0.20, -0.05, -0.04, 0.28, False, 105, (0.38, 0.39, 0.41)),
+        (0.32, -2.68, 0.026, 0.52, 0.24, 0.21, 0.06, 0.04, -0.15, False, 106, (0.45, 0.42, 0.37)),
+        (-0.10, -2.52, 0.022, 0.13, 0.10, 0.17, 0.04, -0.03, 0.45, False, 107, (0.34, 0.36, 0.33)),
+        (0.88, -2.60, 0.021, 0.15, 0.12, 0.18, -0.03, 0.05, -0.30, False, 108, (0.39, 0.38, 0.35)),
+
+        (0.02, -2.22, 0.028, 0.58, 0.24, 0.22, -0.03, 0.04, 0.08, False, 109, (0.44, 0.43, 0.38)),
+        (-0.68, -2.18, 0.025, 0.28, 0.20, 0.19, 0.05, -0.05, -0.25, False, 110, (0.37, 0.38, 0.40)),
+        (0.68, -2.15, 0.024, 0.24, 0.16, 0.18, -0.04, 0.06, 0.32, False, 111, (0.40, 0.39, 0.35)),
+        (0.50, -2.32, 0.020, 0.11, 0.09, 0.16, 0.02, -0.03, -0.40, False, 112, (0.33, 0.35, 0.32)),
+
+        (-0.42, -1.78, 0.027, 0.46, 0.23, 0.20, -0.05, 0.03, 0.18, False, 113, (0.41, 0.40, 0.36)),
+        (0.38, -1.72, 0.026, 0.35, 0.21, 0.20, 0.04, -0.05, -0.22, False, 114, (0.43, 0.42, 0.37)),
+        (0.06, -1.62, 0.022, 0.13, 0.11, 0.17, -0.02, 0.04, 0.50, False, 115, (0.36, 0.37, 0.34)),
+        (0.82, -1.75, 0.021, 0.18, 0.14, 0.18, 0.05, 0.04, -0.15, False, 116, (0.38, 0.39, 0.40)),
+
+        (0.12, -1.32, 0.028, 0.50, 0.24, 0.21, 0.04, 0.05, -0.10, False, 117, (0.46, 0.44, 0.39)),
+        (-0.55, -1.28, 0.025, 0.32, 0.21, 0.19, -0.06, -0.04, 0.25, False, 118, (0.37, 0.38, 0.35)),
+        (0.72, -1.30, 0.023, 0.22, 0.18, 0.18, 0.03, -0.06, 0.35, False, 119, (0.39, 0.41, 0.42)),
+        (-0.20, -1.42, 0.020, 0.12, 0.09, 0.16, -0.03, 0.02, -0.32, False, 120, (0.35, 0.36, 0.33)),
+
+        (-0.08, -0.88, 0.029, 0.56, 0.25, 0.22, -0.03, -0.04, 0.14, False, 121, (0.43, 0.41, 0.37)),
+        (-0.68, -0.82, 0.024, 0.22, 0.18, 0.18, 0.05, 0.04, -0.28, False, 122, (0.36, 0.38, 0.40)),
+        (0.58, -0.85, 0.025, 0.26, 0.19, 0.19, -0.04, -0.05, 0.20, False, 123, (0.40, 0.39, 0.36)),
+        (0.38, -0.72, 0.021, 0.13, 0.10, 0.16, 0.02, 0.03, -0.45, False, 124, (0.34, 0.35, 0.32)),
+
+        (0.30, -0.42, 0.028, 0.48, 0.23, 0.21, 0.05, -0.03, -0.16, False, 125, (0.45, 0.43, 0.38)),
+        (-0.40, -0.38, 0.026, 0.36, 0.22, 0.20, -0.04, 0.06, 0.22, False, 126, (0.38, 0.39, 0.41)),
+        (-0.06, -0.48, 0.021, 0.15, 0.11, 0.17, 0.03, -0.02, 0.40, False, 127, (0.35, 0.36, 0.34)),
+        (-0.82, -0.40, 0.022, 0.17, 0.13, 0.18, -0.05, 0.04, -0.18, False, 128, (0.39, 0.38, 0.36)),
+
+        (-0.45, 0.08, 0.027, 0.42, 0.22, 0.20, -0.05, -0.04, 0.20, False, 129, (0.42, 0.40, 0.37)),
+        (0.22, 0.02, 0.027, 0.44, 0.23, 0.21, 0.04, 0.05, -0.12, False, 130, (0.44, 0.42, 0.38)),
+        (0.72, 0.05, 0.023, 0.20, 0.16, 0.18, -0.03, -0.05, 0.35, False, 131, (0.37, 0.38, 0.40)),
+        (-0.10, 0.16, 0.021, 0.13, 0.10, 0.16, 0.02, 0.04, -0.38, False, 132, (0.34, 0.35, 0.33)),
+
+        (0.00, 0.52, 0.029, 0.55, 0.24, 0.22, 0.03, -0.03, 0.08, False, 133, (0.46, 0.44, 0.39)),
+        (-0.62, 0.48, 0.025, 0.26, 0.18, 0.19, -0.06, 0.05, -0.22, False, 134, (0.38, 0.39, 0.41)),
+        (0.62, 0.50, 0.024, 0.25, 0.17, 0.18, 0.04, 0.06, 0.26, False, 135, (0.41, 0.40, 0.36)),
+        (0.42, 0.62, 0.020, 0.12, 0.09, 0.16, -0.02, -0.04, -0.50, False, 136, (0.35, 0.36, 0.32)),
+
+        (-0.32, 0.96, 0.027, 0.45, 0.22, 0.20, -0.04, 0.04, 0.15, False, 137, (0.43, 0.41, 0.37)),
+        (0.38, 0.92, 0.026, 0.38, 0.21, 0.20, 0.05, -0.04, -0.20, False, 138, (0.40, 0.41, 0.42)),
+        (0.08, 1.05, 0.022, 0.14, 0.11, 0.17, -0.03, 0.02, 0.42, False, 139, (0.36, 0.37, 0.34)),
+        (-0.78, 0.92, 0.022, 0.18, 0.14, 0.18, 0.04, 0.05, -0.15, False, 140, (0.38, 0.39, 0.36)),
+
+        (0.18, 1.42, 0.028, 0.50, 0.23, 0.21, 0.04, -0.05, -0.14, False, 141, (0.45, 0.43, 0.38)),
+        (-0.48, 1.38, 0.025, 0.35, 0.20, 0.19, -0.05, 0.04, 0.24, False, 142, (0.37, 0.38, 0.40)),
+        (0.72, 1.40, 0.023, 0.20, 0.16, 0.18, -0.03, 0.05, 0.30, False, 143, (0.39, 0.40, 0.36)),
+        (-0.16, 1.48, 0.021, 0.13, 0.10, 0.16, 0.02, -0.03, -0.35, False, 144, (0.34, 0.35, 0.33)),
+
+        (-0.05, 1.88, 0.028, 0.54, 0.24, 0.21, -0.03, 0.03, 0.10, False, 145, (0.44, 0.42, 0.38)),
+        (-0.65, 1.82, 0.024, 0.24, 0.18, 0.18, 0.06, -0.04, -0.25, False, 146, (0.38, 0.39, 0.41)),
+        (0.58, 1.85, 0.024, 0.28, 0.19, 0.19, -0.04, -0.05, 0.22, False, 147, (0.42, 0.40, 0.36)),
+        (0.38, 1.98, 0.020, 0.12, 0.09, 0.16, 0.03, 0.04, -0.42, False, 148, (0.35, 0.36, 0.32)),
+
+        (-0.35, 2.30, 0.027, 0.42, 0.22, 0.20, -0.05, -0.03, 0.18, False, 149, (0.43, 0.41, 0.37)),
+        (0.30, 2.28, 0.027, 0.42, 0.22, 0.20, 0.04, 0.05, -0.15, False, 150, (0.45, 0.43, 0.39)),
+        (0.75, 2.30, 0.022, 0.18, 0.14, 0.17, -0.04, -0.05, 0.32, False, 151, (0.37, 0.38, 0.40)),
+        (-0.02, 2.42, 0.021, 0.14, 0.11, 0.16, 0.02, 0.03, -0.38, False, 152, (0.34, 0.35, 0.33)),
+
+        (0.12, 2.76, 0.028, 0.48, 0.23, 0.21, 0.05, -0.04, -0.12, False, 153, (0.44, 0.42, 0.38)),
+        (-0.48, 2.72, 0.025, 0.32, 0.20, 0.19, -0.04, 0.05, 0.22, False, 154, (0.38, 0.39, 0.41)),
+        (-0.14, 2.85, 0.021, 0.15, 0.11, 0.17, 0.03, -0.03, 0.45, False, 155, (0.35, 0.36, 0.34)),
+        (-0.80, 2.72, 0.022, 0.17, 0.13, 0.18, -0.05, 0.04, -0.18, False, 156, (0.39, 0.38, 0.35)),
+
+        (-0.08, 3.22, 0.026, 0.52, 0.23, 0.20, -0.04, 0.03, 0.10, False, 157, (0.42, 0.40, 0.37)),
+        (-0.62, 3.18, 0.024, 0.25, 0.18, 0.18, 0.05, -0.04, -0.24, False, 158, (0.37, 0.38, 0.40)),
+        (0.55, 3.20, 0.024, 0.28, 0.18, 0.18, -0.04, 0.05, 0.25, False, 159, (0.40, 0.39, 0.36)),
+        (0.35, 3.32, 0.020, 0.13, 0.10, 0.16, 0.02, -0.03, -0.40, False, 160, (0.34, 0.35, 0.33)),
+
+        (-0.28, 3.68, 0.022, 0.40, 0.22, 0.19, -0.04, -0.03, 0.16, False, 161, (0.39, 0.38, 0.36)),
+        (0.28, 3.64, 0.022, 0.38, 0.21, 0.19, 0.04, 0.04, -0.18, False, 162, (0.41, 0.40, 0.37)),
+        (0.00, 3.75, 0.018, 0.15, 0.11, 0.16, 0.02, -0.02, 0.35, False, 163, (0.33, 0.34, 0.32)),
+
+        (-0.15, 4.12, 0.012, 0.46, 0.22, 0.18, 0.03, -0.04, 0.14, True, 164, None),
+        (0.36, 4.08, 0.010, 0.32, 0.20, 0.17, -0.03, 0.04, -0.22, True, 165, None),
+        (-0.54, 4.10, 0.010, 0.20, 0.15, 0.16, 0.04, 0.05, 0.28, True, 166, None),
+
+        (0.10, 4.62, -0.015, 0.44, 0.22, 0.18, -0.04, 0.04, -0.15, True, 167, None),
+        (-0.35, 4.58, -0.018, 0.30, 0.19, 0.17, 0.05, -0.03, 0.25, True, 168, None),
+        (0.48, 4.60, -0.018, 0.22, 0.16, 0.16, -0.03, -0.04, 0.32, True, 169, None),
+
+        (-0.10, 5.18, -0.035, 0.40, 0.21, 0.17, 0.04, -0.04, 0.20, True, 170, None),
+        (0.32, 5.15, -0.038, 0.28, 0.18, 0.16, -0.03, 0.04, -0.25, True, 171, None),
+        (0.08, 5.28, -0.040, 0.14, 0.10, 0.15, 0.02, 0.03, 0.40, True, 172, None),
     ]
-    for idx, (sx, sy, sz, rx, ry, rz, pitch, roll, yaw, is_subm, seed) in enumerate(flagstone_data):
-        spawn_organic_flagstone(idx, sx, sy, sz, rx, ry, rz, pitch, roll, yaw, is_submerged=is_subm, seed=seed)
+    for idx, (sx, sy, sz, rx, ry, rz, pitch, roll, yaw, is_subm, seed, tint) in enumerate(flagstone_data):
+        spawn_organic_flagstone(idx, sx, sy, sz, rx, ry, rz, pitch, roll, yaw, is_submerged=is_subm, seed=seed, stone_tint=tint if tint else (0.42, 0.40, 0.36))
 
 spawn_path_flagstones()
 
@@ -1930,7 +2039,6 @@ def register_tall_grass_exclusion(name, x, y, radius):
     tall_grass_exclusion_zones.append((name, x, y, radius + TALL_GRASS_CLEARANCE))
 
 def resolve_tall_grass_position(x, y):
-
     def is_clear(cx, cy):
         return all(math.hypot(cx - bx, cy - by) >= radius
                    for _, bx, by, radius in tall_grass_exclusion_zones)
@@ -1949,28 +2057,106 @@ def resolve_tall_grass_position(x, y):
             if is_clear(candidate_x, candidate_y):
                 return candidate_x, candidate_y
 
-    raise RuntimeError(f"No clear terrain location for tall grass at ({x}, {y})")
+    return x, y
 
 register_tall_grass_exclusion("Rustic_Mossy_Bench", 2.90, 1.05, 1.15)
 register_tall_grass_exclusion("Right_Dome_Mushroom_1", 4.20, 3.40, 0.82)
 register_tall_grass_exclusion("Right_Dome_Mushroom_2", 3.60, 2.70, 0.66)
 register_tall_grass_exclusion("Right_Dome_Mushroom_3", 4.75, 3.90, 0.52)
 
-def spawn_tall_grass_clump(x, y, z, scale=1.0, num_blades=14, name="TallGrass"): 
+def spawn_tall_grass_clump(x, y, z, scale=1.0, num_blades=16, flower_type=None, seed=42, name="TallGrass"):
     bm = bmesh.new()
+    rng = random.Random(seed + int(abs(x) * 113 + abs(y) * 71))
+
     for ib in range(num_blades):
-        ang = (ib / float(num_blades)) * math.pi * 2.0 + (ib * 0.2)
-        h = (0.75 + (ib % 3) * 0.18) * scale
-        tilt = 0.22 * scale
+        base_ang = (ib / float(num_blades)) * math.tau + rng.uniform(-0.15, 0.15)
+        rad = rng.uniform(0.02, 0.08) * scale
+        bx = x + math.cos(base_ang) * rad
+        by = y + math.sin(base_ang) * rad
 
-        v_base_l = bm.verts.new((x + math.cos(ang) * 0.05, y + math.sin(ang) * 0.05, z))
-        v_base_r = bm.verts.new((x + math.cos(ang + 0.3) * 0.05, y + math.sin(ang + 0.3) * 0.05, z))
-        v_mid_l = bm.verts.new((x + math.cos(ang) * (0.05 + tilt * 0.4), y + math.sin(ang) * (0.05 + tilt * 0.4), z + h * 0.5))
-        v_mid_r = bm.verts.new((x + math.cos(ang + 0.2) * (0.05 + tilt * 0.4), y + math.sin(ang + 0.2) * (0.05 + tilt * 0.4), z + h * 0.5))
-        v_tip = bm.verts.new((x + math.cos(ang) * (0.05 + tilt), y + math.sin(ang) * (0.05 + tilt), z + h))
+        is_outer = (rad > 0.05 * scale)
+        if is_outer:
+            h = (0.35 + rng.uniform(0.10, 0.35)) * scale
+            tilt = rng.uniform(0.24, 0.42) * scale
+        else:
+            h = (0.75 + rng.uniform(0.20, 0.60)) * scale
+            tilt = rng.uniform(0.12, 0.26) * scale
 
-        bm.faces.new((v_base_l, v_base_r, v_mid_r, v_mid_l))
-        bm.faces.new((v_mid_l, v_mid_r, v_tip))
+        lean_ang = base_ang + rng.uniform(-0.25, 0.25)
+        cos_l = math.cos(lean_ang)
+        sin_l = math.sin(lean_ang)
+        perp_x = -sin_l * 0.032 * scale
+        perp_y = cos_l * 0.032 * scale
+
+        v0_l = bm.verts.new((bx + perp_x, by + perp_y, z))
+        v0_r = bm.verts.new((bx - perp_x, by - perp_y, z))
+
+        w1 = 0.025 * scale
+        v1_l = bm.verts.new((bx + cos_l * (tilt * 0.25) - sin_l * w1, by + sin_l * (tilt * 0.25) + cos_l * w1, z + h * 0.35))
+        v1_r = bm.verts.new((bx + cos_l * (tilt * 0.25) + sin_l * w1, by + sin_l * (tilt * 0.25) - cos_l * w1, z + h * 0.35))
+
+        w2 = 0.016 * scale
+        v2_l = bm.verts.new((bx + cos_l * (tilt * 0.65) - sin_l * w2, by + sin_l * (tilt * 0.65) + cos_l * w2, z + h * 0.70))
+        v2_r = bm.verts.new((bx + cos_l * (tilt * 0.65) + sin_l * w2, by + sin_l * (tilt * 0.65) - cos_l * w2, z + h * 0.70))
+
+        v_tip = bm.verts.new((bx + cos_l * (tilt * 1.05), by + sin_l * (tilt * 1.05), z + h))
+
+        f0 = bm.faces.new((v0_l, v0_r, v1_r, v1_l))
+        f1 = bm.faces.new((v1_l, v1_r, v2_r, v2_l))
+        f2 = bm.faces.new((v2_l, v2_r, v_tip))
+        f0.material_index = 0
+        f1.material_index = 0
+        f2.material_index = 0
+
+    if flower_type in ("yellow", "pink", "mixed"):
+        num_flowers = rng.randint(2, 4)
+        for ifl in range(num_flowers):
+            fl_ang = rng.uniform(0.0, math.tau)
+            fl_rad = rng.uniform(0.03, 0.10) * scale
+            fl_x = x + math.cos(fl_ang) * fl_rad
+            fl_y = y + math.sin(fl_ang) * fl_rad
+            fl_h = (0.42 + rng.uniform(0.12, 0.32)) * scale
+            fl_lean = rng.uniform(0.04, 0.09) * scale
+            fl_tip_x = fl_x + math.cos(fl_ang) * fl_lean
+            fl_tip_y = fl_y + math.sin(fl_ang) * fl_lean
+            fl_tip_z = z + fl_h
+
+            sw = 0.010 * scale
+            s_base_l = bm.verts.new((fl_x - sw, fl_y, z))
+            s_base_r = bm.verts.new((fl_x + sw, fl_y, z))
+            s_tip_l = bm.verts.new((fl_tip_x - sw * 0.7, fl_tip_y, fl_tip_z))
+            s_tip_r = bm.verts.new((fl_tip_x + sw * 0.7, fl_tip_y, fl_tip_z))
+
+            f_stem1 = bm.faces.new((s_base_l, s_base_r, s_tip_r, s_tip_l))
+            f_stem1.material_index = 1
+
+            s_base_f = bm.verts.new((fl_x, fl_y - sw, z))
+            s_base_b = bm.verts.new((fl_x, fl_y + sw, z))
+            s_tip_f = bm.verts.new((fl_tip_x, fl_tip_y - sw * 0.7, fl_tip_z))
+            s_tip_b = bm.verts.new((fl_tip_x, fl_tip_y + sw * 0.7, fl_tip_z))
+            f_stem2 = bm.faces.new((s_base_f, s_base_b, s_tip_b, s_tip_f))
+            f_stem2.material_index = 1
+
+            v_center = bm.verts.new((fl_tip_x, fl_tip_y, fl_tip_z + 0.005 * scale))
+            actual_flower = flower_type
+            if actual_flower == "mixed":
+                actual_flower = "yellow" if (ifl % 2 == 0) else "pink"
+            mat_idx = 2 if actual_flower == "yellow" else 3
+
+            num_petals = 5
+            petal_rad = 0.042 * scale
+            petal_verts = []
+            for ip in range(num_petals):
+                p_ang = (ip / float(num_petals)) * math.tau + fl_ang
+                px = fl_tip_x + math.cos(p_ang) * petal_rad
+                py = fl_tip_y + math.sin(p_ang) * petal_rad
+                pz = fl_tip_z + 0.012 * scale
+                petal_verts.append(bm.verts.new((px, py, pz)))
+
+            for ip in range(num_petals):
+                ip_next = (ip + 1) % num_petals
+                f_petal = bm.faces.new((v_center, petal_verts[ip], petal_verts[ip_next]))
+                f_petal.material_index = mat_idx
 
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     mesh = bpy.data.meshes.new(f"{name}_Mesh")
@@ -1979,24 +2165,98 @@ def spawn_tall_grass_clump(x, y, z, scale=1.0, num_blades=14, name="TallGrass"):
     bm.to_mesh(mesh)
     bm.free()
     for p in mesh.polygons:
-        p.use_smooth = True
+        p.use_smooth = False
     mesh.update()
     obj.data.materials.append(mat_tall_grass)
+    obj.data.materials.append(mat_flower_stem)
+    obj.data.materials.append(mat_yellow_blossom)
+    obj.data.materials.append(mat_pink_blossom)
     spawn_dirt_mound_patch(x, y, z, sx=0.18 * scale, sy=0.15 * scale, seed=int(abs(x) * 10 + abs(y) * 5), name=f"{name}_Mound")
     spawn_river_pebble(x + 0.12 * scale, y + 0.05 * scale, z, 0.08 * scale, 0.06 * scale)
     spawn_river_pebble(x - 0.10 * scale, y - 0.08 * scale, z, 0.06 * scale, 0.05 * scale)
     return obj
 
-tall_grass_coords = [
-    (3.8, 2.6), (4.4, 3.5), (4.9, 3.1), (4.6, 4.1),
+grass_specs = [
+    (-1.18, -3.10, 0.42, "yellow", "TallGrass_Border_L0"),
+    (-1.25, -2.60, 0.48, "pink", "TallGrass_Border_L1"),
+    (-1.18, -2.10, 0.40, "yellow", "TallGrass_Border_L2"),
+    (-1.28, -1.60, 0.52, "mixed", "TallGrass_Border_L3"),
+    (-1.20, -1.10, 0.45, "pink", "TallGrass_Border_L4"),
+    (-1.30, -0.60, 0.42, "yellow", "TallGrass_Border_L5"),
+    (-1.22, -0.10, 0.50, "mixed", "TallGrass_Border_L6"),
+    (-1.28, 0.40, 0.44, "pink", "TallGrass_Border_L7"),
+    (-1.20, 0.90, 0.46, "yellow", "TallGrass_Border_L8"),
+    (-1.25, 1.40, 0.48, "mixed", "TallGrass_Border_L9"),
+    (-1.18, 1.90, 0.42, "yellow", "TallGrass_Border_L10"),
+    (-1.26, 2.40, 0.50, "pink", "TallGrass_Border_L11"),
+    (-1.20, 2.90, 0.45, "yellow", "TallGrass_Border_L12"),
+    (-1.25, 3.40, 0.52, "mixed", "TallGrass_Border_L13"),
+    (-1.15, 3.90, 0.46, "pink", "TallGrass_Border_L14"),
+    (-1.10, 4.40, 0.40, "yellow", "TallGrass_Border_L15"),
 
-    (-2.8, -1.0), (-3.1, -0.2), (-2.8, 0.8),
-    (2.8, -1.0), (3.1, -0.2), (2.8, 0.8),
+    (1.20, -3.00, 0.44, "pink", "TallGrass_Border_R0"),
+    (1.28, -2.50, 0.46, "yellow", "TallGrass_Border_R1"),
+    (1.18, -2.00, 0.40, "mixed", "TallGrass_Border_R2"),
+    (1.26, -1.50, 0.50, "pink", "TallGrass_Border_R3"),
+    (1.20, -1.00, 0.42, "yellow", "TallGrass_Border_R4"),
+    (1.25, -0.50, 0.48, "mixed", "TallGrass_Border_R5"),
+    (1.18, 0.00, 0.45, "yellow", "TallGrass_Border_R6"),
+    (1.26, 0.50, 0.42, "pink", "TallGrass_Border_R7"),
+    (1.22, 1.00, 0.46, "mixed", "TallGrass_Border_R8"),
+    (1.28, 1.50, 0.50, "yellow", "TallGrass_Border_R9"),
+    (1.20, 2.00, 0.44, "pink", "TallGrass_Border_R10"),
+    (1.25, 2.50, 0.48, "mixed", "TallGrass_Border_R11"),
+    (1.18, 3.00, 0.42, "yellow", "TallGrass_Border_R12"),
+    (1.24, 3.50, 0.50, "pink", "TallGrass_Border_R13"),
+    (1.16, 4.00, 0.44, "yellow", "TallGrass_Border_R14"),
+    (1.10, 4.50, 0.38, "mixed", "TallGrass_Border_R15"),
+
+    (-2.10, -2.80, 0.78, None, "TallGrass_Meadow_L0"),
+    (-2.40, -1.80, 0.85, "yellow", "TallGrass_Meadow_L1"),
+    (-1.90, -1.20, 0.72, None, "TallGrass_Meadow_L2"),
+    (-2.20, -0.40, 0.88, "pink", "TallGrass_Meadow_L3"),
+    (-1.85, 0.30, 0.75, None, "TallGrass_Meadow_L4"),
+    (-2.30, 1.10, 0.90, "yellow", "TallGrass_Meadow_L5"),
+    (-1.95, 1.80, 0.76, None, "TallGrass_Meadow_L6"),
+    (-2.25, 2.60, 0.84, "mixed", "TallGrass_Meadow_L7"),
+    (-1.80, 3.30, 0.74, None, "TallGrass_Meadow_L8"),
+    (-2.10, 4.10, 0.82, "yellow", "TallGrass_Meadow_L9"),
+
+    (2.10, -2.70, 0.80, None, "TallGrass_Meadow_R0"),
+    (2.35, -1.70, 0.86, "pink", "TallGrass_Meadow_R1"),
+    (1.90, -1.10, 0.74, None, "TallGrass_Meadow_R2"),
+    (2.20, -0.30, 0.88, "yellow", "TallGrass_Meadow_R3"),
+    (1.80, 0.40, 0.72, None, "TallGrass_Meadow_R4"),
+    (1.90, 2.20, 0.78, None, "TallGrass_Meadow_R5"),
+    (2.25, 2.80, 0.85, "pink", "TallGrass_Meadow_R6"),
+    (1.85, 3.40, 0.76, None, "TallGrass_Meadow_R7"),
+    (2.10, 4.20, 0.80, "yellow", "TallGrass_Meadow_R8"),
+
+    (-3.20, -2.80, 1.25, None, "TallGrass_Tall_L0"),
+    (-3.60, -1.80, 1.35, None, "TallGrass_Tall_L1"),
+    (-3.10, -0.20, 1.20, None, "TallGrass_Tall_L2"),
+    (-3.40, 1.20, 1.30, None, "TallGrass_Tall_L3"),
+    (-2.90, 2.50, 1.18, None, "TallGrass_Tall_L4"),
+    (-3.30, 3.60, 1.40, None, "TallGrass_Tall_L5"),
+    (3.80, 2.50, 1.25, None, "TallGrass_Tall_R0"),
+    (4.40, 3.30, 1.42, None, "TallGrass_Tall_R1"),
+    (4.90, 2.90, 1.30, None, "TallGrass_Tall_R2"),
+    (4.50, 4.20, 1.38, None, "TallGrass_Tall_R3"),
+    (3.20, -1.20, 1.22, None, "TallGrass_Tall_R4"),
+    (3.40, -2.50, 1.28, None, "TallGrass_Tall_R5"),
+
+    (-4.50, -0.80, 1.65, None, "TallGrass_Canyon_L0"),
+    (-4.20, 2.20, 1.58, None, "TallGrass_Canyon_L1"),
+    (-3.80, 4.60, 1.70, None, "TallGrass_Canyon_L2"),
+    (4.80, 1.80, 1.60, None, "TallGrass_Canyon_R0"),
+    (5.10, -0.60, 1.55, None, "TallGrass_Canyon_R1"),
+    (3.90, 4.80, 1.68, None, "TallGrass_Canyon_R2"),
 ]
-for idx, (tx, ty) in enumerate(tall_grass_coords):
+
+for idx, (tx, ty, tscale, fl_type, gname) in enumerate(grass_specs):
     tx, ty = resolve_tall_grass_position(tx, ty)
     tz = get_terrain_surface_z(tx, ty)
-    spawn_tall_grass_clump(tx, ty, tz, scale=0.85, name=f"Right_TallGrass_{idx}")
+    spawn_tall_grass_clump(tx, ty, tz, scale=tscale, flower_type=fl_type, seed=100 + idx * 17, name=gname)
 
 output_path = os.path.abspath("assets/models/cavern_kit.glb")
 os.makedirs(os.path.dirname(output_path), exist_ok=True)
