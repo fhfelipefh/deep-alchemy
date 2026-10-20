@@ -1071,3 +1071,141 @@ fn test_architecture_full_game_app_schedule_integrity_and_disjoint_queries_gate(
     let _ = schedule.initialize(app.world_mut());
     assert!(schedule.systems_len() > 0);
 }
+
+#[test]
+fn test_architecture_no_forbidden_engine_asset_reinitialization_in_plugins() {
+    fn collect_rs_files(dir: &Path, files: &mut Vec<std::path::PathBuf>) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    collect_rs_files(&path, files);
+                } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    files.push(path);
+                }
+            }
+        }
+    }
+
+    let mut src_files = Vec::new();
+    collect_rs_files(Path::new("src"), &mut src_files);
+
+    let forbidden_types = [
+        "init_asset::<Image>",
+        "init_asset::<bevy::image::Image>",
+        "init_asset::<bevy::prelude::Image>",
+        "init_asset::<Mesh>",
+        "init_asset::<bevy::prelude::Mesh>",
+        "init_asset::<StandardMaterial>",
+        "init_asset::<bevy::prelude::StandardMaterial>",
+        "init_asset::<Font>",
+        "init_asset::<bevy::text::Font>",
+        "init_asset::<bevy::prelude::Font>",
+        "init_asset::<Scene>",
+        "init_asset::<bevy::scene::Scene>",
+        "init_asset::<bevy::prelude::Scene>",
+    ];
+
+    let mut violations = Vec::new();
+
+    for file_path in src_files {
+        let content = fs::read_to_string(&file_path)
+            .unwrap_or_else(|_| panic!("Failed to read file: {:?}", file_path));
+
+        let prod_content = if let Some(idx) = content.find("#[cfg(test)]") {
+            &content[..idx]
+        } else {
+            &content[..]
+        };
+
+        for forbidden in &forbidden_types {
+            if prod_content.contains(forbidden) {
+                violations.push(format!(
+                    "{}: Contains forbidden engine asset re-initialization '{}'",
+                    file_path.display(),
+                    forbidden
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Forbidden engine asset initialization detected in production plugins!\n\
+        Calling init_asset on built-in engine types destroys TonemappingLuts / asset storages,\n\
+        leading to handle collisions and fatal WGPU D3/D2 texture binding validation panics.\n\
+        Violations:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn test_architecture_offscreen_camera_tonemapping_and_view_invariants() {
+    use bevy::asset::AssetApp;
+    use bevy::core_pipeline::tonemapping::Tonemapping;
+    use bevy::render::camera::RenderTarget;
+    use deep_alchemy::render::planar_reflection::PlanarReflectionPlugin;
+
+    let mut app = bevy::prelude::App::new();
+    app.add_plugins((
+        bevy::prelude::MinimalPlugins,
+        bevy::asset::AssetPlugin::default(),
+    ));
+    app.init_asset::<bevy::prelude::Image>();
+    app.add_plugins(PlanarReflectionPlugin);
+    app.update();
+
+    let mut camera_q = app
+        .world_mut()
+        .query::<(&bevy::prelude::Camera, Option<&Tonemapping>, Option<&bevy::prelude::Msaa>)>();
+
+    let mut validated_offscreen_cameras = 0;
+    for (cam, tonemapping, msaa) in camera_q.iter(app.world()) {
+        if matches!(cam.target, RenderTarget::Image(_)) {
+            assert_eq!(
+                tonemapping,
+                Some(&Tonemapping::None),
+                "Offscreen render-to-texture camera must use Tonemapping::None to avoid 3D LUT binding errors and double tonemapping"
+            );
+            assert_eq!(
+                msaa,
+                Some(&bevy::prelude::Msaa::Off),
+                "Offscreen render-to-texture camera must have Msaa::Off"
+            );
+            validated_offscreen_cameras += 1;
+        }
+    }
+
+    assert!(
+        validated_offscreen_cameras >= 1,
+        "PlanarReflectionCamera must be spawned and validated"
+    );
+}
+
+#[test]
+fn test_architecture_tonemapping_lut_and_texture_dimension_safety() {
+    use bevy::render::render_resource::{TextureDimension, TextureUsages};
+    use deep_alchemy::render::planar_reflection::create_planar_reflection_image;
+
+    let reflection_img = create_planar_reflection_image(512, 512);
+    assert_eq!(
+        reflection_img.texture_descriptor.dimension,
+        TextureDimension::D2,
+        "Planar reflection render target must be a 2D texture"
+    );
+    assert!(
+        reflection_img
+            .texture_descriptor
+            .usage
+            .contains(TextureUsages::RENDER_ATTACHMENT),
+        "Planar reflection image must have RENDER_ATTACHMENT usage"
+    );
+    assert!(
+        reflection_img
+            .texture_descriptor
+            .usage
+            .contains(TextureUsages::TEXTURE_BINDING),
+        "Planar reflection image must have TEXTURE_BINDING usage"
+    );
+}
+

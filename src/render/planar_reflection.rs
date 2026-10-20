@@ -1,4 +1,5 @@
 use bevy::{
+    core_pipeline::tonemapping::Tonemapping,
     prelude::*,
     render::{
         camera::RenderTarget,
@@ -72,6 +73,8 @@ pub fn setup_planar_reflection(
             clear_color: ClearColorConfig::Custom(Color::srgba(0.015, 0.035, 0.07, 1.0)),
             ..default()
         },
+        Tonemapping::None,
+        Msaa::Off,
         PlanarReflectionCamera,
         RenderLayers::from_layers(&[0, 1]),
         Transform::from_xyz(0.0, -1.0, 0.0),
@@ -101,9 +104,10 @@ pub fn update_planar_reflection_camera(
 
 pub fn sync_planar_reflection_to_water(
     water_pools: Query<&MeshMaterial3d<WaterMaterial>, With<LakeWaterPool>>,
-    mut water_materials: ResMut<Assets<WaterMaterial>>,
+    mut water_materials: Option<ResMut<Assets<WaterMaterial>>>,
     refl_res: Option<Res<PlanarReflectionTexture>>,
 ) {
+    let Some(ref mut water_materials) = water_materials else { return; };
     let Some(refl_res) = refl_res else { return; };
     for mat_handle in water_pools.iter() {
         if let Some(mat) = water_materials.get_mut(mat_handle) {
@@ -131,8 +135,10 @@ mod tests {
         let res = refl_res.unwrap();
         assert_eq!(res.water_height, 0.18, "Water height should default to 0.18");
 
-        let mut cameras = app.world_mut().query_filtered::<&Camera, With<PlanarReflectionCamera>>();
-        assert_eq!(cameras.iter(app.world()).count(), 1, "Should spawn 1 PlanarReflectionCamera");
+        let mut cameras = app.world_mut().query_filtered::<(&Camera, &Tonemapping), With<PlanarReflectionCamera>>();
+        let (cam, tonemapping) = cameras.single(app.world());
+        assert_eq!(cam.order, -1);
+        assert_eq!(*tonemapping, Tonemapping::None);
     }
 
     #[test]
