@@ -74,6 +74,7 @@ pub struct PotionProjectile {
     pub color: Color,
     pub slot: usize,
     pub hitstop_timer: f32,
+    pub entered_water: bool,
 }
 
 #[derive(Component, Debug)]
@@ -102,6 +103,8 @@ pub struct PotionContactZone {
 pub struct FrozenIceSheet {
     pub center: Vec2,
     pub radius: f32,
+    pub top_y: f32,
+    pub height: f32,
     pub elapsed: f32,
     pub max_lifetime: f32,
 }
@@ -665,6 +668,7 @@ pub fn spawn_potion_projectile(
             color,
             slot: slot_index,
             hitstop_timer: 0.0,
+            entered_water: false,
         },
     ));
 }
@@ -882,7 +886,8 @@ pub fn update_potion_projectiles(
         let in_water = crate::dungeon::modular_kit::is_in_lake_water(current_pos);
 
         if in_water {
-            if current_pos.y <= 0.24 && projectile.velocity.y < 0.0 && projectile.lifetime > 7.5 {
+            if current_pos.y <= 0.22 && !projectile.entered_water {
+                projectile.entered_water = true;
                 crate::dungeon::modular_kit::spawn_water_ripple(
                     &mut commands,
                     &mut meshes,
@@ -893,96 +898,55 @@ pub fn update_potion_projectiles(
                     1.6,
                     0.85,
                 );
-            }
+                for _ in 0..8 {
+                    let angle = crate::render::particles::fastrand::f32() * std::f32::consts::TAU;
+                    let speed = 0.8 + crate::render::particles::fastrand::f32() * 1.4;
+                    let vel = Vec3::new(
+                        angle.cos() * speed,
+                        1.2 + crate::render::particles::fastrand::f32() * 1.5,
+                        angle.sin() * speed,
+                    );
+                    commands.spawn((
+                        Mesh3d(meshes.add(Sphere::new(0.06).mesh().uv(8, 6))),
+                        MeshMaterial3d(materials.add(StandardMaterial {
+                            base_color: Color::LinearRgba(LinearRgba::new(0.35, 0.70, 0.95, 0.45)),
+                            alpha_mode: AlphaMode::Add,
+                            unlit: true,
+                            ..default()
+                        })),
+                        Transform::from_translation(Vec3::new(current_pos.x, 0.22, current_pos.z)),
+                        crate::render::particles::Particle {
+                            lifetime: 0.0,
+                            max_lifetime: 0.8,
+                            velocity: vel,
+                            p_type: crate::render::particles::ParticleType::WaterSplash,
+                        },
+                    ));
+                }
 
-            if is_frost && current_pos.y <= 0.24 {
-                let freeze_center = Vec2::new(current_pos.x, current_pos.z);
-                let freeze_radius = 2.85;
-
-                for (_p_entity, p_tf, mut p_loco, mut p_recv) in player_query.iter_mut() {
-                    let p_pos = p_tf.translation;
-                    let p_in_water = crate::dungeon::modular_kit::is_in_lake_water(p_pos - Vec3::new(0.0, 1.2, 0.0));
-                    let dist = (Vec2::new(p_pos.x, p_pos.z) - freeze_center).length();
-                    if p_in_water && dist <= freeze_radius + 0.65 {
-                        p_loco.is_frozen = true;
-                        p_loco.freeze_timer = 3.5;
-                        p_recv.apply_effect(AlchemicalEffectKind::Frost, 8.0, 25.0);
+                if projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat) {
+                    for i in 0..8 {
+                        let angle = i as f32 * (std::f32::consts::TAU / 8.0);
+                        let r = 0.9;
+                        commands.spawn((
+                            Transform::from_xyz(current_pos.x + angle.cos() * r, 0.24, current_pos.z + angle.sin() * r),
+                            crate::render::particles::ParticleEmitter {
+                                spawn_timer: 0.0,
+                                spawn_rate: 0.035,
+                                particle_type: crate::render::particles::ParticleType::Steam,
+                            },
+                            AlchemyTransientEmitter {
+                                elapsed: 0.0,
+                                max_lifetime: 3.0,
+                            },
+                        ));
                     }
-                }
-
-                let ice_mesh = meshes.add(create_ice_disk_mesh(freeze_radius, 40));
-                let ice_mat = materials.add(StandardMaterial {
-                    base_color: Color::srgba(0.78, 0.94, 1.0, 0.88),
-                    perceptual_roughness: 0.10,
-                    metallic: 0.05,
-                    reflectance: 0.85,
-                    emissive: LinearRgba::new(0.18, 0.52, 0.90, 0.40),
-                    cull_mode: None,
-                    double_sided: true,
-                    alpha_mode: AlphaMode::Blend,
-                    depth_bias: 500.0,
-                    ..default()
-                });
-
-                commands.spawn((
-                    Name::new("Frozen_Water_Ice_Sheet"),
-                    FrozenIceSheet {
-                        center: freeze_center,
-                        radius: freeze_radius,
-                        elapsed: 0.0,
-                        max_lifetime: 35.0,
-                    },
-                    crate::dungeon::modular_kit::CavernObstacle,
-                    crate::dungeon::modular_kit::ObstacleShape::Cylinder {
-                        radius: freeze_radius,
-                        height: 0.26,
-                    },
-                    Mesh3d(ice_mesh),
-                    MeshMaterial3d(ice_mat),
-                    Transform::from_xyz(freeze_center.x, 0.17, freeze_center.y),
-                ));
-
-                for i in 0..10 {
-                    let angle = i as f32 * (std::f32::consts::TAU / 10.0);
-                    let r = freeze_radius * 0.55;
-                    commands.spawn((
-                        Transform::from_xyz(freeze_center.x + angle.cos() * r, 0.24, freeze_center.y + angle.sin() * r),
-                        crate::render::particles::ParticleEmitter {
-                            spawn_timer: 0.0,
-                            spawn_rate: 0.05,
-                            particle_type: crate::render::particles::ParticleType::Steam,
-                        },
-                        AlchemyTransientEmitter {
-                            elapsed: 0.0,
-                            max_lifetime: 3.0,
-                        },
-                    ));
-                }
-
-                commands.entity(entity).despawn();
-                continue;
-            } else if projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat) && current_pos.y <= 0.24 {
-                for i in 0..8 {
-                    let angle = i as f32 * (std::f32::consts::TAU / 8.0);
-                    let r = 0.9;
-                    commands.spawn((
-                        Transform::from_xyz(current_pos.x + angle.cos() * r, 0.24, current_pos.z + angle.sin() * r),
-                        crate::render::particles::ParticleEmitter {
-                            spawn_timer: 0.0,
-                            spawn_rate: 0.035,
-                            particle_type: crate::render::particles::ParticleType::Steam,
-                        },
-                        AlchemyTransientEmitter {
-                            elapsed: 0.0,
-                            max_lifetime: 3.0,
-                        },
-                    ));
                 }
             }
 
             projectile.velocity.x *= (1.0 - 5.5 * dt).max(0.0);
             projectile.velocity.z *= (1.0 - 5.5 * dt).max(0.0);
-            projectile.velocity.y = (projectile.velocity.y - 2.5 * dt).clamp(-1.25, 0.35);
+            projectile.velocity.y = (projectile.velocity.y - 3.8 * dt).clamp(-1.85, 0.20);
 
             let floor_y = crate::dungeon::modular_kit::get_grotto_terrain_height(current_pos.x, current_pos.z);
             if current_pos.y <= floor_y + 0.08 {
@@ -1002,6 +966,147 @@ pub fn update_potion_projectiles(
                             p_recv.apply_effect(effect.kind, effect.duration, effect.magnitude);
                         }
                     }
+                }
+
+                for (_p_ent, p_tf, _p_loco, _p_recv) in player_query.iter() {
+                    let dist = p_tf.translation.distance(impact_point);
+                    if dist < 6.0 {
+                        let dir = (p_tf.translation - impact_point).normalize_or_zero();
+                        let intensity = ((6.0 - dist) / 6.0).clamp(0.20, 0.75);
+                        if let Some(ref mut s) = shake {
+                            s.add_trauma(intensity * 0.8, dir);
+                        }
+                    }
+                }
+
+                for i in 0..8 {
+                    let angle_noise = (i as f32 * 4.37).sin() * 0.35;
+                    let phi = (i as f32) * (std::f32::consts::TAU / 8.0) + angle_noise;
+                    let radial_speed = 0.4 + 0.6 * ((i as f32 * 2.3).sin().abs());
+                    let shard_vel = Vec3::new(
+                        phi.cos() * radial_speed,
+                        0.3 + 0.4 * ((i as f32 * 3.1).cos().abs()),
+                        phi.sin() * radial_speed,
+                    );
+                    let shard_scale = 0.07 + 0.05 * ((i as f32 * 1.7).sin().abs());
+                    let shard_mesh = meshes.add(create_glass_shard_mesh(shard_scale, i));
+                    let shard_mat = materials.add(StandardMaterial {
+                        base_color: Color::srgba(0.85, 0.95, 1.0, 0.75),
+                        emissive: projectile.color.to_linear() * 0.4,
+                        perceptual_roughness: 0.10,
+                        metallic: 0.18,
+                        reflectance: 0.98,
+                        cull_mode: None,
+                        double_sided: true,
+                        alpha_mode: AlphaMode::Opaque,
+                        depth_bias: 1000.0,
+                        ..default()
+                    });
+                    let shard_rot = Quat::from_euler(EulerRot::XYZ, (i as f32 * 1.9).sin() * 0.35, phi, (i as f32 * 3.4).sin() * 0.35);
+                    let ang_vel = Vec3::new(
+                        (i as f32 * 3.7).sin() * 4.5,
+                        (i as f32 * 2.1).cos() * 6.0,
+                        (i as f32 * 4.9).sin() * 5.0,
+                    );
+                    commands.spawn((
+                        GlassShardParticle {
+                            velocity: shard_vel,
+                            lifetime: 0.0,
+                            max_lifetime: 45.0,
+                            ground_y: floor_y + 0.02,
+                            settled: false,
+                            color: projectile.color,
+                            angular_velocity: ang_vel,
+                            bounces_remaining: 1,
+                        },
+                        Mesh3d(shard_mesh),
+                        MeshMaterial3d(shard_mat),
+                        Transform::from_translation(impact_point).with_rotation(shard_rot),
+                    ));
+                }
+
+                if is_frost {
+                    let freeze_center = Vec2::new(current_pos.x, current_pos.z);
+                    let freeze_radius = 2.65;
+                    let water_surface_y = 0.18;
+                    let water_depth = (water_surface_y - floor_y).max(0.0);
+                    const MAX_FREEZE_REACH: f32 = 1.45;
+
+                    let (block_height, block_center_y, top_y) = if water_depth <= MAX_FREEZE_REACH {
+                        let h = (water_depth + 0.06).max(0.25);
+                        (h, floor_y + h * 0.5, floor_y + h)
+                    } else {
+                        let h = MAX_FREEZE_REACH;
+                        (h, floor_y + h * 0.5, floor_y + h)
+                    };
+
+                    for (_p_entity, p_tf, mut p_loco, mut p_recv) in player_query.iter_mut() {
+                        let p_pos = p_tf.translation;
+                        let p_in_water = crate::dungeon::modular_kit::is_in_lake_water(p_pos - Vec3::new(0.0, 1.2, 0.0));
+                        let dist = (Vec2::new(p_pos.x, p_pos.z) - freeze_center).length();
+                        let vertical_reach = (p_pos.y - 1.2) <= top_y + 0.40;
+                        if p_in_water && dist <= freeze_radius + 0.65 && vertical_reach {
+                            p_loco.is_frozen = true;
+                            p_loco.freeze_timer = 3.5;
+                            p_recv.apply_effect(AlchemicalEffectKind::Frost, 8.0, 25.0);
+                        }
+                    }
+
+                    let ice_mesh = meshes.add(create_irregular_ice_block_mesh(freeze_radius, block_height, 28));
+                    let ice_mat = materials.add(StandardMaterial {
+                        base_color: Color::srgba(0.78, 0.94, 1.0, 0.88),
+                        perceptual_roughness: 0.10,
+                        metallic: 0.05,
+                        reflectance: 0.85,
+                        emissive: LinearRgba::new(0.18, 0.52, 0.90, 0.40),
+                        cull_mode: None,
+                        double_sided: true,
+                        alpha_mode: AlphaMode::Blend,
+                        depth_bias: 500.0,
+                        ..default()
+                    });
+
+                    commands.spawn((
+                        Name::new("Frozen_Water_Ice_Block"),
+                        FrozenIceSheet {
+                            center: freeze_center,
+                            radius: freeze_radius,
+                            top_y,
+                            height: block_height,
+                            elapsed: 0.0,
+                            max_lifetime: 35.0,
+                        },
+                        crate::dungeon::modular_kit::CavernObstacle,
+                        crate::dungeon::modular_kit::ObstacleShape::Cylinder {
+                            radius: freeze_radius,
+                            height: block_height,
+                        },
+                        RigidBody::Static,
+                        Collider::cylinder(freeze_radius, block_height),
+                        Mesh3d(ice_mesh),
+                        MeshMaterial3d(ice_mat),
+                        Transform::from_xyz(freeze_center.x, block_center_y, freeze_center.y),
+                    ));
+
+                    for i in 0..10 {
+                        let angle = i as f32 * (std::f32::consts::TAU / 10.0);
+                        let r = freeze_radius * 0.55;
+                        commands.spawn((
+                            Transform::from_xyz(freeze_center.x + angle.cos() * r, top_y + 0.05, freeze_center.y + angle.sin() * r),
+                            crate::render::particles::ParticleEmitter {
+                                spawn_timer: 0.0,
+                                spawn_rate: 0.05,
+                                particle_type: crate::render::particles::ParticleType::Steam,
+                            },
+                            AlchemyTransientEmitter {
+                                elapsed: 0.0,
+                                max_lifetime: 3.0,
+                            },
+                        ));
+                    }
+
+                    commands.entity(entity).despawn();
+                    continue;
                 }
 
                 let is_fire_impact = projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat) || projectile.slot == 2;
@@ -1473,7 +1578,7 @@ pub fn update_frozen_water_sheets(
         sheet.elapsed += dt;
         if sheet.elapsed >= sheet.max_lifetime {
             commands.spawn((
-                Transform::from_xyz(sheet.center.x, 0.20, sheet.center.y),
+                Transform::from_xyz(sheet.center.x, sheet.top_y, sheet.center.y),
                 crate::render::particles::ParticleEmitter {
                     spawn_timer: 0.0,
                     spawn_rate: 0.05,
@@ -1485,7 +1590,7 @@ pub fn update_frozen_water_sheets(
                 },
             ));
             commands.spawn((
-                Transform::from_xyz(sheet.center.x, 0.20, sheet.center.y),
+                Transform::from_xyz(sheet.center.x, sheet.top_y, sheet.center.y),
                 crate::render::particles::ParticleEmitter {
                     spawn_timer: 0.0,
                     spawn_rate: 0.06,
@@ -1502,7 +1607,7 @@ pub fn update_frozen_water_sheets(
             tf.scale = Vec3::new(melt_ratio.max(0.2), 1.0, melt_ratio.max(0.2));
             if crate::render::particles::fastrand::f32() < 0.15 {
                 commands.spawn((
-                    Transform::from_xyz(sheet.center.x, 0.20, sheet.center.y),
+                    Transform::from_xyz(sheet.center.x, sheet.top_y, sheet.center.y),
                     crate::render::particles::ParticleEmitter {
                         spawn_timer: 0.0,
                         spawn_rate: 0.08,
@@ -1797,6 +1902,134 @@ pub fn create_ice_disk_mesh(radius: f32, segments: usize) -> Mesh {
 
         indices.extend_from_slice(&[top_cur, bot_cur, top_next]);
         indices.extend_from_slice(&[top_next, bot_cur, bot_next]);
+    }
+
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
+        .with_inserted_indices(Indices::U32(indices))
+}
+
+pub fn create_irregular_ice_block_mesh(radius: f32, height: f32, segments: usize) -> Mesh {
+    let seg_count = segments.max(12);
+    let mut positions: Vec<[f32; 3]> = Vec::new();
+    let mut normals: Vec<[f32; 3]> = Vec::new();
+    let mut uvs: Vec<[f32; 2]> = Vec::new();
+    let mut colors: Vec<[f32; 4]> = Vec::new();
+    let mut indices: Vec<u32> = Vec::new();
+
+    let half_h = height * 0.5;
+    let step = std::f32::consts::TAU / seg_count as f32;
+
+    let mut profile: Vec<(f32, f32, f32, f32)> = Vec::with_capacity(seg_count);
+    for i in 0..seg_count {
+        let angle = i as f32 * step;
+        let r_pert = 1.0
+            + 0.14 * (angle * 3.0 + 0.8).sin() * 0.6
+            + 0.10 * (angle * 5.0 - 1.2).cos() * 0.4
+            + 0.06 * (angle * 7.0 + 2.1).sin() * 0.3;
+        let r = radius * r_pert;
+        let top_var = ((i as f32 * 3.7).sin() * 0.035) + ((i as f32 * 7.1).cos() * 0.025);
+        let top_y = half_h + top_var;
+        let bot_y = -half_h;
+        profile.push((angle, r, top_y, bot_y));
+    }
+
+    let top_center_idx = positions.len() as u32;
+    positions.push([0.0, half_h + 0.04, 0.0]);
+    normals.push([0.0, 1.0, 0.0]);
+    uvs.push([0.5, 0.5]);
+    colors.push([0.72, 0.92, 1.0, 0.92]);
+
+    let top_ring_start = positions.len() as u32;
+    for &(angle, r, top_y, _) in &profile {
+        let px = angle.cos() * r;
+        let pz = angle.sin() * r;
+        positions.push([px, top_y, pz]);
+        normals.push([0.0, 1.0, 0.0]);
+        uvs.push([0.5 + angle.cos() * 0.5, 0.5 + angle.sin() * 0.5]);
+        colors.push([0.88, 0.96, 1.0, 0.95]);
+    }
+
+    for i in 0..seg_count {
+        let next = (i + 1) % seg_count;
+        indices.push(top_center_idx);
+        indices.push(top_ring_start + i as u32);
+        indices.push(top_ring_start + next as u32);
+    }
+
+    let bot_center_idx = positions.len() as u32;
+    positions.push([0.0, -half_h, 0.0]);
+    normals.push([0.0, -1.0, 0.0]);
+    uvs.push([0.5, 0.5]);
+    colors.push([0.35, 0.60, 0.85, 0.85]);
+
+    let bot_ring_start = positions.len() as u32;
+    for &(angle, r, _, bot_y) in &profile {
+        let px = angle.cos() * r;
+        let pz = angle.sin() * r;
+        positions.push([px, bot_y, pz]);
+        normals.push([0.0, -1.0, 0.0]);
+        uvs.push([0.5 + angle.cos() * 0.5, 0.5 + angle.sin() * 0.5]);
+        colors.push([0.40, 0.65, 0.88, 0.85]);
+    }
+
+    for i in 0..seg_count {
+        let next = (i + 1) % seg_count;
+        indices.push(bot_center_idx);
+        indices.push(bot_ring_start + next as u32);
+        indices.push(bot_ring_start + i as u32);
+    }
+
+    for i in 0..seg_count {
+        let next = (i + 1) % seg_count;
+        let (angle_a, r_a, top_ya, bot_ya) = profile[i];
+        let (angle_b, r_b, top_yb, bot_yb) = profile[next];
+
+        let p_top_a = Vec3::new(angle_a.cos() * r_a, top_ya, angle_a.sin() * r_a);
+        let p_bot_a = Vec3::new(angle_a.cos() * r_a, bot_ya, angle_a.sin() * r_a);
+        let p_top_b = Vec3::new(angle_b.cos() * r_b, top_yb, angle_b.sin() * r_b);
+        let p_bot_b = Vec3::new(angle_b.cos() * r_b, bot_yb, angle_b.sin() * r_b);
+
+        let v_side = p_top_b - p_top_a;
+        let v_down = p_bot_a - p_top_a;
+        let face_norm = v_side.cross(v_down).normalize_or_zero();
+        let norm_arr = [face_norm.x, face_norm.y, face_norm.z];
+
+        let u_a = i as f32 / seg_count as f32;
+        let u_b = (i + 1) as f32 / seg_count as f32;
+
+        let wall_start = positions.len() as u32;
+
+        positions.push([p_top_a.x, p_top_a.y, p_top_a.z]);
+        normals.push(norm_arr);
+        uvs.push([u_a, 0.0]);
+        colors.push([0.85, 0.95, 1.0, 0.92]);
+
+        positions.push([p_bot_a.x, p_bot_a.y, p_bot_a.z]);
+        normals.push(norm_arr);
+        uvs.push([u_a, 1.0]);
+        colors.push([0.32, 0.58, 0.82, 0.88]);
+
+        positions.push([p_top_b.x, p_top_b.y, p_top_b.z]);
+        normals.push(norm_arr);
+        uvs.push([u_b, 0.0]);
+        colors.push([0.85, 0.95, 1.0, 0.92]);
+
+        positions.push([p_bot_b.x, p_bot_b.y, p_bot_b.z]);
+        normals.push(norm_arr);
+        uvs.push([u_b, 1.0]);
+        colors.push([0.32, 0.58, 0.82, 0.88]);
+
+        indices.push(wall_start);
+        indices.push(wall_start + 2);
+        indices.push(wall_start + 1);
+
+        indices.push(wall_start + 2);
+        indices.push(wall_start + 3);
+        indices.push(wall_start + 1);
     }
 
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
@@ -2553,6 +2786,7 @@ mod tests {
                     color: Color::srgb(0.12, 0.92, 0.42),
                     slot: 1,
                     hitstop_timer: 0.0,
+                    entered_water: false,
                 },
             ))
             .id();
@@ -2636,6 +2870,7 @@ mod tests {
                     color: Color::srgb(0.95, 0.12, 0.16),
                     slot: 2,
                     hitstop_timer: 0.0,
+                    entered_water: false,
                 },
             ))
             .id();

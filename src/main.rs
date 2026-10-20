@@ -95,6 +95,7 @@ fn handle_screenshot_test_lifecycle(
                 color: Color::srgb(0.98, 0.22, 0.28),
                 slot: 1,
                 hitstop_timer: 0.0,
+                entered_water: false,
             },
         ));
     } else if *counter == 20 {

@@ -391,6 +391,28 @@ fn test_unit_ice_platform_and_footprint_meshes() {
         "Ice disk mesh must have vertex colors"
     );
 
+    let irregular_block = deep_alchemy::alchemy::create_irregular_ice_block_mesh(2.65, 1.45, 24);
+    assert!(
+        irregular_block.contains_attribute(Mesh::ATTRIBUTE_POSITION),
+        "Irregular ice block mesh must have positions"
+    );
+    assert!(
+        irregular_block.contains_attribute(Mesh::ATTRIBUTE_NORMAL),
+        "Irregular ice block mesh must have normals"
+    );
+    assert!(
+        irregular_block.contains_attribute(Mesh::ATTRIBUTE_UV_0),
+        "Irregular ice block mesh must have uvs"
+    );
+    assert!(
+        irregular_block.contains_attribute(Mesh::ATTRIBUTE_COLOR),
+        "Irregular ice block mesh must have vertex colors"
+    );
+    assert!(
+        irregular_block.indices().is_some(),
+        "Irregular ice block mesh must have indices"
+    );
+
     let footprint_mesh = deep_alchemy::alchemy::create_footprint_mesh(0.24, 0.11);
     assert!(
         footprint_mesh.contains_attribute(Mesh::ATTRIBUTE_POSITION),
@@ -724,6 +746,7 @@ fn test_unit_potion_hitstop_micro_freeze_duration() {
                 color: Color::WHITE,
                 slot: 1,
                 hitstop_timer: 0.0,
+                entered_water: false,
             },
         ))
         .id();
@@ -1279,6 +1302,7 @@ fn test_unit_fire_potion_impact_ignites_flammable() {
                 color: Color::srgb(0.95, 0.12, 0.16),
                 slot: 2,
                 hitstop_timer: 0.001,
+                entered_water: false,
             },
         ))
         .id();
@@ -1828,5 +1852,105 @@ fn test_unit_potion_fluid_color_and_surface_update_per_slot() {
     let materials_res = app.world().resource::<Assets<deep_alchemy::render::potion_fluid_material::PotionFluidMaterial>>();
     let mat = materials_res.get(&mat_handle).unwrap();
     assert!(mat.base_color.red > 0.8);
+}
+
+#[test]
+fn test_unit_frost_potion_water_sinking_and_ice_puzzle_mechanics() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::transform::TransformPlugin,
+        bevy::asset::AssetPlugin::default(),
+        bevy::scene::ScenePlugin::default(),
+        avian3d::prelude::PhysicsPlugins::default(),
+    ));
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(50),
+    ));
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.init_resource::<Assets<Mesh>>();
+    app.add_systems(Update, deep_alchemy::alchemy::update_potion_projectiles);
+
+    let shallow_pos = Vec3::new(4.8, 0.15, -8.5);
+    let shallow_bed_y = deep_alchemy::dungeon::modular_kit::get_grotto_terrain_height(shallow_pos.x, shallow_pos.z);
+    let shallow_water_depth = (0.18 - shallow_bed_y).max(0.0);
+    assert!(shallow_water_depth <= 1.45, "Shallow lake location must have depth <= 1.45m");
+
+    let shallow_proj = app
+        .world_mut()
+        .spawn((
+            Transform::from_translation(shallow_pos),
+            deep_alchemy::alchemy::PotionProjectile {
+                velocity: Vec3::new(0.0, -1.0, 0.0),
+                effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                    kind: deep_alchemy::alchemy::AlchemicalEffectKind::Frost,
+                    duration: 5.0,
+                    magnitude: 10.0,
+                    elapsed: 0.0,
+                }],
+                lifetime: 8.0,
+                color: Color::WHITE,
+                slot: 4,
+                hitstop_timer: 0.0,
+                entered_water: true,
+            },
+        ))
+        .id();
+
+    for _ in 0..15 {
+        app.update();
+    }
+
+    assert!(
+        app.world().get_entity(shallow_proj).is_err(),
+        "Shallow water projectile must burst upon reaching lake bed"
+    );
+
+    let mut ice_q = app.world_mut().query::<(&Transform, &deep_alchemy::alchemy::FrozenIceSheet)>();
+    let shallow_ice = ice_q.iter(app.world()).find(|(_, s)| (s.center - Vec2::new(shallow_pos.x, shallow_pos.z)).length() < 0.2);
+    assert!(shallow_ice.is_some(), "Shallow freeze must spawn FrozenIceSheet");
+    let (_, s_sheet) = shallow_ice.unwrap();
+    assert!(s_sheet.top_y >= 0.18, "Shallow water ice block must reach surface");
+
+    let deep_pos = Vec3::new(0.0, 0.15, -8.5);
+    let deep_bed_y = deep_alchemy::dungeon::modular_kit::get_grotto_terrain_height(deep_pos.x, deep_pos.z);
+    let deep_water_depth = (0.18 - deep_bed_y).max(0.0);
+    assert!(deep_water_depth > 1.45, "Deep lake center must have depth > 1.45m");
+
+    let deep_proj = app
+        .world_mut()
+        .spawn((
+            Transform::from_translation(deep_pos),
+            deep_alchemy::alchemy::PotionProjectile {
+                velocity: Vec3::new(0.0, -1.0, 0.0),
+                effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                    kind: deep_alchemy::alchemy::AlchemicalEffectKind::Frost,
+                    duration: 5.0,
+                    magnitude: 10.0,
+                    elapsed: 0.0,
+                }],
+                lifetime: 8.0,
+                color: Color::WHITE,
+                slot: 4,
+                hitstop_timer: 0.0,
+                entered_water: true,
+            },
+        ))
+        .id();
+
+    for _ in 0..50 {
+        app.update();
+    }
+
+    assert!(
+        app.world().get_entity(deep_proj).is_err(),
+        "Deep water projectile must burst upon reaching lake bed"
+    );
+
+    let mut deep_ice_q = app.world_mut().query::<(&Transform, &deep_alchemy::alchemy::FrozenIceSheet)>();
+    let deep_ice = deep_ice_q.iter(app.world()).find(|(_, s)| (s.center - Vec2::new(deep_pos.x, deep_pos.z)).length() < 0.2);
+    assert!(deep_ice.is_some(), "Deep freeze must spawn FrozenIceSheet on bed");
+    let (_, d_sheet) = deep_ice.unwrap();
+    assert!(d_sheet.top_y <= -1.80, "Deep water ice block must remain submerged");
 }
 

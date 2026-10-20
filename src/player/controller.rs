@@ -353,7 +353,7 @@ pub fn player_movement(
             let d = (p_xz - ice_sheet.center).length();
             let current_radius = ice_sheet.radius * ice_tf.scale.x;
             if d <= current_radius + 0.35 {
-                let ice_surface_y = ice_tf.translation.y + 0.13 + 1.2;
+                let ice_surface_y = ice_sheet.top_y + 1.2;
                 if (tf.translation.y - ice_surface_y).abs() <= 0.65 {
                     on_ice = true;
                     break;
