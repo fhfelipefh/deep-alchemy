@@ -66,6 +66,15 @@ pub struct PotionSlotIcon {
     pub slot_index: usize,
 }
 
+#[derive(Component)]
+pub struct HotbarContainer;
+
+#[derive(Component)]
+pub struct HotbarBottomStrip;
+
+#[derive(Component)]
+pub struct CrosshairLayer;
+
 pub const COLOR_BORDER_GOLD: Color = Color::srgb(0.83, 0.69, 0.22);
 pub const COLOR_BORDER_ACTIVE: Color = Color::srgb(1.0, 0.88, 0.40);
 pub const COLOR_BG_DARK: Color = Color::srgba(0.04, 0.06, 0.09, 0.88);
@@ -165,44 +174,64 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                 });
 
             root.spawn((
+                CrosshairLayer,
                 Node {
                     position_type: PositionType::Absolute,
-                    left: Val::Percent(50.0),
-                    top: Val::Percent(50.0),
-                    width: Val::Px(6.0),
-                    height: Val::Px(6.0),
-                    margin: UiRect {
-                        left: Val::Px(-3.0),
-                        top: Val::Px(-3.0),
-                        ..default()
-                    },
-                    border: UiRect::all(Val::Px(1.0)),
+                    left: Val::Px(0.0),
+                    right: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    bottom: Val::Px(0.0),
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
                     ..default()
                 },
-                CrosshairDot,
-                BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.75)),
-                BorderColor(Color::srgba(0.0, 0.0, 0.0, 0.9)),
-            ));
+            ))
+            .with_children(|center_layer| {
+                center_layer.spawn((
+                    CrosshairDot,
+                    Node {
+                        width: Val::Px(6.0),
+                        height: Val::Px(6.0),
+                        border: UiRect::all(Val::Px(1.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.75)),
+                    BorderColor(Color::srgba(0.0, 0.0, 0.0, 0.9)),
+                ));
+            });
 
             root.spawn((
+                HotbarBottomStrip,
                 Node {
                     position_type: PositionType::Absolute,
-                    left: Val::Percent(50.0),
+                    left: Val::Px(0.0),
+                    right: Val::Px(0.0),
                     bottom: Val::Px(22.0),
-                    margin: UiRect {
-                        left: Val::Px(-160.0),
-                        ..default()
-                    },
-                    flex_direction: FlexDirection::Row,
-                    column_gap: Val::Px(8.0),
-                    padding: UiRect::all(Val::Px(5.0)),
-                    border: UiRect::all(Val::Px(1.5)),
+                    width: Val::Percent(100.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
                     ..default()
                 },
-                BackgroundColor(COLOR_BG_DARK),
-                BorderColor(COLOR_BORDER_GOLD),
             ))
-            .with_children(|hotbar| {
+            .with_children(|bottom_bar| {
+                bottom_bar.spawn((
+                    HotbarContainer,
+                    Node {
+                        flex_direction: FlexDirection::Row,
+                        column_gap: Val::Px(8.0),
+                        padding: UiRect::all(Val::Px(5.0)),
+                        border: UiRect::all(Val::Px(1.5)),
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        max_width: Val::Percent(95.0),
+                        ..default()
+                    },
+                    BackgroundColor(COLOR_BG_DARK),
+                    BorderColor(COLOR_BORDER_GOLD),
+                ))
+                .with_children(|hotbar| {
                 for slot_num in 1..=5 {
                     let potion_texture = match slot_num {
                         1 => "textures/ui/flask_green.png",
@@ -279,6 +308,7 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                 }
             });
         });
+    });
 }
 
 fn update_crosshair_target(
@@ -717,5 +747,137 @@ pub mod tests {
         let text_content = &app.world().get::<Text>(entity).unwrap().0;
         assert!(!text_content.is_empty());
         assert!(text_content.chars().all(|c| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn test_setup_hud_spawns_centered_hotbar_container() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
+        app.init_asset::<Font>();
+        app.init_asset::<Image>();
+        app.init_resource::<ActiveHotbarSlot>();
+        app.add_systems(Startup, setup_hud);
+        app.update();
+
+        let mut bottom_strip_query = app.world_mut().query::<(&HotbarBottomStrip, &Node)>();
+        let mut strip_count = 0;
+        for (_, node) in bottom_strip_query.iter(app.world()) {
+            strip_count += 1;
+            assert_eq!(node.width, Val::Percent(100.0));
+            assert_eq!(node.left, Val::Px(0.0));
+            assert_eq!(node.right, Val::Px(0.0));
+            assert_eq!(node.justify_content, JustifyContent::Center);
+            assert_eq!(node.align_items, AlignItems::Center);
+        }
+        assert_eq!(strip_count, 1, "Must spawn exactly 1 full-width HotbarBottomStrip");
+
+        let mut container_query = app.world_mut().query::<(&HotbarContainer, &Node)>();
+        let mut container_count = 0;
+        for (_, node) in container_query.iter(app.world()) {
+            container_count += 1;
+            assert_eq!(node.flex_direction, FlexDirection::Row);
+            assert_eq!(node.justify_content, JustifyContent::Center);
+            assert_eq!(node.align_items, AlignItems::Center);
+        }
+        assert_eq!(container_count, 1, "Must spawn exactly 1 HotbarContainer");
+
+        let mut crosshair_layer_query = app.world_mut().query::<(&CrosshairLayer, &Node)>();
+        let mut layer_count = 0;
+        for (_, node) in crosshair_layer_query.iter(app.world()) {
+            layer_count += 1;
+            assert_eq!(node.width, Val::Percent(100.0));
+            assert_eq!(node.height, Val::Percent(100.0));
+            assert_eq!(node.justify_content, JustifyContent::Center);
+            assert_eq!(node.align_items, AlignItems::Center);
+        }
+        assert_eq!(layer_count, 1, "Must spawn exactly 1 CrosshairLayer");
+    }
+
+    #[test]
+    fn test_hud_elements_centered_and_equidistant_across_all_resolutions() {
+        let resolutions: &[(f32, f32, &str)] = &[
+            (640.0, 480.0, "VGA 4:3"),
+            (800.0, 600.0, "SVGA 4:3"),
+            (1024.0, 768.0, "XGA 4:3"),
+            (1280.0, 720.0, "HD 720p 16:9"),
+            (1366.0, 768.0, "WXGA Laptop"),
+            (1440.0, 900.0, "WXGA+ 16:10"),
+            (1600.0, 900.0, "HD+ 16:9"),
+            (1920.0, 1080.0, "FHD 1080p 16:9"),
+            (1920.0, 1200.0, "WUXGA 16:10"),
+            (2560.0, 1080.0, "UW-FHD 21:9"),
+            (2560.0, 1440.0, "QHD 1440p 16:9"),
+            (3440.0, 1440.0, "UWQHD 21:9"),
+            (3840.0, 2160.0, "4K UHD 16:9"),
+            (5120.0, 1440.0, "Dual QHD 32:9 Super Ultrawide"),
+            (7680.0, 4320.0, "8K UHD 16:9"),
+        ];
+
+        let slot_size = 54.0;
+        let slot_count = 5.0;
+        let column_gap = 8.0;
+        let padding_x = 5.0 * 2.0;
+        let border_x = 1.5 * 2.0;
+        let hotbar_width = slot_size * slot_count + column_gap * (slot_count - 1.0) + padding_x + border_x;
+        assert_eq!(hotbar_width, 315.0);
+
+        let hotbar_height = slot_size + 5.0 * 2.0 + 1.5 * 2.0;
+        assert_eq!(hotbar_height, 67.0);
+
+        for &(w, h, name) in resolutions {
+            let left_dist = (w - hotbar_width) * 0.5;
+            let right_dist = w - (left_dist + hotbar_width);
+
+            assert!(
+                (left_dist - right_dist).abs() < 0.001,
+                "Hotbar must be mathematically centered with identical margins on both sides for {name} ({w}x{h}). Left: {left_dist}, Right: {right_dist}"
+            );
+
+            assert!(
+                left_dist >= 0.0,
+                "Hotbar start margin must be non-negative for {name} ({w}x{h}), found {left_dist}"
+            );
+            assert!(
+                right_dist >= 0.0,
+                "Hotbar end margin must be non-negative for {name} ({w}x{h}), found {right_dist}"
+            );
+
+            let bottom_offset = 22.0;
+            let top_margin = h - (bottom_offset + hotbar_height);
+            assert!(
+                top_margin > 0.0,
+                "Hotbar must not overflow vertical viewport bounds for {name} ({w}x{h})"
+            );
+
+            let crosshair_size = 6.0;
+            let crosshair_left = (w - crosshair_size) * 0.5;
+            let crosshair_right = w - (crosshair_left + crosshair_size);
+            let crosshair_top = (h - crosshair_size) * 0.5;
+            let crosshair_bottom = h - (crosshair_top + crosshair_size);
+
+            assert!(
+                (crosshair_left - crosshair_right).abs() < 0.001,
+                "Crosshair must be horizontally centered for {name}"
+            );
+            assert!(
+                (crosshair_top - crosshair_bottom).abs() < 0.001,
+                "Crosshair must be vertically centered for {name}"
+            );
+
+            let vitality_width = 154.0;
+            let vitality_left = 24.0;
+            let vitality_right_edge = vitality_left + vitality_width;
+            assert!(
+                vitality_right_edge < w,
+                "Vitality indicators must fit inside viewport width for {name}"
+            );
+
+            let fps_right = 18.0;
+            let fps_min_x = w - fps_right - 80.0;
+            assert!(
+                fps_min_x > vitality_right_edge,
+                "FPS counter must not overlap vitality indicators on {name}"
+            );
+        }
     }
 }

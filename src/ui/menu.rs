@@ -97,6 +97,9 @@ impl Default for GameSettings {
 pub struct MenuRoot;
 
 #[derive(Component)]
+pub struct MenuCardContainer;
+
+#[derive(Component)]
 pub struct MainViewNode;
 
 #[derive(Component)]
@@ -308,8 +311,11 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
             }
 
             root.spawn((
+                MenuCardContainer,
                 Node {
                     width: Val::Px(540.0),
+                    max_width: Val::Percent(92.0),
+                    max_height: Val::Percent(94.0),
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
                     padding: UiRect::axes(Val::Px(24.0), Val::Px(24.0)),
@@ -1970,5 +1976,54 @@ mod tests {
             updated_spore.current_y < 80.0,
             "Spore must drift upward over time"
         );
+    }
+
+    #[test]
+    fn test_menu_card_centered_and_fits_across_all_resolutions() {
+        let resolutions: &[(f32, f32, &str)] = &[
+            (640.0, 480.0, "VGA 4:3"),
+            (800.0, 600.0, "SVGA 4:3"),
+            (1024.0, 768.0, "XGA 4:3"),
+            (1280.0, 720.0, "HD 720p 16:9"),
+            (1366.0, 768.0, "WXGA Laptop"),
+            (1440.0, 900.0, "WXGA+ 16:10"),
+            (1600.0, 900.0, "HD+ 16:9"),
+            (1920.0, 1080.0, "FHD 1080p 16:9"),
+            (1920.0, 1200.0, "WUXGA 16:10"),
+            (2560.0, 1080.0, "UW-FHD 21:9"),
+            (2560.0, 1440.0, "QHD 1440p 16:9"),
+            (3440.0, 1440.0, "UWQHD 21:9"),
+            (3840.0, 2160.0, "4K UHD 16:9"),
+            (5120.0, 1440.0, "Dual QHD 32:9 Super Ultrawide"),
+            (7680.0, 4320.0, "8K UHD 16:9"),
+        ];
+
+        let base_card_width: f32 = 540.0;
+        let card_max_width_pct: f32 = 0.92;
+
+        for &(w, h, name) in resolutions {
+            let actual_card_width = base_card_width.min(w * card_max_width_pct);
+            let left_dist = (w - actual_card_width) * 0.5;
+            let right_dist = w - (left_dist + actual_card_width);
+
+            assert!(
+                (left_dist - right_dist).abs() < 0.001,
+                "Menu card must be mathematically centered horizontally with equal margins for {name} ({w}x{h}). Left: {left_dist}, Right: {right_dist}"
+            );
+
+            assert!(
+                left_dist > 0.0,
+                "Menu card left margin must be positive for {name} ({w}x{h}), found {left_dist}"
+            );
+            assert!(
+                right_dist > 0.0,
+                "Menu card right margin must be positive for {name} ({w}x{h}), found {right_dist}"
+            );
+
+            assert!(
+                actual_card_width <= w,
+                "Menu card must fit within screen width for {name} ({w}x{h})"
+            );
+        }
     }
 }
