@@ -19,6 +19,8 @@ impl Plugin for PlayerPlugin {
                     controller::player_look,
                     controller::player_camera_effects,
                     controller::update_player_body_squash,
+                    controller::update_first_person_potion_sway,
+                    controller::update_held_potion_visuals,
                     interaction::player_raycast_interaction,
                     interaction::player_physics_grab,
                     ragdoll::check_player_death,

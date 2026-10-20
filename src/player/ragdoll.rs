@@ -1,4 +1,7 @@
-use super::camera::{HeadHatPart, Health, Player, PlayerBodyScene, PlayerCamera, PlayerState};
+use super::camera::{
+    FirstPersonHeldPotion, HeadHatPart, Health, Player, PlayerBodyScene, PlayerCamera, PlayerState,
+    RagdollLimb,
+};
 use avian3d::prelude::*;
 use bevy::{prelude::*, render::view::RenderLayers};
 
@@ -15,11 +18,17 @@ pub fn check_player_death(
     camera_query: Query<Entity, With<PlayerCamera>>,
     head_parts: Query<Entity, With<HeadHatPart>>,
     mut body_scenes: Query<(Entity, &mut Visibility), With<PlayerBodyScene>>,
+    limbs_query: Query<(Entity, &RagdollLimb)>,
+    viewmodel_query: Query<Entity, With<FirstPersonHeldPotion>>,
 ) {
     for (player_entity, mut state, health, tf) in player_query.iter_mut() {
         if *state == PlayerState::Active && health.current <= 0.0 {
             *state = PlayerState::Dead;
             info!("Player has died! Activating Ragdoll & 3rd-Person Death Camera");
+
+            for vm_entity in viewmodel_query.iter() {
+                commands.entity(vm_entity).insert(Visibility::Hidden);
+            }
 
             for head_entity in head_parts.iter() {
                 commands.entity(head_entity).insert(RenderLayers::layer(0));
@@ -34,6 +43,24 @@ pub fn check_player_death(
                 LinearVelocity(Vec3::new(0.0, 1.5, -2.0)),
                 AngularVelocity(Vec3::new(1.0, 0.2, 0.5)),
             ));
+
+            for (limb_entity, limb) in limbs_query.iter() {
+                let limb_push = match limb.limb_name.as_str() {
+                    "Head" => Vec3::new(0.1, 1.4, -2.2),
+                    "LeftArm" => Vec3::new(-0.6, 1.1, -1.6),
+                    "RightArm" => Vec3::new(0.6, 1.1, -1.6),
+                    "LeftLeg" => Vec3::new(-0.3, 0.8, -1.2),
+                    "RightLeg" => Vec3::new(0.3, 0.8, -1.2),
+                    _ => Vec3::new(0.0, 1.2, -1.8),
+                };
+
+                commands.entity(limb_entity).insert((
+                    RigidBody::Dynamic,
+                    Collider::sphere(0.12),
+                    LinearVelocity(limb_push),
+                    AngularVelocity(Vec3::new(0.8, 0.4, 0.2)),
+                ));
+            }
 
             if let Ok(cam_entity) = camera_query.get_single() {
                 commands.entity(cam_entity).remove_parent();
@@ -58,7 +85,7 @@ pub fn update_death_camera(
     };
 
     for (mut cam_tf, mut death_cam) in cam_query.iter_mut() {
-        death_cam.target_point = death_cam.target_point.lerp(player_tf.translation, 0.1);
+        death_cam.target_point = death_cam.target_point.lerp(player_tf.translation, (4.0 * dt).min(1.0).max(0.1));
         death_cam.orbit_angle += 0.35 * dt;
 
         let height = 2.0;
@@ -67,7 +94,7 @@ pub fn update_death_camera(
         let y = death_cam.target_point.y + height;
 
         cam_tf.translation = Vec3::new(x, y, z);
-        cam_tf.look_at(death_cam.target_point + Vec3::Y * 0.5, Vec3::Y);
+        cam_tf.look_at(death_cam.target_point + Vec3::Y * 0.45, Vec3::Y);
     }
 }
 
@@ -88,6 +115,21 @@ mod tests {
         let camera = app
             .world_mut()
             .spawn((PlayerCamera, Transform::IDENTITY))
+            .id();
+
+        let limb = app
+            .world_mut()
+            .spawn((
+                RagdollLimb {
+                    limb_name: "LeftArm".to_string(),
+                },
+                Transform::IDENTITY,
+            ))
+            .id();
+
+        let viewmodel = app
+            .world_mut()
+            .spawn((FirstPersonHeldPotion::default(), Visibility::Visible))
             .id();
 
         let player = app
@@ -116,6 +158,9 @@ mod tests {
         assert_eq!(vel.0, Vec3::new(0.0, 1.5, -2.0));
 
         assert!(app.world().get::<DeathCamera>(camera).is_some());
+        assert!(app.world().get::<RigidBody>(limb).is_some());
+        let vm_vis = app.world().get::<Visibility>(viewmodel).unwrap();
+        assert_eq!(*vm_vis, Visibility::Hidden);
     }
 
     #[test]

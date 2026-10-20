@@ -71,6 +71,7 @@ pub struct LocomotionState {
     pub vertical_velocity: f32,
     pub stamina_regen_delay_timer: f32,
     pub head_bob_timer: f32,
+    pub head_bob_intensity: f32,
     pub current_speed: f32,
     pub horizontal_velocity: Vec2,
     pub is_in_water: bool,
@@ -90,6 +91,7 @@ pub struct LocomotionState {
     pub target_camera_roll: f32,
     pub throw_windup: f32,
     pub throw_recoil: f32,
+    pub mouse_look_delta: Vec2,
 }
 
 impl Default for LocomotionState {
@@ -101,6 +103,7 @@ impl Default for LocomotionState {
             vertical_velocity: 0.0,
             stamina_regen_delay_timer: 0.0,
             head_bob_timer: 0.0,
+            head_bob_intensity: 0.0,
             current_speed: 4.2,
             horizontal_velocity: Vec2::ZERO,
             is_in_water: false,
@@ -120,9 +123,38 @@ impl Default for LocomotionState {
             target_camera_roll: 0.0,
             throw_windup: 0.0,
             throw_recoil: 0.0,
+            mouse_look_delta: Vec2::ZERO,
         }
     }
 }
+
+#[derive(Component, Debug, Clone)]
+pub struct FirstPersonHeldPotion {
+    pub current_slot: usize,
+    pub base_position: Vec3,
+    pub sway_offset: Vec3,
+    pub sway_velocity: Vec3,
+    pub sway_rotation: Quat,
+    pub sway_angular_velocity: Vec3,
+    pub visuals_spawned: bool,
+}
+
+impl Default for FirstPersonHeldPotion {
+    fn default() -> Self {
+        Self {
+            current_slot: 1,
+            base_position: Vec3::new(0.24, -0.20, -0.42),
+            sway_offset: Vec3::ZERO,
+            sway_velocity: Vec3::ZERO,
+            sway_rotation: Quat::IDENTITY,
+            sway_angular_velocity: Vec3::ZERO,
+            visuals_spawned: false,
+        }
+    }
+}
+
+#[derive(Component, Debug, Clone)]
+pub struct HeldPotionLiquid;
 
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub struct BoneJoint {
@@ -166,7 +198,6 @@ pub fn setup_player(mut commands: Commands, asset_server: Res<AssetServer>) {
             parent.spawn((
                 PlayerCamera,
                 Camera3d::default(),
-
                 Msaa::Off,
                 bevy::core_pipeline::prepass::DepthPrepass,
                 bevy::core_pipeline::prepass::NormalPrepass,
@@ -179,7 +210,15 @@ pub fn setup_player(mut commands: Commands, asset_server: Res<AssetServer>) {
                     falloff: FogFalloff::ExponentialSquared { density: 0.008 },
                     ..default()
                 },
-            ));
+            ))
+            .with_children(|cam_parent| {
+                cam_parent.spawn((
+                    FirstPersonHeldPotion::default(),
+                    Transform::from_xyz(0.24, -0.20, -0.42),
+                    Visibility::default(),
+                    RenderLayers::layer(0),
+                ));
+            });
 
             parent.spawn((
                 PlayerBodyScene,
@@ -376,5 +415,13 @@ mod tests {
             .count()
             == 1;
         assert!(has_locomotion, "Player must possess LocomotionState");
+
+        let has_potion = app
+            .world_mut()
+            .query::<&FirstPersonHeldPotion>()
+            .iter(app.world())
+            .count()
+            == 1;
+        assert!(has_potion, "Player must possess FirstPersonHeldPotion");
     }
 }

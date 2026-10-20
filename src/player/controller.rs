@@ -1,5 +1,6 @@
 use super::camera::{
-    CameraShake, LocomotionState, Player, PlayerBodyScene, PlayerCamera, PlayerState, Stamina,
+    CameraShake, FirstPersonHeldPotion, HeldPotionLiquid, LocomotionState, Player, PlayerBodyScene,
+    PlayerCamera, PlayerState, Stamina,
 };
 use crate::dungeon::modular_kit::{CavernObstacle, ObstacleShape};
 use crate::ui::menu::{GameSettings, GameState};
@@ -232,10 +233,6 @@ pub fn player_look(
         mouse_delta += event.delta;
     }
 
-    if mouse_delta == Vec2::ZERO {
-        return;
-    }
-
     let sensitivity = settings
         .as_ref()
         .map(|s| s.mouse_sensitivity)
@@ -243,6 +240,14 @@ pub fn player_look(
 
     for (state, mut player_tf, mut loco_opt) in player_query.iter_mut() {
         if *state != PlayerState::Active {
+            continue;
+        }
+
+        if let Some(ref mut loco) = loco_opt {
+            loco.mouse_look_delta = mouse_delta;
+        }
+
+        if mouse_delta == Vec2::ZERO {
             continue;
         }
 
@@ -837,11 +842,16 @@ pub fn player_movement(
             locomotion.is_grounded = false;
         }
 
-        let bob_freq = if is_sprinting { 14.0 } else { 8.0 };
+        let speed_factor = (locomotion.horizontal_velocity.length() / 4.2).clamp(0.5, 1.8);
+        let omega = if is_sprinting { 12.5 } else { 8.2 } * speed_factor;
         if locomotion.is_grounded && is_moving {
-            locomotion.head_bob_timer += dt * bob_freq;
+            locomotion.head_bob_timer += dt * omega;
+            locomotion.head_bob_intensity = (locomotion.head_bob_intensity + 8.0 * dt).min(1.0);
         } else {
-            locomotion.head_bob_timer = 0.0;
+            locomotion.head_bob_intensity = (locomotion.head_bob_intensity - 10.0 * dt).max(0.0);
+            if locomotion.head_bob_intensity <= 0.0 {
+                locomotion.head_bob_timer = 0.0;
+            }
         }
     }
 }
@@ -895,11 +905,21 @@ pub fn player_camera_effects(
         let windup_lift = locomotion.throw_windup * 0.020;
         let target_z = shake_offset.z + locomotion.throw_windup * 0.050 - locomotion.throw_recoil * 0.025;
 
-        if locomotion.head_bob_timer > 0.0 {
-            let bob_amp = if locomotion.is_sprinting { 0.065 } else { 0.03 };
-            let bob_y = (locomotion.head_bob_timer).sin() * bob_amp;
-            let bob_x = (locomotion.head_bob_timer * 0.5).cos() * (bob_amp * 0.4);
+        let bob_intensity = if locomotion.head_bob_intensity > 0.0 {
+            locomotion.head_bob_intensity
+        } else if locomotion.head_bob_timer > 0.0 {
+            1.0
+        } else {
+            0.0
+        };
+        let bob_t = locomotion.head_bob_timer;
+        let bob_amp_x = if locomotion.is_sprinting { 0.038 } else { 0.022 };
+        let bob_amp_y = if locomotion.is_sprinting { 0.055 } else { 0.032 };
+        let bob_x = (bob_t).sin() * bob_amp_x * bob_intensity;
+        let bob_y = (2.0 * bob_t + std::f32::consts::FRAC_PI_2).sin() * bob_amp_y * bob_intensity;
+        let roll_bob = (bob_t).sin() * 0.007 * bob_intensity;
 
+        if bob_intensity > 0.0 {
             cam_tf.translation.y = base_eye_height + bob_y - dip_offset - recoil_dip + windup_lift + shake_offset.y;
             cam_tf.translation.x = bob_x + shake_offset.x;
             cam_tf.translation.z = target_z;
@@ -914,7 +934,7 @@ pub fn player_camera_effects(
         }
 
         let (yaw, pitch, _) = cam_tf.rotation.to_euler(EulerRot::YXZ);
-        let final_roll = locomotion.camera_roll + shake_roll;
+        let final_roll = locomotion.camera_roll + shake_roll + roll_bob;
         cam_tf.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, final_roll);
     }
 }
@@ -928,6 +948,184 @@ pub fn update_player_body_squash(
     };
     for mut body_tf in body_scenes.iter_mut() {
         body_tf.scale = locomotion.squash_scale;
+    }
+}
+
+pub fn update_first_person_potion_sway(
+    time: Res<Time>,
+    player_query: Query<(&PlayerState, &LocomotionState), With<Player>>,
+    mut potion_query: Query<(&mut FirstPersonHeldPotion, &mut Transform, &mut Visibility)>,
+) {
+    let dt = time.delta_secs();
+    let Ok((state, locomotion)) = player_query.get_single() else {
+        return;
+    };
+
+    for (mut sway, mut tf, mut vis) in potion_query.iter_mut() {
+        if *state != PlayerState::Active {
+            *vis = Visibility::Hidden;
+            continue;
+        } else if *vis != Visibility::Inherited && *vis != Visibility::Visible {
+            *vis = Visibility::Inherited;
+        }
+
+        let mouse_delta = locomotion.mouse_look_delta;
+        let strafe_vel = locomotion.horizontal_velocity.x;
+
+        let target_offset_x = (-mouse_delta.x * 0.00045 - strafe_vel * 0.005).clamp(-0.035, 0.035);
+        let target_offset_y = (mouse_delta.y * 0.00045 - locomotion.vertical_velocity * 0.003).clamp(-0.035, 0.035);
+        let target_offset_z = (-locomotion.throw_recoil * 0.06 + locomotion.throw_windup * 0.04).clamp(-0.08, 0.08);
+        let target_offset = Vec3::new(target_offset_x, target_offset_y, target_offset_z);
+
+        let k_pos = 145.0;
+        let c_pos = 18.5;
+        let diff_pos = sway.sway_offset - target_offset;
+        let accel_pos = -k_pos * diff_pos - c_pos * sway.sway_velocity;
+        sway.sway_velocity += accel_pos * dt;
+        let pos_vel = sway.sway_velocity;
+        sway.sway_offset += pos_vel * dt;
+
+        let target_pitch = (-mouse_delta.y * 0.0005).clamp(-0.07, 0.07);
+        let target_yaw = (mouse_delta.x * 0.0005).clamp(-0.07, 0.07);
+        let target_roll = (-mouse_delta.x * 0.0003 - strafe_vel * 0.008).clamp(-0.05, 0.05);
+        let target_rot_euler = Vec3::new(target_pitch, target_yaw, target_roll);
+
+        let (cur_yaw, cur_pitch, cur_roll) = sway.sway_rotation.to_euler(EulerRot::YXZ);
+        let cur_rot_euler = Vec3::new(cur_pitch, cur_yaw, cur_roll);
+
+        let k_rot = 160.0;
+        let c_rot = 19.0;
+        let diff_rot = cur_rot_euler - target_rot_euler;
+        let accel_rot = -k_rot * diff_rot - c_rot * sway.sway_angular_velocity;
+        sway.sway_angular_velocity += accel_rot * dt;
+        let ang_vel = sway.sway_angular_velocity;
+        let new_rot_euler = cur_rot_euler + ang_vel * dt;
+        sway.sway_rotation = Quat::from_euler(EulerRot::YXZ, new_rot_euler.y, new_rot_euler.x, new_rot_euler.z);
+
+        let bob_t = locomotion.head_bob_timer;
+        let bob_int = if locomotion.head_bob_intensity > 0.0 {
+            locomotion.head_bob_intensity
+        } else if locomotion.head_bob_timer > 0.0 {
+            1.0
+        } else {
+            0.0
+        };
+        let bob_sway = Vec3::new(
+            (bob_t).sin() * 0.008 * bob_int,
+            (2.0 * bob_t).sin() * 0.012 * bob_int,
+            0.0,
+        );
+
+        let windup_offset = Vec3::new(
+            -0.03 * locomotion.throw_windup,
+            0.05 * locomotion.throw_windup,
+            0.08 * locomotion.throw_windup,
+        );
+        let recoil_offset = Vec3::new(
+            0.01 * locomotion.throw_recoil,
+            -0.04 * locomotion.throw_recoil,
+            -0.05 * locomotion.throw_recoil,
+        );
+
+        tf.translation = sway.base_position + sway.sway_offset + bob_sway + windup_offset + recoil_offset;
+        tf.rotation = sway.sway_rotation;
+    }
+}
+
+pub fn update_held_potion_visuals(
+    mut commands: Commands,
+    active_slot_res: Option<Res<crate::ui::hud::ActiveHotbarSlot>>,
+    cooldowns_res: Option<Res<crate::alchemy::PotionCooldowns>>,
+    mut meshes_res: Option<ResMut<Assets<Mesh>>>,
+    mut materials_res: Option<ResMut<Assets<StandardMaterial>>>,
+    mut potion_query: Query<(Entity, &mut FirstPersonHeldPotion)>,
+    liquid_query: Query<&MeshMaterial3d<StandardMaterial>, With<HeldPotionLiquid>>,
+) {
+    let (Some(ref mut meshes), Some(ref mut materials)) =
+        (meshes_res.as_mut(), materials_res.as_mut())
+    else {
+        return;
+    };
+
+    let active_slot = active_slot_res.map(|s| s.0).unwrap_or(1);
+    let (base_color, _) = crate::alchemy::selected_potion_effects(active_slot);
+    let is_on_cooldown = cooldowns_res
+        .as_ref()
+        .map(|c| !c.is_ready(active_slot))
+        .unwrap_or(false);
+    let liquid_color = if is_on_cooldown {
+        Color::srgba(0.45, 0.45, 0.45, 0.45)
+    } else {
+        base_color
+    };
+
+    for (potion_entity, mut potion) in potion_query.iter_mut() {
+        if !potion.visuals_spawned {
+            potion.visuals_spawned = true;
+            potion.current_slot = active_slot;
+
+            let glass_mat = materials.add(StandardMaterial {
+                base_color: Color::srgba(0.85, 0.92, 1.0, 0.32),
+                perceptual_roughness: 0.12,
+                metallic: 0.1,
+                alpha_mode: AlphaMode::Blend,
+                ..default()
+            });
+
+            let liquid_mat = materials.add(StandardMaterial {
+                base_color: liquid_color,
+                emissive: liquid_color.to_linear() * 1.8,
+                perceptual_roughness: 0.2,
+                alpha_mode: AlphaMode::Blend,
+                ..default()
+            });
+
+            let cork_mat = materials.add(StandardMaterial {
+                base_color: Color::srgb(0.38, 0.25, 0.16),
+                perceptual_roughness: 0.85,
+                ..default()
+            });
+
+            let bulb_mesh = meshes.add(Sphere::new(0.048).mesh().uv(16, 12));
+            let liquid_mesh = meshes.add(Sphere::new(0.040).mesh().uv(12, 10));
+            let neck_mesh = meshes.add(Cylinder::new(0.018, 0.05).mesh());
+            let cork_mesh = meshes.add(Cylinder::new(0.016, 0.022).mesh());
+
+            commands.entity(potion_entity).with_children(|builder| {
+                builder.spawn((
+                    Mesh3d(bulb_mesh),
+                    MeshMaterial3d(glass_mat.clone()),
+                    Transform::from_xyz(0.0, 0.0, 0.0),
+                ));
+
+                builder.spawn((
+                    HeldPotionLiquid,
+                    Mesh3d(liquid_mesh),
+                    MeshMaterial3d(liquid_mat),
+                    Transform::from_xyz(0.0, -0.005, 0.0),
+                ));
+
+                builder.spawn((
+                    Mesh3d(neck_mesh),
+                    MeshMaterial3d(glass_mat),
+                    Transform::from_xyz(0.0, 0.048, 0.0),
+                ));
+
+                builder.spawn((
+                    Mesh3d(cork_mesh),
+                    MeshMaterial3d(cork_mat),
+                    Transform::from_xyz(0.0, 0.075, 0.0),
+                ));
+            });
+        } else if potion.current_slot != active_slot {
+            potion.current_slot = active_slot;
+            for mat_handle in liquid_query.iter() {
+                if let Some(mat) = materials.get_mut(mat_handle) {
+                    mat.base_color = liquid_color;
+                    mat.emissive = liquid_color.to_linear() * 1.8;
+                }
+            }
+        }
     }
 }
 

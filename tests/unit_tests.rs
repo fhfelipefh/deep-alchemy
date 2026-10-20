@@ -1287,6 +1287,205 @@ fn test_unit_menu_start_button_click_does_not_fire_potion_and_pauses_game() {
     assert_eq!(proj_count_fire, 1);
 }
 
+#[test]
+fn test_unit_lissajous_head_bob_and_weight_shifting_roll() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_systems(Update, deep_alchemy::player::controller::player_camera_effects);
+
+    let mut locomotion = deep_alchemy::player::camera::LocomotionState::default();
+    locomotion.head_bob_timer = std::f32::consts::FRAC_PI_2;
+    locomotion.head_bob_intensity = 1.0;
+
+    app.world_mut().spawn((
+        deep_alchemy::player::camera::Player,
+        locomotion,
+    ));
+
+    let camera = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::PlayerCamera,
+            Transform::from_xyz(0.0, 0.55, 0.0),
+            Projection::Perspective(PerspectiveProjection {
+                fov: 75.0_f32.to_radians(),
+                ..default()
+            }),
+        ))
+        .id();
+
+    let mut time = Time::<()>::default();
+    time.advance_by(std::time::Duration::from_millis(16));
+    app.insert_resource(time);
+    app.update();
+
+    let cam_tf = app.world().get::<Transform>(camera).unwrap();
+    assert!(
+        cam_tf.translation.x > 0.015,
+        "Lissajous bobbing at PI/2 should deflect camera laterally (X > 0)"
+    );
+    let (_, _, roll) = cam_tf.rotation.to_euler(EulerRot::YXZ);
+    assert!(
+        roll.abs() > 0.003 && roll.abs() < 0.015,
+        "Weight shifting roll should tilt camera by ~0.4 deg (0.007 rad)"
+    );
+}
+
+#[test]
+fn test_unit_weapon_sway_spring_damper_dynamics() {
+    let mut app = App::new();
+    let mut time = Time::<()>::default();
+    time.advance_by(std::time::Duration::from_millis(50));
+    app.insert_resource(time);
+    app.add_systems(
+        Update,
+        deep_alchemy::player::controller::update_first_person_potion_sway,
+    );
+
+    let mut locomotion = deep_alchemy::player::camera::LocomotionState::default();
+    locomotion.mouse_look_delta = Vec2::new(40.0, -25.0);
+
+    let player = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            deep_alchemy::player::camera::PlayerState::Active,
+            locomotion,
+        ))
+        .id();
+
+    let potion = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::FirstPersonHeldPotion::default(),
+            Transform::from_xyz(0.24, -0.20, -0.42),
+            Visibility::default(),
+        ))
+        .id();
+
+    app.update();
+
+    let potion_sway = app
+        .world()
+        .get::<deep_alchemy::player::camera::FirstPersonHeldPotion>(potion)
+        .unwrap();
+    assert!(
+        potion_sway.sway_velocity.x < 0.0,
+        "Mouse right movement must induce opposing lateral sway velocity on the held weapon"
+    );
+    assert!(
+        potion_sway.sway_offset.x < 0.0,
+        "Held weapon sway position offset must lag opposite to camera turn"
+    );
+
+    app.world_mut()
+        .get_mut::<deep_alchemy::player::camera::LocomotionState>(player)
+        .unwrap()
+        .mouse_look_delta = Vec2::ZERO;
+
+    for _ in 0..60 {
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_millis(16));
+        app.update();
+    }
+
+    let settled_sway = app
+        .world()
+        .get::<deep_alchemy::player::camera::FirstPersonHeldPotion>(potion)
+        .unwrap();
+    assert!(
+        settled_sway.sway_offset.length() < 0.005,
+        "Spring-damper must restore weapon to center equilibrium when movement stops"
+    );
+}
+
+#[test]
+fn test_unit_ragdoll_death_transition_and_viewmodel_hidden() {
+    let mut app = App::new();
+    app.add_systems(
+        Update,
+        deep_alchemy::player::ragdoll::check_player_death,
+    );
+
+    let camera = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::PlayerCamera,
+            Transform::from_xyz(0.0, 1.75, 0.0),
+        ))
+        .id();
+
+    let head = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::HeadHatPart,
+            bevy::render::view::RenderLayers::layer(1),
+        ))
+        .id();
+
+    let limb_arm = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::RagdollLimb {
+                limb_name: "RightArm".to_string(),
+            },
+            Transform::from_xyz(0.35, 1.4, 0.0),
+        ))
+        .id();
+
+    let held_potion = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::FirstPersonHeldPotion::default(),
+            Visibility::Inherited,
+        ))
+        .id();
+
+    let player = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            deep_alchemy::player::camera::PlayerState::Active,
+            deep_alchemy::player::camera::Health {
+                current: 0.0,
+                max: 100.0,
+            },
+            Transform::from_xyz(0.0, 1.2, 0.0),
+        ))
+        .id();
+
+    app.update();
+
+    let state = app
+        .world()
+        .get::<deep_alchemy::player::camera::PlayerState>(player)
+        .unwrap();
+    assert_eq!(*state, deep_alchemy::player::camera::PlayerState::Dead);
+
+    let player_rb = app.world().get::<avian3d::prelude::RigidBody>(player);
+    assert!(player_rb.is_some());
+    assert_eq!(*player_rb.unwrap(), avian3d::prelude::RigidBody::Dynamic);
+
+    let arm_rb = app.world().get::<avian3d::prelude::RigidBody>(limb_arm);
+    assert!(arm_rb.is_some());
+    assert_eq!(*arm_rb.unwrap(), avian3d::prelude::RigidBody::Dynamic);
+
+    let potion_vis = app.world().get::<Visibility>(held_potion).unwrap();
+    assert_eq!(*potion_vis, Visibility::Hidden);
+
+    let head_layers = app
+        .world()
+        .get::<bevy::render::view::RenderLayers>(head)
+        .unwrap();
+    assert!(head_layers.intersects(&bevy::render::view::RenderLayers::layer(0)));
+
+    let death_cam = app
+        .world()
+        .get::<deep_alchemy::player::ragdoll::DeathCamera>(camera);
+    assert!(death_cam.is_some());
+}
+
 
 
 
