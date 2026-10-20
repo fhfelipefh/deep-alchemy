@@ -164,10 +164,14 @@ fn test_architecture_wgsl_shaders_integrity() {
         code.contains("material_foam"),
         "Shader must bind material_foam uniform"
     );
-    assert!(
-        code.contains("material_params"),
-        "Shader must bind material_params uniform"
-    );
+    let fluid_shader_path = Path::new("assets/shaders/potion_fluid.wgsl");
+    assert!(fluid_shader_path.exists(), "potion_fluid.wgsl must exist");
+    let fluid_code = fs::read_to_string(fluid_shader_path).expect("Failed to read fluid shader");
+    assert!(!fluid_code.is_empty(), "Fluid shader must not be empty");
+    assert!(fluid_code.contains("@fragment"), "Fluid shader must contain @fragment");
+    assert!(fluid_code.contains("VertexOutput"), "Fluid shader must import VertexOutput");
+    assert!(fluid_code.contains("slosh_normal"), "Fluid shader must bind slosh_normal uniform");
+    assert!(fluid_code.contains("fluid_params"), "Fluid shader must bind fluid_params uniform");
 }
 
 #[test]

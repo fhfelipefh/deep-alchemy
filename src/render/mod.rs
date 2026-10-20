@@ -1,12 +1,14 @@
 pub mod cel_moss_material;
 pub mod outline;
 pub mod particles;
+pub mod potion_fluid_material;
 pub mod water_material;
 
 use bevy::prelude::*;
 use cel_moss_material::CelShadedMossMaterial;
 use outline::OutlinePostProcessPlugin;
 use particles::{spawn_particles, update_particles};
+use potion_fluid_material::{update_potion_sloshing, PotionFluidMaterial};
 use water_material::{update_water_time, WaterMaterial};
 
 pub struct RenderPipelinePlugin;
@@ -16,11 +18,17 @@ impl Plugin for RenderPipelinePlugin {
         app.add_plugins((
             MaterialPlugin::<WaterMaterial>::default(),
             MaterialPlugin::<CelShadedMossMaterial>::default(),
+            MaterialPlugin::<PotionFluidMaterial>::default(),
             OutlinePostProcessPlugin,
         ))
         .add_systems(
             Update,
-            (update_water_time, spawn_particles, update_particles),
+            (
+                update_water_time,
+                update_potion_sloshing,
+                spawn_particles,
+                update_particles,
+            ),
         );
     }
 }

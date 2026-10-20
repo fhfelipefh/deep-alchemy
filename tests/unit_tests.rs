@@ -1637,3 +1637,102 @@ fn test_unit_gamepad_pause_toggle_start_button() {
     let state = app.world().resource::<State<deep_alchemy::ui::menu::GameState>>();
     assert_eq!(*state.get(), deep_alchemy::ui::menu::GameState::MainMenu);
 }
+
+#[test]
+fn test_unit_potion_fluid_material_and_sloshing_dynamics() {
+    let mut app = App::new();
+    app.init_resource::<Time>();
+    app.init_resource::<Assets<deep_alchemy::render::potion_fluid_material::PotionFluidMaterial>>();
+    app.init_resource::<deep_alchemy::ui::hud::ActiveHotbarSlot>();
+    app.init_resource::<deep_alchemy::alchemy::PotionCooldowns>();
+
+    let _player = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            deep_alchemy::player::camera::PlayerState::Active,
+            deep_alchemy::player::camera::LocomotionState {
+                mouse_look_delta: Vec2::new(12.0, -4.0),
+                ..default()
+            },
+            Transform::from_xyz(0.0, 1.2, 0.0),
+        ))
+        .id();
+
+    let _camera = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::PlayerCamera,
+            Transform::from_rotation(Quat::from_rotation_y(0.25)),
+        ))
+        .id();
+
+    let mut materials = app
+        .world_mut()
+        .resource_mut::<Assets<deep_alchemy::render::potion_fluid_material::PotionFluidMaterial>>();
+    let mat_handle = materials.add(deep_alchemy::render::potion_fluid_material::PotionFluidMaterial::default());
+
+    let potion_liquid = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::HeldPotionLiquid,
+            MeshMaterial3d(mat_handle.clone()),
+            deep_alchemy::render::potion_fluid_material::PotionSloshState::default(),
+        ))
+        .id();
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(deep_alchemy::render::potion_fluid_material::update_potion_sloshing);
+
+    for _ in 0..10 {
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_millis(16));
+        schedule.run(app.world_mut());
+    }
+
+    let slosh = app.world().get::<deep_alchemy::render::potion_fluid_material::PotionSloshState>(potion_liquid).unwrap();
+    assert!(slosh.initialized);
+    assert!(slosh.current_tilt.length() > 0.001);
+
+    let materials_res = app.world().resource::<Assets<deep_alchemy::render::potion_fluid_material::PotionFluidMaterial>>();
+    let mat = materials_res.get(&mat_handle).unwrap();
+    assert!(mat.slosh_normal.y > 0.5);
+    assert!(mat.slosh_normal.x.abs() > 0.0001 || mat.slosh_normal.z.abs() > 0.0001);
+    assert!(mat.fluid_params.x > 0.0);
+}
+
+#[test]
+fn test_unit_potion_fluid_color_and_surface_update_per_slot() {
+    let mut app = App::new();
+    app.init_resource::<Time>();
+    app.init_resource::<Assets<deep_alchemy::render::potion_fluid_material::PotionFluidMaterial>>();
+    app.init_resource::<deep_alchemy::ui::hud::ActiveHotbarSlot>();
+    app.init_resource::<deep_alchemy::alchemy::PotionCooldowns>();
+
+    app.world_mut().resource_mut::<deep_alchemy::ui::hud::ActiveHotbarSlot>().0 = 2;
+
+    let mut materials = app
+        .world_mut()
+        .resource_mut::<Assets<deep_alchemy::render::potion_fluid_material::PotionFluidMaterial>>();
+    let mat_handle = materials.add(deep_alchemy::render::potion_fluid_material::PotionFluidMaterial::default());
+
+    app.world_mut().spawn((
+        deep_alchemy::player::camera::HeldPotionLiquid,
+        MeshMaterial3d(mat_handle.clone()),
+        deep_alchemy::render::potion_fluid_material::PotionSloshState::default(),
+    ));
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(deep_alchemy::render::potion_fluid_material::update_potion_sloshing);
+
+    app.world_mut()
+        .resource_mut::<Time>()
+        .advance_by(std::time::Duration::from_millis(16));
+    schedule.run(app.world_mut());
+
+    let materials_res = app.world().resource::<Assets<deep_alchemy::render::potion_fluid_material::PotionFluidMaterial>>();
+    let mat = materials_res.get(&mat_handle).unwrap();
+    assert!(mat.base_color.red > 0.8);
+}
+

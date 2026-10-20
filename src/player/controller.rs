@@ -1095,6 +1095,7 @@ pub fn update_held_potion_visuals(
     cooldowns_res: Option<Res<crate::alchemy::PotionCooldowns>>,
     mut meshes_res: Option<ResMut<Assets<Mesh>>>,
     mut materials_res: Option<ResMut<Assets<StandardMaterial>>>,
+    mut fluid_materials_res: Option<ResMut<Assets<crate::render::potion_fluid_material::PotionFluidMaterial>>>,
     mut potion_query: Query<(Entity, &mut FirstPersonHeldPotion)>,
     liquid_query: Query<&MeshMaterial3d<StandardMaterial>, With<HeldPotionLiquid>>,
 ) {
@@ -1155,12 +1156,33 @@ pub fn update_held_potion_visuals(
                     Transform::from_xyz(0.0, 0.0, 0.0),
                 ));
 
-                builder.spawn((
-                    HeldPotionLiquid,
-                    Mesh3d(liquid_mesh),
-                    MeshMaterial3d(liquid_mat),
-                    Transform::from_xyz(0.0, -0.005, 0.0),
-                ));
+                if let Some(ref mut fluid_materials) = fluid_materials_res {
+                    let fluid_mat = fluid_materials.add(crate::render::potion_fluid_material::PotionFluidMaterial {
+                        base_color: liquid_color.to_linear(),
+                        surface_color: LinearRgba::new(
+                            (liquid_color.to_linear().red * 1.35).min(1.0),
+                            (liquid_color.to_linear().green * 1.35).min(1.0),
+                            (liquid_color.to_linear().blue * 1.35).min(1.0),
+                            1.0,
+                        ),
+                        slosh_normal: Vec4::new(0.0, 1.0, 0.0, 0.06),
+                        fluid_params: Vec4::new(0.0, 0.012, 0.09, 1.0),
+                    });
+                    builder.spawn((
+                        HeldPotionLiquid,
+                        Mesh3d(liquid_mesh),
+                        MeshMaterial3d(fluid_mat),
+                        crate::render::potion_fluid_material::PotionSloshState::default(),
+                        Transform::from_xyz(0.0, -0.005, 0.0),
+                    ));
+                } else {
+                    builder.spawn((
+                        HeldPotionLiquid,
+                        Mesh3d(liquid_mesh),
+                        MeshMaterial3d(liquid_mat),
+                        Transform::from_xyz(0.0, -0.005, 0.0),
+                    ));
+                }
 
                 builder.spawn((
                     Mesh3d(neck_mesh),
