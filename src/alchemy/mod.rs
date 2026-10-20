@@ -489,9 +489,9 @@ pub fn update_potion_aiming(
     let t = time.elapsed_secs();
 
     for (i, pt) in points.into_iter().skip(1).enumerate() {
-        let bead_flow = ((i as f32 / total_pts as f32) - t * 2.2).rem_euclid(1.0);
-        let pulse = (bead_flow * std::f32::consts::PI).sin().max(0.2);
-        let scale = 0.65 + 0.60 * pulse;
+        let bead_flow = ((i as f32 / total_pts as f32) - t * 0.8).rem_euclid(1.0);
+        let pulse = (bead_flow * std::f32::consts::PI).sin().max(0.3);
+        let scale = 0.72 + 0.38 * pulse;
 
         commands.spawn((
             TrajectoryAimIndicator,
@@ -522,7 +522,7 @@ pub fn update_potion_aiming(
             bevy::pbr::NotShadowReceiver,
         ));
 
-        let pulse_radius = 1.15 * (0.94 + 0.12 * (t * 5.0).sin());
+        let pulse_radius = 1.15 * (0.96 + 0.08 * (t * 1.8).sin());
         let splash_ring_mesh = meshes.add(crate::dungeon::modular_kit::create_water_ring_mesh(pulse_radius, 0.88, 32));
         let splash_ring_mat = materials.add(StandardMaterial {
             base_color: color.with_alpha(0.60),
