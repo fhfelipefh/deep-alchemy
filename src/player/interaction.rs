@@ -22,7 +22,8 @@ pub struct InteractionState {
 
 pub fn player_raycast_interaction(
     game_state: Option<Res<State<GameState>>>,
-    keys: Res<ButtonInput<KeyCode>>,
+    keys: Option<Res<ButtonInput<KeyCode>>>,
+    gamepads: Query<&Gamepad>,
     spatial_query: SpatialQuery,
     camera_query: Query<(&GlobalTransform, &Camera), With<PlayerCamera>>,
     mut interactables: Query<
@@ -77,9 +78,10 @@ pub fn player_raycast_interaction(
         }
     }
 
-    interaction_state.hovered_entity = found_target;
+    let interact_pressed = keys.as_ref().map(|k| k.just_pressed(KeyCode::KeyE)).unwrap_or(false)
+        || gamepads.iter().any(|g| g.just_pressed(GamepadButton::West));
 
-    if keys.just_pressed(KeyCode::KeyE) {
+    if interact_pressed {
         if let Some(target) = found_target {
             if let Ok((_, _, maybe_ingredient)) = interactables.get_mut(target) {
                 if let Some(mut ingredient) = maybe_ingredient {

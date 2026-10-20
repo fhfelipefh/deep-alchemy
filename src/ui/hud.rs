@@ -409,11 +409,12 @@ fn update_hud_bars(
     }
 }
 
-fn handle_hotbar_input(
+pub fn handle_hotbar_input(
     game_state: Option<Res<State<GameState>>>,
-    keys: Res<ButtonInput<KeyCode>>,
+    keys: Option<Res<ButtonInput<KeyCode>>>,
     mut mouse_wheel: EventReader<MouseWheel>,
     mut active_slot: ResMut<ActiveHotbarSlot>,
+    gamepads: Query<&Gamepad>,
 ) {
     if let Some(state) = game_state {
         if *state.get() != GameState::InGame {
@@ -421,16 +422,18 @@ fn handle_hotbar_input(
         }
     }
 
-    if keys.just_pressed(KeyCode::Digit1) {
-        active_slot.0 = 1;
-    } else if keys.just_pressed(KeyCode::Digit2) {
-        active_slot.0 = 2;
-    } else if keys.just_pressed(KeyCode::Digit3) {
-        active_slot.0 = 3;
-    } else if keys.just_pressed(KeyCode::Digit4) {
-        active_slot.0 = 4;
-    } else if keys.just_pressed(KeyCode::Digit5) {
-        active_slot.0 = 5;
+    if let Some(ref k) = keys {
+        if k.just_pressed(KeyCode::Digit1) {
+            active_slot.0 = 1;
+        } else if k.just_pressed(KeyCode::Digit2) {
+            active_slot.0 = 2;
+        } else if k.just_pressed(KeyCode::Digit3) {
+            active_slot.0 = 3;
+        } else if k.just_pressed(KeyCode::Digit4) {
+            active_slot.0 = 4;
+        } else if k.just_pressed(KeyCode::Digit5) {
+            active_slot.0 = 5;
+        }
     }
 
     let mut scroll_steps = 0_i32;
@@ -449,6 +452,19 @@ fn handle_hotbar_input(
             scroll_steps += delta.round().max(1.0) as i32;
         } else if delta < 0.0 {
             scroll_steps -= (-delta).round().max(1.0) as i32;
+        }
+    }
+
+    for gamepad in gamepads.iter() {
+        if gamepad.just_pressed(GamepadButton::RightTrigger)
+            || gamepad.just_pressed(GamepadButton::DPadRight)
+        {
+            scroll_steps += 1;
+        }
+        if gamepad.just_pressed(GamepadButton::LeftTrigger)
+            || gamepad.just_pressed(GamepadButton::DPadLeft)
+        {
+            scroll_steps -= 1;
         }
     }
 

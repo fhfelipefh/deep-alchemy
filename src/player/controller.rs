@@ -218,7 +218,9 @@ pub fn resolve_player_collision_sliding(
 pub fn player_look(
     game_state: Option<Res<State<GameState>>>,
     settings: Option<Res<GameSettings>>,
+    time: Option<Res<Time>>,
     mut mouse_motion_events: EventReader<MouseMotion>,
+    gamepads: Query<&Gamepad>,
     mut player_query: Query<(&PlayerState, &mut Transform, Option<&mut LocomotionState>), (With<Player>, Without<PlayerCamera>)>,
     mut camera_query: Query<&mut Transform, (With<PlayerCamera>, Without<Player>)>,
 ) {
@@ -233,6 +235,27 @@ pub fn player_look(
         mouse_delta += event.delta;
     }
 
+    let dt = time.as_ref().map(|t| t.delta_secs()).unwrap_or(1.0 / 60.0);
+    let mut stick_delta = Vec2::ZERO;
+    for gamepad in gamepads.iter() {
+        let raw_x = gamepad.get(GamepadAxis::RightStickX).unwrap_or(0.0);
+        let raw_y = gamepad.get(GamepadAxis::RightStickY).unwrap_or(0.0);
+        let stick_vec = Vec2::new(raw_x, raw_y);
+        let len = stick_vec.length();
+        const DEADZONE: f32 = 0.12;
+        if len > DEADZONE {
+            let norm = stick_vec / len;
+            let remapped = (len - DEADZONE) / (1.0 - DEADZONE);
+            let curve = remapped * remapped;
+            let effective = norm * curve;
+            let stick_pixels_per_sec = 850.0;
+            stick_delta.x += effective.x * stick_pixels_per_sec * dt;
+            stick_delta.y -= effective.y * stick_pixels_per_sec * dt;
+        }
+    }
+
+    let total_delta = mouse_delta + stick_delta;
+
     let sensitivity = settings
         .as_ref()
         .map(|s| s.mouse_sensitivity)
@@ -244,22 +267,22 @@ pub fn player_look(
         }
 
         if let Some(ref mut loco) = loco_opt {
-            loco.mouse_look_delta = mouse_delta;
+            loco.mouse_look_delta = total_delta;
         }
 
-        if mouse_delta == Vec2::ZERO {
+        if total_delta == Vec2::ZERO {
             continue;
         }
 
-        player_tf.rotate_y(-mouse_delta.x * sensitivity);
+        player_tf.rotate_y(-total_delta.x * sensitivity);
 
         if let Some(ref mut loco) = loco_opt {
-            loco.target_camera_roll = (-mouse_delta.x * 0.00045).clamp(-0.026, 0.026);
+            loco.target_camera_roll = (-total_delta.x * 0.00045).clamp(-0.026, 0.026);
         }
 
         for mut cam_tf in camera_query.iter_mut() {
             let (yaw, mut pitch, roll) = cam_tf.rotation.to_euler(EulerRot::YXZ);
-            pitch -= mouse_delta.y * sensitivity;
+            pitch -= total_delta.y * sensitivity;
             pitch = pitch.clamp(-1.52, 1.52);
             cam_tf.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll);
         }
@@ -269,7 +292,8 @@ pub fn player_look(
 pub fn player_movement(
     game_state: Option<Res<State<GameState>>>,
     time: Res<Time>,
-    keys: Res<ButtonInput<KeyCode>>,
+    keys: Option<Res<ButtonInput<KeyCode>>>,
+    gamepads: Query<&Gamepad>,
     mut query: Query<
         (
             &PlayerState,
@@ -371,19 +395,43 @@ pub fn player_movement(
 
         let mut strafe_target_roll: f32 = 0.0;
         if !is_frozen {
-            if keys.pressed(KeyCode::KeyW) {
-                move_dir += *forward;
+            if let Some(ref k) = keys {
+                if k.pressed(KeyCode::KeyW) {
+                    move_dir += *forward;
+                }
+                if k.pressed(KeyCode::KeyS) {
+                    move_dir -= *forward;
+                }
+                if k.pressed(KeyCode::KeyD) {
+                    move_dir += *right;
+                    strafe_target_roll += 0.020;
+                }
+                if k.pressed(KeyCode::KeyA) {
+                    move_dir -= *right;
+                    strafe_target_roll -= 0.020;
+                }
             }
-            if keys.pressed(KeyCode::KeyS) {
-                move_dir -= *forward;
-            }
-            if keys.pressed(KeyCode::KeyD) {
-                move_dir += *right;
-                strafe_target_roll += 0.020;
-            }
-            if keys.pressed(KeyCode::KeyA) {
-                move_dir -= *right;
-                strafe_target_roll -= 0.020;
+
+            for gamepad in gamepads.iter() {
+                let raw_x = gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0);
+                let raw_y = gamepad.get(GamepadAxis::LeftStickY).unwrap_or(0.0);
+                let stick = Vec2::new(raw_x, raw_y);
+                let len = stick.length();
+                const DEADZONE: f32 = 0.15;
+                if len > DEADZONE {
+                    let norm = stick / len;
+                    let remapped = ((len - DEADZONE) / (1.0 - DEADZONE)).clamp(0.0, 1.0);
+                    let stick_move = norm * remapped;
+                    move_dir += *forward * stick_move.y;
+                    move_dir += *right * stick_move.x;
+                    strafe_target_roll += stick_move.x * 0.020;
+                }
+                if gamepad.pressed(GamepadButton::DPadUp) {
+                    move_dir += *forward;
+                }
+                if gamepad.pressed(GamepadButton::DPadDown) {
+                    move_dir -= *forward;
+                }
             }
         }
 
@@ -404,10 +452,16 @@ pub fn player_movement(
             Vec2::ZERO
         };
 
-        locomotion.is_crouching = keys.pressed(KeyCode::ControlLeft);
+        let gamepad_crouch = gamepads.iter().any(|g| {
+            g.pressed(GamepadButton::RightThumb) || g.pressed(GamepadButton::DPadDown)
+        });
+        locomotion.is_crouching = keys.as_ref().map(|k| k.pressed(KeyCode::ControlLeft)).unwrap_or(false) || gamepad_crouch;
 
+        let gamepad_sprint = gamepads.iter().any(|g| {
+            g.pressed(GamepadButton::LeftThumb) || g.pressed(GamepadButton::East)
+        });
         let can_sprint = !locomotion.is_crouching && stamina.current > 5.0 && is_moving && !is_frozen;
-        let is_sprinting = keys.pressed(KeyCode::ShiftLeft) && can_sprint;
+        let is_sprinting = (keys.as_ref().map(|k| k.pressed(KeyCode::ShiftLeft)).unwrap_or(false) || gamepad_sprint) && can_sprint;
         locomotion.is_sprinting = is_sprinting;
 
         if is_frozen {
@@ -451,7 +505,10 @@ pub fn player_movement(
             locomotion.coyote_timer = (locomotion.coyote_timer - dt).max(0.0);
         }
 
-        if keys.just_pressed(KeyCode::Space) && !locomotion.is_crouching && !is_frozen {
+        let gamepad_jump = gamepads.iter().any(|g| {
+            g.just_pressed(GamepadButton::South)
+        });
+        if (keys.as_ref().map(|k| k.just_pressed(KeyCode::Space)).unwrap_or(false) || gamepad_jump) && !locomotion.is_crouching && !is_frozen {
             locomotion.jump_buffer_timer = 0.12;
         } else {
             locomotion.jump_buffer_timer = (locomotion.jump_buffer_timer - dt).max(0.0);

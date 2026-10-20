@@ -435,6 +435,7 @@ pub fn update_potion_aiming(
     game_state: Option<Res<State<GameState>>>,
     time: Res<Time>,
     mouse: Res<ButtonInput<MouseButton>>,
+    gamepads: Query<&Gamepad>,
     slot: Option<Res<ActiveHotbarSlot>>,
     cooldowns: Option<Res<PotionCooldowns>>,
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
@@ -455,7 +456,14 @@ pub fn update_potion_aiming(
     }
 
     let dt = time.delta_secs();
-    let is_aiming = mouse.pressed(MouseButton::Right) && player_query.iter().all(|(_, s, _)| *s == PlayerState::Active);
+    let gamepad_aiming = gamepads.iter().any(|g| {
+        g.pressed(GamepadButton::LeftTrigger2)
+            || g.get(GamepadButton::LeftTrigger2).unwrap_or(0.0) > 0.15
+    });
+    let is_aiming = (mouse.pressed(MouseButton::Right) || gamepad_aiming)
+        && player_query
+            .iter()
+            .all(|(_, s, _)| *s == PlayerState::Active);
 
     for (_, _, ref mut loco_opt) in player_query.iter_mut() {
         if let Some(ref mut loco) = loco_opt {
@@ -578,6 +586,7 @@ pub fn spawn_potion_projectile(
     game_state: Option<Res<State<GameState>>>,
     time: Res<Time>,
     mouse: Res<ButtonInput<MouseButton>>,
+    gamepads: Query<&Gamepad>,
     slot: Option<Res<ActiveHotbarSlot>>,
     mut cooldowns_opt: Option<ResMut<PotionCooldowns>>,
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
@@ -591,7 +600,10 @@ pub fn spawn_potion_projectile(
             return;
         }
     }
-    if !mouse.just_pressed(MouseButton::Left) {
+    let gamepad_throw = gamepads.iter().any(|g| {
+        g.just_pressed(GamepadButton::RightTrigger2)
+    });
+    if !mouse.just_pressed(MouseButton::Left) && !gamepad_throw {
         return;
     }
     let slot_index = slot.as_deref().map(|s| s.0).unwrap_or(1);

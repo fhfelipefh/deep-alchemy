@@ -605,13 +605,17 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                     ));
 
                     let controls_list = [
-                        ("[W, A, S, D]", "Movimentação em 1ª PESSOA"),
-                        ("[Shift]", "Correr (Consome Estamina)"),
-                        ("[Mouse]", "Olhar / Direção da Visão"),
-                        ("[E]", "Colher Ingrediente / Interagir"),
-                        ("[Botão Direito]", "Segurar Prop com Física"),
-                        ("[ESC]", "Pausar / Menu & Liberar Mouse"),
-                        ("[F11]", "Alternar Tela Cheia Instantaneamente"),
+                        ("[W, A, S, D] / [Analógico Esq.]", "Movimentação em 1ª PESSOA"),
+                        ("[Shift] / [L3 / B]", "Correr (Consome Estamina)"),
+                        ("[Espaço] / [A / Cruz]", "Pular com Squash & Stretch"),
+                        ("[Ctrl] / [R3 / D-Pad Baixo]", "Agachar"),
+                        ("[Mouse] / [Analógico Dir.]", "Olhar / Direção da Visão"),
+                        ("[L1 / R1] ou [D-Pad Esq/Dir]", "Trocar Poção na Hotbar"),
+                        ("[Botão Dir. / L2]", "Mirar Trajetória da Poção"),
+                        ("[Botão Esq. / R2]", "Lançar / Ativar Poção"),
+                        ("[E] / [X / Quadrado]", "Colher Ingrediente / Interagir"),
+                        ("[ESC] / [Start / Select]", "Pausar / Menu Principal"),
+                        ("[F11]", "Alternar Tela Cheia"),
                     ];
 
                     for (key, desc) in controls_list {
@@ -844,18 +848,23 @@ fn spawn_stepper_row<T: Component>(
 }
 
 pub fn handle_global_shortcuts(
-    keys: Res<ButtonInput<KeyCode>>,
+    keys: Option<Res<ButtonInput<KeyCode>>>,
+    gamepads: Query<&Gamepad>,
     current_state: Res<State<GameState>>,
     mut next_state: ResMut<NextState<GameState>>,
     mut nav: ResMut<MenuNavigation>,
     mut settings: ResMut<GameSettings>,
 ) {
-
-    if keys.just_pressed(KeyCode::F11) {
+    if keys.as_ref().map(|k| k.just_pressed(KeyCode::F11)).unwrap_or(false) {
         settings.fullscreen = !settings.fullscreen;
     }
 
-    if keys.just_pressed(KeyCode::Escape) {
+    let toggle_pause = keys.as_ref().map(|k| k.just_pressed(KeyCode::Escape)).unwrap_or(false)
+        || gamepads.iter().any(|g| {
+            g.just_pressed(GamepadButton::Start) || g.just_pressed(GamepadButton::Select)
+        });
+
+    if toggle_pause {
         match current_state.get() {
             GameState::InGame => {
                 nav.current_view = MenuView::Main;

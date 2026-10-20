@@ -1486,6 +1486,154 @@ fn test_unit_ragdoll_death_transition_and_viewmodel_hidden() {
     assert!(death_cam.is_some());
 }
 
+#[test]
+fn test_unit_gamepad_hotbar_cycling_r1_l1() {
+    let mut app = App::new();
+    app.init_resource::<deep_alchemy::ui::hud::ActiveHotbarSlot>();
+    app.add_event::<bevy::input::mouse::MouseWheel>();
+    app.add_systems(Update, deep_alchemy::ui::hud::handle_hotbar_input);
 
+    let mut gamepad = Gamepad::default();
+    gamepad.digital_mut().press(GamepadButton::RightTrigger);
+    let gp_entity = app.world_mut().spawn(gamepad).id();
 
+    app.update();
+    assert_eq!(app.world().resource::<deep_alchemy::ui::hud::ActiveHotbarSlot>().0, 2);
 
+    {
+        let mut gp = app.world_mut().get_mut::<Gamepad>(gp_entity).unwrap();
+        gp.digital_mut().clear();
+        gp.digital_mut().press(GamepadButton::LeftTrigger);
+    }
+    app.update();
+    assert_eq!(app.world().resource::<deep_alchemy::ui::hud::ActiveHotbarSlot>().0, 1);
+}
+
+#[test]
+fn test_unit_gamepad_aiming_l2_and_throwing_r2() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_plugins(bevy::asset::AssetPlugin::default());
+    app.add_plugins(avian3d::prelude::PhysicsPlugins::default());
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<ButtonInput<MouseButton>>();
+    app.init_resource::<deep_alchemy::alchemy::PotionCooldowns>();
+    app.init_resource::<deep_alchemy::ui::hud::ActiveHotbarSlot>();
+
+    let mut gamepad = Gamepad::default();
+    gamepad.digital_mut().press(GamepadButton::LeftTrigger2);
+    let gp_entity = app.world_mut().spawn(gamepad).id();
+
+    app.world_mut().spawn((
+        deep_alchemy::player::camera::Player,
+        deep_alchemy::player::camera::PlayerState::Active,
+        deep_alchemy::player::camera::LocomotionState::default(),
+    ));
+
+    app.world_mut().spawn((
+        deep_alchemy::player::camera::PlayerCamera,
+        Transform::from_xyz(0.0, 1.75, 0.0),
+        GlobalTransform::from_translation(Vec3::new(0.0, 1.75, 0.0)),
+    ));
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems((
+        deep_alchemy::alchemy::update_potion_aiming,
+        deep_alchemy::alchemy::spawn_potion_projectile,
+    ));
+    schedule.run(app.world_mut());
+
+    let mut indicator_query = app.world_mut().query::<&deep_alchemy::alchemy::TrajectoryAimIndicator>();
+    let count = indicator_query.iter(app.world()).count();
+    assert!(count >= 15);
+
+    {
+        let mut gp = app.world_mut().get_mut::<Gamepad>(gp_entity).unwrap();
+        gp.digital_mut().clear();
+        gp.digital_mut().press(GamepadButton::RightTrigger2);
+    }
+    schedule.run(app.world_mut());
+
+    let mut proj_query = app.world_mut().query::<&deep_alchemy::alchemy::PotionProjectile>();
+    assert_eq!(proj_query.iter(app.world()).count(), 1);
+}
+
+#[test]
+fn test_unit_gamepad_analog_movement_and_look() {
+    let mut app = App::new();
+    app.init_resource::<Time>();
+    app.add_event::<bevy::input::mouse::MouseMotion>();
+
+    let player = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            deep_alchemy::player::camera::PlayerState::Active,
+            deep_alchemy::player::camera::LocomotionState::default(),
+            Transform::from_xyz(0.0, 1.2, 0.0),
+            deep_alchemy::player::camera::Stamina {
+                current: 100.0,
+                max: 100.0,
+            },
+        ))
+        .id();
+
+    let _camera = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::PlayerCamera,
+            Transform::from_xyz(0.0, 1.75, 0.0),
+        ))
+        .id();
+
+    let mut gamepad = Gamepad::default();
+    gamepad.analog_mut().set(GamepadAxis::LeftStickY, 1.0);
+    gamepad.analog_mut().set(GamepadAxis::RightStickX, 1.0);
+    app.world_mut().spawn(gamepad);
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems((
+        deep_alchemy::player::controller::player_movement,
+        deep_alchemy::player::controller::player_look,
+    ));
+
+    for _ in 0..10 {
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_millis(16));
+        schedule.run(app.world_mut());
+    }
+
+    let player_tf = *app.world().get::<Transform>(player).unwrap();
+    assert!(player_tf.translation.z.abs() > 0.01);
+    let (yaw, _, _) = player_tf.rotation.to_euler(EulerRot::YXZ);
+    assert!(yaw.abs() > 0.001);
+
+    let loco = app.world().get::<deep_alchemy::player::camera::LocomotionState>(player).unwrap();
+    assert!(loco.mouse_look_delta.x.abs() > 0.1);
+}
+
+#[test]
+fn test_unit_gamepad_pause_toggle_start_button() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin));
+    app.init_state::<deep_alchemy::ui::menu::GameState>();
+    app.init_resource::<deep_alchemy::ui::menu::MenuNavigation>();
+    app.init_resource::<deep_alchemy::ui::menu::GameSettings>();
+    app.add_systems(Update, deep_alchemy::ui::menu::handle_global_shortcuts);
+
+    app.world_mut()
+        .resource_mut::<NextState<deep_alchemy::ui::menu::GameState>>()
+        .set(deep_alchemy::ui::menu::GameState::InGame);
+    app.update();
+
+    let mut gamepad = Gamepad::default();
+    gamepad.digital_mut().press(GamepadButton::Start);
+    app.world_mut().spawn(gamepad);
+
+    app.update();
+    app.update();
+    let state = app.world().resource::<State<deep_alchemy::ui::menu::GameState>>();
+    assert_eq!(*state.get(), deep_alchemy::ui::menu::GameState::MainMenu);
+}
