@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::time::TimeUpdateStrategy;
 use deep_alchemy::{
     alchemy::{AlchemicalEffectKind, EffectReceiverComponent, ThermalGeyser},
     player::{
@@ -944,6 +945,161 @@ fn test_unit_bioluminescent_mushroom_respiration_and_surge() {
 
     let light = app.world().get::<PointLight>(shroom_entity).unwrap();
     assert!(light.intensity > 0.0);
+}
+
+#[test]
+fn test_unit_hotbar_pop_animation_and_spring_damping() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_secs_f32(0.016)));
+    app.init_resource::<deep_alchemy::ui::hud::ActiveHotbarSlot>();
+    app.add_systems(
+        Update,
+        (
+            deep_alchemy::ui::hud::update_hotbar_selection_visuals,
+            deep_alchemy::ui::hud::update_hotbar_pop_animations,
+        ),
+    );
+
+    let slot_entity = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::ui::hud::HotbarSlotUi { slot_index: 2 },
+            deep_alchemy::ui::hud::HotbarPopAnimation::default(),
+            Node::default(),
+            Transform::default(),
+            BorderColor(deep_alchemy::ui::hud::COLOR_BORDER_GOLD),
+        ))
+        .id();
+
+    app.update();
+    app.update();
+
+    let anim_initial = app
+        .world()
+        .get::<deep_alchemy::ui::hud::HotbarPopAnimation>(slot_entity)
+        .unwrap();
+    assert_eq!(anim_initial.scale, 1.0);
+
+    app.world_mut().resource_mut::<deep_alchemy::ui::hud::ActiveHotbarSlot>().0 = 2;
+    app.update();
+
+    let anim_popped = *app
+        .world()
+        .get::<deep_alchemy::ui::hud::HotbarPopAnimation>(slot_entity)
+        .unwrap();
+    assert!(anim_popped.scale > 1.0);
+    assert!(anim_popped.flash_timer > 0.0);
+    let popped_scale = anim_popped.scale;
+
+    for _ in 0..10 {
+        app.update();
+    }
+
+    let anim_settling = app
+        .world()
+        .get::<deep_alchemy::ui::hud::HotbarPopAnimation>(slot_entity)
+        .unwrap();
+    assert!(anim_settling.scale < popped_scale);
+}
+
+#[test]
+fn test_unit_critical_health_heartbeat_pulse_and_vignette() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_secs_f32(0.016)));
+    app.add_systems(Update, deep_alchemy::ui::hud::update_critical_health_pulse);
+
+    let player_entity = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            deep_alchemy::player::camera::Health {
+                current: 100.0,
+                max: 100.0,
+            },
+        ))
+        .id();
+
+    let heart_entity = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::ui::hud::HealthHeartFill { index: 0 },
+            Transform::default(),
+        ))
+        .id();
+
+    let vignette_entity = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::ui::hud::CriticalVignette,
+            Visibility::Hidden,
+            BorderColor(Color::NONE),
+            BackgroundColor(Color::NONE),
+        ))
+        .id();
+
+    app.update();
+    app.update();
+
+    let tf_normal = app.world().get::<Transform>(heart_entity).unwrap();
+    assert_eq!(tf_normal.scale, Vec3::ONE);
+    let vis_normal = app.world().get::<Visibility>(vignette_entity).unwrap();
+    assert_eq!(*vis_normal, Visibility::Hidden);
+
+    app.world_mut()
+        .get_mut::<deep_alchemy::player::camera::Health>(player_entity)
+        .unwrap()
+        .current = 20.0;
+
+    for _ in 0..15 {
+        app.update();
+    }
+
+    let vis_crit = app.world().get::<Visibility>(vignette_entity).unwrap();
+    assert_eq!(*vis_crit, Visibility::Inherited);
+}
+
+#[test]
+fn test_unit_ballistic_aim_dynamic_droplets_and_splash_ring() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_plugins(bevy::asset::AssetPlugin::default());
+    app.add_plugins(avian3d::prelude::PhysicsPlugins::default());
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_secs_f32(0.016)));
+    app.init_resource::<ButtonInput<MouseButton>>();
+    app.init_resource::<deep_alchemy::ui::hud::ActiveHotbarSlot>();
+    app.init_resource::<deep_alchemy::alchemy::PotionCooldowns>();
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+
+    app.world_mut().spawn((
+        deep_alchemy::player::camera::PlayerCamera,
+        Camera::default(),
+        Transform::from_xyz(0.0, 1.6, 0.0),
+        GlobalTransform::from_translation(Vec3::new(0.0, 1.6, 0.0)),
+    ));
+
+    app.world_mut().spawn((
+        deep_alchemy::player::camera::Player,
+        deep_alchemy::player::camera::PlayerState::Active,
+        Transform::from_xyz(0.0, 0.0, 0.0),
+        GlobalTransform::from_translation(Vec3::ZERO),
+    ));
+
+    app.world_mut()
+        .resource_mut::<ButtonInput<MouseButton>>()
+        .press(MouseButton::Right);
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(deep_alchemy::alchemy::update_potion_aiming);
+    schedule.run(app.world_mut());
+
+    let mut indicators_query = app
+        .world_mut()
+        .query::<(&deep_alchemy::alchemy::TrajectoryAimIndicator, &Transform)>();
+    let indicator_count = indicators_query.iter(app.world()).count();
+    assert!(indicator_count > 10);
 }
 
 

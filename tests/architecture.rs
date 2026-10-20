@@ -1043,7 +1043,12 @@ fn test_architecture_full_game_app_schedule_integrity_and_disjoint_queries_gate(
         deep_alchemy::alchemy::update_glass_shards,
         deep_alchemy::alchemy::update_frozen_water_sheets,
         deep_alchemy::alchemy::update_ice_footprints,
+    ));
+    schedule.add_systems((
         deep_alchemy::ui::hud::update_hotbar_cooldown_visuals,
+        deep_alchemy::ui::hud::update_hotbar_selection_visuals,
+        deep_alchemy::ui::hud::update_hotbar_pop_animations,
+        deep_alchemy::ui::hud::update_critical_health_pulse,
         deep_alchemy::dungeon::modular_kit::update_grass_bending,
         deep_alchemy::dungeon::modular_kit::update_water_ripples,
         deep_alchemy::dungeon::modular_kit::update_bioluminescent_mushrooms,

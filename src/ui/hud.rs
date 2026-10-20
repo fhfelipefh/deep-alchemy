@@ -24,6 +24,8 @@ impl Plugin for HudPlugin {
                     update_hud_visibility,
                     handle_hotbar_input,
                     update_hotbar_selection_visuals,
+                    update_hotbar_pop_animations,
+                    update_critical_health_pulse,
                     update_hotbar_cooldown_visuals,
                     update_fps_counter,
                 ),
@@ -75,6 +77,39 @@ pub struct HotbarBottomStrip;
 
 #[derive(Component)]
 pub struct CrosshairLayer;
+
+#[derive(Component)]
+pub struct CriticalVignette;
+
+#[derive(Component, Debug, Clone, Copy)]
+pub struct HotbarPopAnimation {
+    pub scale: f32,
+    pub velocity: f32,
+    pub flash_timer: f32,
+    pub flash_color: Color,
+}
+
+impl Default for HotbarPopAnimation {
+    fn default() -> Self {
+        Self {
+            scale: 1.0,
+            velocity: 0.0,
+            flash_timer: 0.0,
+            flash_color: Color::NONE,
+        }
+    }
+}
+
+pub fn slot_potion_color(slot_index: usize) -> Color {
+    match slot_index {
+        1 => Color::srgb(0.2, 0.9, 0.4),
+        2 => Color::srgb(0.95, 0.25, 0.2),
+        3 => Color::srgb(1.0, 0.85, 0.2),
+        4 => Color::srgb(0.25, 0.65, 1.0),
+        5 => Color::srgb(0.92, 0.95, 1.0),
+        _ => Color::srgb(0.83, 0.69, 0.22),
+    }
+}
 
 pub const COLOR_BORDER_GOLD: Color = Color::srgb(0.83, 0.69, 0.22);
 pub const COLOR_BORDER_ACTIVE: Color = Color::srgb(1.0, 0.88, 0.40);
@@ -145,6 +180,7 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                                         height: Val::Px(26.0),
                                         ..default()
                                     },
+                                    Transform::default(),
                                 ));
                             }
                         });
@@ -173,6 +209,25 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                             ));
                         });
                 });
+
+            root.spawn((
+                CriticalVignette,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    right: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    bottom: Val::Px(0.0),
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    border: UiRect::all(Val::Px(14.0)),
+                    ..default()
+                },
+                BorderColor(Color::NONE),
+                BackgroundColor(Color::NONE),
+                Visibility::Hidden,
+                ZIndex(10),
+            ));
 
             root.spawn((
                 CrosshairLayer,
@@ -248,6 +303,7 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                             HotbarSlotUi {
                                 slot_index: slot_num,
                             },
+                            HotbarPopAnimation::default(),
                             Node {
                                 width: Val::Px(54.0),
                                 height: Val::Px(54.0),
@@ -261,6 +317,7 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 }),
                                 ..default()
                             },
+                            Transform::default(),
                             BackgroundColor(Color::srgba(0.06, 0.08, 0.12, 0.88)),
                             BorderColor(if slot_num == 1 {
                                 COLOR_BORDER_ACTIVE
@@ -402,21 +459,113 @@ fn handle_hotbar_input(
     }
 }
 
-fn update_hotbar_selection_visuals(
+pub fn update_hotbar_selection_visuals(
     active_slot: Res<ActiveHotbarSlot>,
-    mut slots_query: Query<(&HotbarSlotUi, &mut BorderColor, &mut Node)>,
+    mut slots_query: Query<(&HotbarSlotUi, &mut HotbarPopAnimation, &mut BorderColor, &mut Node)>,
 ) {
     if !active_slot.is_changed() {
         return;
     }
 
-    for (slot, mut border, mut node) in slots_query.iter_mut() {
+    for (slot, mut anim, mut border, mut node) in slots_query.iter_mut() {
         if slot.slot_index == active_slot.0 {
+            *border = BorderColor(COLOR_BORDER_ACTIVE);
+            node.border = UiRect::all(Val::Px(2.5));
+            anim.scale = 1.25;
+            anim.velocity = 0.0;
+            anim.flash_timer = 0.10;
+            anim.flash_color = slot_potion_color(slot.slot_index);
+        } else {
+            *border = BorderColor(COLOR_BORDER_GOLD);
+            node.border = UiRect::all(Val::Px(1.0));
+        }
+    }
+}
+
+pub fn update_hotbar_pop_animations(
+    time: Res<Time>,
+    active_slot: Res<ActiveHotbarSlot>,
+    mut slots_query: Query<(
+        &HotbarSlotUi,
+        &mut HotbarPopAnimation,
+        &mut Transform,
+        &mut BorderColor,
+        &mut Node,
+    )>,
+) {
+    let dt = time.delta_secs();
+    const SPRING_K: f32 = 120.0;
+    const DAMPING_C: f32 = 18.0;
+
+    for (slot, mut anim, mut tf, mut border, mut node) in slots_query.iter_mut() {
+        let diff = 1.0 - anim.scale;
+        let spring_acc = diff * SPRING_K - anim.velocity * DAMPING_C;
+        let new_vel = anim.velocity + spring_acc * dt;
+        anim.velocity = new_vel;
+        anim.scale += new_vel * dt;
+
+        let cur_scale = anim.scale.clamp(0.8, 1.4);
+        tf.scale = Vec3::new(cur_scale, cur_scale, 1.0);
+
+        if anim.flash_timer > 0.0 {
+            anim.flash_timer = (anim.flash_timer - dt).max(0.0);
+            let alpha = (anim.flash_timer / 0.10).clamp(0.0, 1.0);
+            *border = BorderColor(anim.flash_color.with_alpha(alpha));
+        } else if slot.slot_index == active_slot.0 {
             *border = BorderColor(COLOR_BORDER_ACTIVE);
             node.border = UiRect::all(Val::Px(2.5));
         } else {
             *border = BorderColor(COLOR_BORDER_GOLD);
             node.border = UiRect::all(Val::Px(1.0));
+        }
+    }
+}
+
+pub fn update_critical_health_pulse(
+    time: Res<Time>,
+    player_query: Query<&Health, With<Player>>,
+    mut hearts_query: Query<(&HealthHeartFill, &mut Transform), (Without<CriticalVignette>, Without<Player>)>,
+    mut vignette_query: Query<
+        (&mut Visibility, &mut BorderColor, &mut BackgroundColor),
+        (With<CriticalVignette>, Without<HealthHeartFill>, Without<Player>),
+    >,
+) {
+    let Ok(health) = player_query.get_single() else {
+        return;
+    };
+
+    let is_critical = health.current > 0.0 && health.current <= 40.0;
+
+    if is_critical {
+        let t = time.elapsed_secs();
+        let beat_cycle = (t * 1.4 * std::f32::consts::TAU).sin().max(0.0).powi(3);
+        let heart_scale = 1.0 + 0.28 * beat_cycle;
+
+        let active_hearts = (health.current / 20.0).ceil() as usize;
+        for (heart, mut tf) in hearts_query.iter_mut() {
+            if heart.index < active_hearts {
+                tf.scale = Vec3::new(heart_scale, heart_scale, 1.0);
+            } else {
+                tf.scale = Vec3::ONE;
+            }
+        }
+
+        for (mut vis, mut border, mut bg) in vignette_query.iter_mut() {
+            *vis = Visibility::Inherited;
+            let alpha = 0.22 * beat_cycle;
+            *border = BorderColor(Color::srgba(0.85, 0.05, 0.08, alpha * 1.4));
+            *bg = BackgroundColor(Color::srgba(0.65, 0.02, 0.04, alpha * 0.35));
+        }
+    } else {
+        for (_, mut tf) in hearts_query.iter_mut() {
+            if tf.scale != Vec3::ONE {
+                tf.scale = Vec3::ONE;
+            }
+        }
+        for (mut vis, _, _) in vignette_query.iter_mut() {
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+            }
         }
     }
 }
