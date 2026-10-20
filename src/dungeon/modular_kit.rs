@@ -109,7 +109,6 @@ pub fn mark_imported_tall_grass(
             let base_rot = tf_opt.map(|t| t.rotation).unwrap_or(Quat::IDENTITY);
             commands.entity(entity).insert((
                 TallGrassClump,
-                crate::alchemy::Flammable::with_duration(2.2),
                 GrassBending {
                     base_rotation: base_rot,
                     current_bend: Vec2::ZERO,
@@ -145,7 +144,6 @@ pub fn attach_mushroom_spore_emitters(
                 .insert((
                     MushroomCap,
                     MushroomSporeAttached,
-                    crate::alchemy::Flammable::with_duration(3.2),
                     BioluminescentMushroom {
                         base_intensity: 1.0,
                         base_color: Color::srgb(0.12, 0.96, 0.88),

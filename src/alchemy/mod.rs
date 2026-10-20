@@ -707,7 +707,7 @@ pub fn update_potion_projectiles(
             let is_fire_impact = projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat) || projectile.slot == 2;
             if is_fire_impact {
                 for (_f_entity, f_tf, mut flammable) in flammables.iter_mut() {
-                    if f_tf.translation.distance(impact_point) <= 2.8 {
+                    if f_tf.translation.length_squared() > 0.01 && f_tf.translation.distance(impact_point) <= 2.8 {
                         flammable.ignite();
                     }
                 }
@@ -995,7 +995,7 @@ pub fn update_potion_projectiles(
                 let is_fire_impact = projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat) || projectile.slot == 2;
                 if is_fire_impact {
                     for (_f_entity, f_tf, mut flammable) in flammables.iter_mut() {
-                        if f_tf.translation.distance(impact_point) <= 2.8 {
+                        if f_tf.translation.length_squared() > 0.01 && f_tf.translation.distance(impact_point) <= 2.8 {
                             flammable.ignite();
                         }
                     }
@@ -1209,7 +1209,7 @@ pub fn update_potion_puddles(
         let has_thermal = puddle.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat);
         if has_thermal {
             for (f_tf, mut flammable) in flammables.iter_mut() {
-                if f_tf.translation.distance(transform.translation) <= puddle.radius * 1.25 {
+                if f_tf.translation.length_squared() > 0.01 && f_tf.translation.distance(transform.translation) <= puddle.radius * 1.25 {
                     flammable.ignite();
                 }
             }
@@ -1543,12 +1543,12 @@ pub fn update_flammable_combustion(
 
     let burning_sources: Vec<Vec3> = flammables
         .iter()
-        .filter(|(_, _, f, _)| f.is_burning && f.elapsed >= 0.25)
+        .filter(|(_, tf, f, _)| f.is_burning && f.elapsed >= 0.25 && tf.translation.length_squared() > 0.01)
         .map(|(_, tf, _, _)| tf.translation)
         .collect();
 
     for (entity, mut transform, mut flammable, name) in flammables.iter_mut() {
-        if !flammable.is_burning {
+        if !flammable.is_burning && transform.translation.length_squared() > 0.01 {
             for source_pos in &burning_sources {
                 if transform.translation.distance(*source_pos) <= 0.95 {
                     flammable.ignite();
@@ -1623,6 +1623,9 @@ pub fn update_flammable_combustion(
         }
 
         if flammable.elapsed >= flammable.burn_duration {
+            flammable.is_burning = false;
+            flammable.elapsed = -999.0;
+
             let ash_pos = transform.translation + Vec3::new(0.0, 0.20, 0.0);
             commands.spawn((
                 Transform::from_translation(ash_pos),
@@ -1640,12 +1643,16 @@ pub fn update_flammable_combustion(
             if let Some(n) = name {
                 if n.as_str().contains("Bench") {
                     for obstacle_ent in &bench_obstacles {
-                        commands.entity(obstacle_ent).despawn_recursive();
+                        if let Some(mut obs_cmd) = commands.get_entity(obstacle_ent) {
+                            obs_cmd.despawn();
+                        }
                     }
                 }
             }
 
-            commands.entity(entity).despawn_recursive();
+            if let Some(ent_cmd) = commands.get_entity(entity) {
+                ent_cmd.despawn_recursive();
+            }
         }
     }
 }
