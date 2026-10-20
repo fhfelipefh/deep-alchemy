@@ -75,11 +75,14 @@ pub struct PotionProjectile {
 #[derive(Component, Debug)]
 pub struct TrajectoryAimIndicator;
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Clone)]
 pub struct PotionPuddle {
     pub color: Color,
     pub elapsed: f32,
     pub max_lifetime: f32,
+    pub radius: f32,
+    pub effects: Vec<ActiveEffect>,
+    pub is_wall: bool,
 }
 
 #[derive(Component, Debug)]
@@ -264,6 +267,44 @@ pub fn selected_potion_effects(slot: usize) -> (Color, Vec<ActiveEffect>) {
     )
 }
 
+pub fn mix_potion_colors(c1: Color, c2: Color) -> Color {
+    let s1 = c1.to_srgba();
+    let s2 = c2.to_srgba();
+    let r = (s1.red + s2.red) * 0.5;
+    let g = (s1.green + s2.green) * 0.5;
+    let b = (s1.blue + s2.blue) * 0.5;
+    let max_in = (s1.red.max(s1.green).max(s1.blue) + s2.red.max(s2.green).max(s2.blue)) * 0.5;
+    let max_mix = r.max(g).max(b).max(0.001);
+    let boost = (max_in / max_mix).min(1.4);
+    Color::srgb(
+        (r * boost).clamp(0.0, 1.0),
+        (g * boost).clamp(0.0, 1.0),
+        (b * boost).clamp(0.0, 1.0),
+    )
+}
+
+pub fn merge_potion_effects(base: &mut Vec<ActiveEffect>, incoming: &[ActiveEffect]) {
+    for inc in incoming {
+        if let Some(existing) = base.iter_mut().find(|e| e.kind == inc.kind) {
+            existing.magnitude = (existing.magnitude + inc.magnitude) * 0.85;
+            existing.duration = existing.duration.max(inc.duration);
+            existing.elapsed = 0.0;
+        } else {
+            base.push(inc.clone());
+        }
+    }
+    let has_heat = base.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat);
+    let has_frost = base.iter().any(|e| e.kind == AlchemicalEffectKind::Frost);
+    if has_heat && has_frost && !base.iter().any(|e| e.kind == AlchemicalEffectKind::Vaporize) {
+        base.push(ActiveEffect {
+            kind: AlchemicalEffectKind::Vaporize,
+            duration: 8.0,
+            elapsed: 0.0,
+            magnitude: 40.0,
+        });
+    }
+}
+
 pub fn update_potion_aiming(
     game_state: Option<Res<State<GameState>>>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -431,8 +472,9 @@ pub fn update_potion_projectiles(
     time: Res<Time>,
     spatial_query: SpatialQuery,
     mut projectiles: Query<(Entity, &mut Transform, &mut PotionProjectile)>,
+    mut puddles: Query<(Entity, &mut PotionPuddle, &mut Transform, &MeshMaterial3d<StandardMaterial>), Without<PotionProjectile>>,
     player_entities: Query<Entity, With<Player>>,
-    mut receivers: Query<(Entity, &Transform, &mut EffectReceiverComponent), Without<PotionProjectile>>,
+    mut receivers: Query<(Entity, &Transform, &mut EffectReceiverComponent), (Without<PotionProjectile>, Without<PotionPuddle>)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
@@ -469,43 +511,109 @@ pub fn update_potion_projectiles(
                 let impact_point = transform.translation + direction * hit.distance;
                 let impact_normal = hit.normal;
 
-                for (r_entity, r_tf, mut receiver) in receivers.iter_mut() {
-                    if r_entity == hit.entity || r_tf.translation.distance(impact_point) <= 2.8 {
-                        for effect in &projectile.effects {
-                            receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
+                let mut merged = false;
+                let mut final_color = projectile.color;
+
+                for (_p_ent, mut puddle, mut p_tf, mat_handle) in puddles.iter_mut() {
+                    let dist = p_tf.translation.distance(impact_point);
+                    if dist <= puddle.radius + 0.65 {
+                        final_color = mix_potion_colors(puddle.color, projectile.color);
+                        puddle.color = final_color;
+                        merge_potion_effects(&mut puddle.effects, &projectile.effects);
+                        puddle.radius = (puddle.radius + 0.38).min(2.8);
+                        puddle.elapsed = (puddle.elapsed * 0.30).max(0.0);
+                        if let Some(mat) = materials.get_mut(&mat_handle.0) {
+                            mat.base_color = final_color.with_alpha(0.88);
+                            mat.emissive = final_color.to_linear() * 1.9;
+                        }
+                        p_tf.scale = Vec3::new(puddle.radius, 1.0, puddle.radius);
+
+                        for (r_entity, r_tf, mut receiver) in receivers.iter_mut() {
+                            if r_entity == hit.entity || r_tf.translation.distance(p_tf.translation) <= puddle.radius * 1.6 {
+                                for effect in &puddle.effects {
+                                    receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
+                                }
+                            }
+                        }
+
+                        merged = true;
+                        break;
+                    }
+                }
+
+                if !merged {
+                    for (r_entity, r_tf, mut receiver) in receivers.iter_mut() {
+                        if r_entity == hit.entity || r_tf.translation.distance(impact_point) <= 2.8 {
+                            for effect in &projectile.effects {
+                                receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
+                            }
                         }
                     }
+
+                    let is_wall = impact_normal.y.abs() < 0.65;
+                    let (puddle_mesh_handle, puddle_rot, puddle_pos) = if is_wall {
+                        let grav = Vec3::NEG_Y;
+                        let down_proj = (grav - impact_normal * grav.dot(impact_normal)).normalize_or_zero();
+                        let down = if down_proj.length_squared() > 0.01 {
+                            down_proj
+                        } else {
+                            Vec3::NEG_Y
+                        };
+                        let right = impact_normal.cross(down).normalize();
+                        let rot = Quat::from_mat3(&Mat3::from_cols(right, impact_normal, -down));
+                        let mesh = meshes.add(create_wall_splatter_mesh(1.10, 32));
+                        (mesh, rot, impact_point + impact_normal * 0.038)
+                    } else {
+                        let rot = Quat::from_rotation_arc(Vec3::Y, impact_normal);
+                        let mesh = meshes.add(create_irregular_puddle_mesh(1.15, 32));
+                        (mesh, rot, impact_point + impact_normal * 0.055)
+                    };
+
+                    let puddle_mat = materials.add(StandardMaterial {
+                        base_color: projectile.color.with_alpha(0.88),
+                        emissive: projectile.color.to_linear() * 1.8,
+                        perceptual_roughness: 0.04,
+                        metallic: 0.15,
+                        reflectance: 0.98,
+                        cull_mode: None,
+                        double_sided: true,
+                        alpha_mode: AlphaMode::Blend,
+                        depth_bias: 600.0,
+                        ..default()
+                    });
+
+                    commands.spawn((
+                        PotionPuddle {
+                            color: projectile.color,
+                            elapsed: 0.0,
+                            max_lifetime: 75.0,
+                            radius: 1.15,
+                            effects: projectile.effects.clone(),
+                            is_wall,
+                        },
+                        Mesh3d(puddle_mesh_handle),
+                        MeshMaterial3d(puddle_mat),
+                        Transform::from_translation(puddle_pos)
+                            .with_rotation(puddle_rot)
+                            .with_scale(Vec3::new(0.15, 1.0, 0.15)),
+                    ));
                 }
 
                 commands.entity(entity).despawn();
 
-                let rotation = Quat::from_rotation_arc(Vec3::Y, impact_normal);
-                let puddle_mesh = meshes.add(create_irregular_puddle_mesh(1.15, 32));
-                let puddle_mat = materials.add(StandardMaterial {
-                    base_color: projectile.color.with_alpha(0.92),
-                    emissive: projectile.color.to_linear() * 1.8,
-                    perceptual_roughness: 0.04,
-                    metallic: 0.15,
-                    reflectance: 0.98,
-                    cull_mode: None,
-                    double_sided: true,
-                    alpha_mode: AlphaMode::Blend,
-                    depth_bias: 500.0,
-                    ..default()
-                });
-
-                commands.spawn((
-                    PotionPuddle {
-                        color: projectile.color,
-                        elapsed: 0.0,
-                        max_lifetime: 75.0,
-                    },
-                    Mesh3d(puddle_mesh),
-                    MeshMaterial3d(puddle_mat),
-                    Transform::from_translation(impact_point + impact_normal * 0.055)
-                        .with_rotation(rotation)
-                        .with_scale(Vec3::new(0.15, 1.0, 0.15)),
-                ));
+                let is_wall = impact_normal.y.abs() < 0.65;
+                let floor_y = if is_wall {
+                    let down_ray = spatial_query.cast_ray(
+                        impact_point + impact_normal * 0.15,
+                        Dir3::NEG_Y,
+                        25.0,
+                        true,
+                        &filter,
+                    );
+                    down_ray.map(|h| (impact_point.y - h.distance) + 0.048).unwrap_or(0.048)
+                } else {
+                    impact_point.y + 0.052
+                };
 
                 let tangent = if impact_normal.y.abs() < 0.9 {
                     impact_normal.cross(Vec3::Y).normalize()
@@ -514,22 +622,30 @@ pub fn update_potion_projectiles(
                 };
                 let bitangent = impact_normal.cross(tangent).normalize();
 
-                let c = projectile.color.to_srgba();
+                let c = final_color.to_srgba();
                 let stain_base = Color::srgb(
                     c.red * 0.78 + 0.18,
                     c.green * 0.78 + 0.18,
                     c.blue * 0.78 + 0.18,
                 );
-                let stain_emissive = projectile.color.to_linear() * 1.6;
+                let stain_emissive = final_color.to_linear() * 1.6;
 
                 for i in 0..16 {
                     let angle_noise = (i as f32 * 4.37).sin() * 0.35;
                     let phi = (i as f32) * (std::f32::consts::TAU / 16.0) + angle_noise;
                     let radial_speed = 0.8 + 1.4 * ((i as f32 * 2.3).sin().abs());
                     let normal_speed = 0.4 + 0.7 * ((i as f32 * 3.1).cos().abs());
-                    let shard_vel = tangent * (phi.cos() * radial_speed)
-                        + bitangent * (phi.sin() * radial_speed)
-                        + impact_normal * normal_speed;
+
+                    let shard_vel = if is_wall {
+                        let burst = impact_normal * (1.6 + 1.2 * ((i as f32 * 2.5).sin().abs()));
+                        let lateral = tangent * (phi.cos() * 1.4);
+                        let down_push = Vec3::NEG_Y * (0.6 + 0.8 * ((i as f32 * 3.1).cos().abs()));
+                        burst + lateral + down_push
+                    } else {
+                        tangent * (phi.cos() * radial_speed)
+                            + bitangent * (phi.sin() * radial_speed)
+                            + impact_normal * normal_speed
+                    };
 
                     let shard_scale = 0.08 + 0.09 * ((i as f32 * 1.7).sin().abs());
                     let shard_mesh = meshes.add(create_glass_shard_mesh(shard_scale, i));
@@ -556,9 +672,9 @@ pub fn update_potion_projectiles(
                             velocity: shard_vel,
                             lifetime: 0.0,
                             max_lifetime: 60.0 + 15.0 * ((i as f32 * 1.9).sin().abs()),
-                            ground_y: impact_point.y + 0.052,
+                            ground_y: floor_y,
                             settled: false,
-                            color: projectile.color,
+                            color: final_color,
                         },
                         Mesh3d(shard_mesh),
                         MeshMaterial3d(shard_mat),
@@ -581,14 +697,58 @@ pub fn update_potion_projectiles(
     }
 }
 
-fn update_potion_puddles(
+pub fn update_potion_puddles(
     time: Res<Time>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut puddles: Query<(Entity, &mut PotionPuddle, &mut Transform, &MeshMaterial3d<StandardMaterial>)>,
+    mut receivers: Query<(&Transform, &mut EffectReceiverComponent), Without<PotionPuddle>>,
     mut commands: Commands,
 ) {
     let dt = time.delta_secs();
+
+    let puddle_snapshots: Vec<(Entity, Vec3, f32, Color, Vec<ActiveEffect>)> = puddles
+        .iter()
+        .map(|(e, p, tf, _)| (e, tf.translation, p.radius, p.color, p.effects.clone()))
+        .collect();
+
+    let mut despawned = Vec::new();
+    for i in 0..puddle_snapshots.len() {
+        if despawned.contains(&puddle_snapshots[i].0) {
+            continue;
+        }
+        for j in (i + 1)..puddle_snapshots.len() {
+            if despawned.contains(&puddle_snapshots[j].0) {
+                continue;
+            }
+            let dist = puddle_snapshots[i].1.distance(puddle_snapshots[j].1);
+            if dist <= (puddle_snapshots[i].2 + puddle_snapshots[j].2) * 0.65 {
+                let absorbed_id = puddle_snapshots[j].0;
+                let absorbed_color = puddle_snapshots[j].3;
+                let absorbed_effects = puddle_snapshots[j].4.clone();
+                despawned.push(absorbed_id);
+                commands.entity(absorbed_id).despawn();
+
+                if let Ok((_, mut p_main, mut tf_main, mat_main)) = puddles.get_mut(puddle_snapshots[i].0) {
+                    let mixed_color = mix_potion_colors(p_main.color, absorbed_color);
+                    p_main.color = mixed_color;
+                    merge_potion_effects(&mut p_main.effects, &absorbed_effects);
+                    p_main.radius = (p_main.radius + 0.40).min(3.0);
+                    p_main.elapsed = (p_main.elapsed * 0.5).max(0.0);
+                    if let Some(mat) = materials.get_mut(&mat_main.0) {
+                        mat.base_color = mixed_color.with_alpha(0.88);
+                        mat.emissive = mixed_color.to_linear() * 1.9;
+                    }
+                    tf_main.scale = Vec3::new(p_main.radius, 1.0, p_main.radius);
+                }
+            }
+        }
+    }
+
     for (entity, mut puddle, mut transform, mat_handle) in puddles.iter_mut() {
+        if despawned.contains(&entity) {
+            continue;
+        }
+
         puddle.elapsed += dt;
         if puddle.elapsed >= puddle.max_lifetime {
             commands.entity(entity).despawn();
@@ -611,14 +771,22 @@ fn update_potion_puddles(
         let spread_duration = 0.38;
         let scale_spread = if puddle.elapsed < spread_duration {
             let t = (puddle.elapsed / spread_duration).clamp(0.0, 1.0);
-            0.15 + 0.85 * (1.0 - (1.0 - t).powi(3))
+            (0.15 + 0.85 * (1.0 - (1.0 - t).powi(3))) * puddle.radius
         } else if puddle.elapsed > fade_start {
             let progress = (puddle.elapsed - fade_start) / fade_duration;
-            1.0 - progress * 0.12
+            (1.0 - progress * 0.12) * puddle.radius
         } else {
-            1.0
+            puddle.radius
         };
         transform.scale = Vec3::new(scale_spread, 1.0, scale_spread);
+
+        for (r_tf, mut receiver) in receivers.iter_mut() {
+            if r_tf.translation.distance(transform.translation) <= puddle.radius * 1.25 {
+                for effect in &puddle.effects {
+                    receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
+                }
+            }
+        }
     }
 }
 
@@ -866,6 +1034,114 @@ pub fn create_irregular_puddle_mesh(base_radius: f32, segments: usize) -> Mesh {
         positions.push([x, -0.065, z]);
         normals.push([theta.cos(), 0.0, theta.sin()]);
         uvs.push([0.5 + (x / (base_radius * 2.4)), 0.5 + (z / (base_radius * 2.4))]);
+    }
+
+    let mid_start = 1 as u32;
+    let rim_start = (1 + segments) as u32;
+    let skirt_start = (1 + segments * 2) as u32;
+    let seg_u32 = segments as u32;
+
+    for i in 0..seg_u32 {
+        let next_i = (i + 1) % seg_u32;
+
+        let curr_mid = mid_start + i;
+        let next_mid = mid_start + next_i;
+        indices.extend_from_slice(&[0, next_mid, curr_mid]);
+
+        let curr_rim = rim_start + i;
+        let next_rim = rim_start + next_i;
+        indices.extend_from_slice(&[curr_mid, next_mid, next_rim]);
+        indices.extend_from_slice(&[curr_mid, next_rim, curr_rim]);
+
+        let curr_skirt = skirt_start + i;
+        let next_skirt = skirt_start + next_i;
+        indices.extend_from_slice(&[curr_rim, next_rim, next_skirt]);
+        indices.extend_from_slice(&[curr_rim, next_skirt, curr_skirt]);
+    }
+
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_indices(Indices::U32(indices))
+}
+
+pub fn create_wall_splatter_mesh(base_radius: f32, segments: usize) -> Mesh {
+    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(segments * 3 + 1);
+    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(segments * 3 + 1);
+    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(segments * 3 + 1);
+    let mut indices: Vec<u32> = Vec::with_capacity(segments * 18);
+
+    positions.push([0.0, 0.022, 0.0]);
+    normals.push([0.0, 1.0, 0.0]);
+    uvs.push([0.5, 0.5]);
+
+    for i in 0..segments {
+        let theta = (i as f32 / segments as f32) * std::f32::consts::TAU;
+        let sin_t = theta.sin();
+        let cos_t = theta.cos();
+        let base_pert = 1.0 + 0.28 * (theta * 3.0).sin() + 0.18 * (theta * 5.0 + 0.5).cos();
+        let pert = if sin_t < 0.0 {
+            let drip = (-sin_t).powf(1.6) * (0.80 + 0.70 * ((theta * 8.0).sin().max(0.0)).powi(3));
+            base_pert + drip
+        } else {
+            base_pert * 0.72
+        };
+
+        let r_mid = base_radius * pert * 0.60;
+        let x = r_mid * cos_t;
+        let z = r_mid * sin_t;
+        let wrap = -0.050 * (x / base_radius).powi(2);
+        let y = 0.016 + wrap;
+        positions.push([x, y, z]);
+        let norm = Vec3::new(cos_t * 0.15, 0.98, sin_t * 0.15).normalize();
+        normals.push([norm.x, norm.y, norm.z]);
+        uvs.push([0.5 + (x / (base_radius * 2.5)), 0.5 + (z / (base_radius * 2.5))]);
+    }
+
+    for i in 0..segments {
+        let theta = (i as f32 / segments as f32) * std::f32::consts::TAU;
+        let sin_t = theta.sin();
+        let cos_t = theta.cos();
+        let base_pert = 1.0 + 0.28 * (theta * 3.0).sin() + 0.18 * (theta * 5.0 + 0.5).cos();
+        let pert = if sin_t < 0.0 {
+            let drip = (-sin_t).powf(1.6) * (0.80 + 0.70 * ((theta * 8.0).sin().max(0.0)).powi(3));
+            base_pert + drip
+        } else {
+            base_pert * 0.72
+        };
+
+        let r_rim = base_radius * pert;
+        let x = r_rim * cos_t;
+        let z = r_rim * sin_t;
+        let wrap = -0.050 * (x / base_radius).powi(2);
+        let y = 0.008 + wrap;
+        positions.push([x, y, z]);
+        let norm = Vec3::new(cos_t * 0.28, 0.94, sin_t * 0.28).normalize();
+        normals.push([norm.x, norm.y, norm.z]);
+        uvs.push([0.5 + (x / (base_radius * 2.5)), 0.5 + (z / (base_radius * 2.5))]);
+    }
+
+    for i in 0..segments {
+        let theta = (i as f32 / segments as f32) * std::f32::consts::TAU;
+        let sin_t = theta.sin();
+        let cos_t = theta.cos();
+        let base_pert = 1.0 + 0.28 * (theta * 3.0).sin() + 0.18 * (theta * 5.0 + 0.5).cos();
+        let pert = if sin_t < 0.0 {
+            let drip = (-sin_t).powf(1.6) * (0.80 + 0.70 * ((theta * 8.0).sin().max(0.0)).powi(3));
+            base_pert + drip
+        } else {
+            base_pert * 0.72
+        };
+
+        let r_skirt = base_radius * pert * 1.03;
+        let x = r_skirt * cos_t;
+        let z = r_skirt * sin_t;
+        let wrap = -0.050 * (x / base_radius).powi(2);
+        let y = -0.055 + wrap;
+        positions.push([x, y, z]);
+        normals.push([cos_t, 0.0, sin_t]);
+        uvs.push([0.5 + (x / (base_radius * 2.5)), 0.5 + (z / (base_radius * 2.5))]);
     }
 
     let mid_start = 1 as u32;
@@ -1402,6 +1678,9 @@ mod tests {
                     color,
                     elapsed: 0.0,
                     max_lifetime: 75.0,
+                    radius: 1.0,
+                    effects: Vec::new(),
+                    is_wall: false,
                 },
                 MeshMaterial3d(mat_handle.clone()),
                 Transform::from_xyz(0.0, 0.0, 0.0),
@@ -1520,6 +1799,9 @@ mod tests {
                     color,
                     elapsed: 0.0,
                     max_lifetime: 75.0,
+                    radius: 1.0,
+                    effects: Vec::new(),
+                    is_wall: false,
                 },
                 MeshMaterial3d(puddle_mat),
                 Transform::from_xyz(0.0, 0.0, 0.0).with_scale(Vec3::new(0.15, 1.0, 0.15)),
@@ -1598,5 +1880,117 @@ mod tests {
             assert!(shard.count_vertices() >= 5);
         }
     }
+
+    #[test]
+    fn test_mix_potion_colors_and_effects_reactions() {
+        let red = Color::srgb(0.95, 0.12, 0.16);
+        let blue = Color::srgb(0.12, 0.42, 0.95);
+        let purple = mix_potion_colors(red, blue);
+        let s = purple.to_srgba();
+        assert!(s.red > 0.4 && s.blue > 0.4);
+
+        let mut effects = vec![ActiveEffect {
+            kind: AlchemicalEffectKind::ThermalHeat,
+            duration: 6.0,
+            elapsed: 0.0,
+            magnitude: 30.0,
+        }];
+        let incoming = vec![ActiveEffect {
+            kind: AlchemicalEffectKind::Frost,
+            duration: 5.0,
+            elapsed: 0.0,
+            magnitude: 25.0,
+        }];
+        merge_potion_effects(&mut effects, &incoming);
+        assert!(effects.iter().any(|e| e.kind == AlchemicalEffectKind::Vaporize));
+        assert!(effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat));
+        assert!(effects.iter().any(|e| e.kind == AlchemicalEffectKind::Frost));
+    }
+
+    #[test]
+    fn test_create_wall_splatter_mesh_downward_drips_and_wrap() {
+        let wall_mesh = create_wall_splatter_mesh(1.10, 32);
+        assert!(wall_mesh.count_vertices() >= 97);
+        let positions = wall_mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap();
+        if let bevy::render::mesh::VertexAttributeValues::Float32x3(pts) = positions {
+            let has_downward_drip = pts.iter().any(|p| p[2] < -1.1);
+            assert!(has_downward_drip);
+            let has_conformal_wrap = pts.iter().any(|p| p[1] < 0.0);
+            assert!(has_conformal_wrap);
+        }
+    }
+
+    #[test]
+    fn test_inter_puddle_merging_absorbs_and_expands() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(bevy::asset::AssetPlugin::default());
+        app.init_resource::<Assets<StandardMaterial>>();
+
+        let red = Color::srgb(0.95, 0.12, 0.16);
+        let blue = Color::srgb(0.12, 0.42, 0.95);
+
+        let mut materials = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
+        let mat1 = materials.add(StandardMaterial::default());
+        let mat2 = materials.add(StandardMaterial::default());
+
+        let p1 = app
+            .world_mut()
+            .spawn((
+                PotionPuddle {
+                    color: red,
+                    elapsed: 5.0,
+                    max_lifetime: 75.0,
+                    radius: 1.15,
+                    effects: vec![ActiveEffect {
+                        kind: AlchemicalEffectKind::ThermalHeat,
+                        duration: 6.0,
+                        elapsed: 0.0,
+                        magnitude: 25.0,
+                    }],
+                    is_wall: false,
+                },
+                MeshMaterial3d(mat1),
+                Transform::from_xyz(0.0, 0.0, 0.0),
+            ))
+            .id();
+
+        let p2 = app
+            .world_mut()
+            .spawn((
+                PotionPuddle {
+                    color: blue,
+                    elapsed: 1.0,
+                    max_lifetime: 75.0,
+                    radius: 1.15,
+                    effects: vec![ActiveEffect {
+                        kind: AlchemicalEffectKind::Frost,
+                        duration: 5.0,
+                        elapsed: 0.0,
+                        magnitude: 20.0,
+                    }],
+                    is_wall: false,
+                },
+                MeshMaterial3d(mat2),
+                Transform::from_xyz(0.5, 0.0, 0.0),
+            ))
+            .id();
+
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_millis(50));
+        app.insert_resource(time);
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(update_potion_puddles);
+        schedule.run(app.world_mut());
+
+        assert!(app.world().get_entity(p1).is_ok());
+        assert!(app.world().get_entity(p2).is_err());
+
+        let mixed_puddle = app.world().get::<PotionPuddle>(p1).unwrap();
+        assert!(mixed_puddle.radius > 1.15);
+        assert!(mixed_puddle.effects.iter().any(|e| e.kind == AlchemicalEffectKind::Vaporize));
+    }
 }
+
 
