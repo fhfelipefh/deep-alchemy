@@ -160,7 +160,7 @@ pub fn update_particles(
     }
 }
 
-mod fastrand {
+pub(crate) mod fastrand {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEED: AtomicU64 = AtomicU64::new(88172645463325252);
     pub fn f32() -> f32 {

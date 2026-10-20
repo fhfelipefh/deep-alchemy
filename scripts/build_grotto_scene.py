@@ -51,7 +51,7 @@ mat_fine_rim = create_pbr_material("M_Fine_Stone_Rim", (0.22, 0.24, 0.26), rough
 mat_river_pebble = create_pbr_material("M_River_Pebble", (0.32, 0.34, 0.36), roughness=0.65)
 mat_angular_rock = create_pbr_material("M_Angular_Rock", (0.20, 0.23, 0.26), roughness=0.88)
 
-mat_wet_submerged_rock = create_pbr_material("M_Wet_Submerged_Rock", (0.04, 0.08, 0.12), roughness=0.22, metallic=0.04)
+mat_wet_submerged_rock = create_pbr_material("M_Wet_Submerged_Rock", (1.0, 1.0, 1.0), roughness=0.22, metallic=0.04, use_vertex_color=True)
 mat_submerged_crater = create_pbr_material("M_Submerged_Crater", (0.02, 0.05, 0.08), roughness=0.30)
 mat_leaf_autumn = create_pbr_material("M_Leaf_Autumn", (0.52, 0.30, 0.08), roughness=0.72)
 mat_leaf_olive = create_pbr_material("M_Leaf_Olive", (0.24, 0.38, 0.14), roughness=0.70)

@@ -94,6 +94,7 @@ fn handle_screenshot_test_lifecycle(
                 lifetime: 5.0,
                 color: Color::srgb(0.98, 0.22, 0.28),
                 slot: 1,
+                hitstop_timer: 0.0,
             },
         ));
     } else if *counter == 20 {

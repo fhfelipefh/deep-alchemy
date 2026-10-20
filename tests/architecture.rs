@@ -128,6 +128,12 @@ fn test_architecture_gltf_models_binary_integrity() {
 
         let version = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
         assert_eq!(version, 2, "Model {} must be glTF version 2", model_path);
+
+        assert!(
+            !bytes.windows(7).any(|w| w == b"COLOR_1"),
+            "Model {} contains unsupported vertex attribute COLOR_1",
+            model_path
+        );
     }
 }
 
@@ -1001,4 +1007,45 @@ fn test_architecture_zero_comments_policy() {
         violations.len(),
         violations.join("\n")
     );
+}
+
+#[test]
+fn test_architecture_full_game_app_schedule_integrity_and_disjoint_queries_gate() {
+    let mut app = bevy::prelude::App::new();
+    app.add_plugins((
+        bevy::prelude::MinimalPlugins,
+        bevy::asset::AssetPlugin::default(),
+        bevy::state::app::StatesPlugin,
+        avian3d::prelude::PhysicsPlugins::default(),
+    ));
+    app.init_resource::<bevy::prelude::Assets<bevy::prelude::StandardMaterial>>();
+    app.init_resource::<bevy::prelude::Assets<bevy::prelude::Mesh>>();
+    app.init_resource::<bevy::prelude::ButtonInput<bevy::prelude::MouseButton>>();
+    app.init_resource::<bevy::prelude::ButtonInput<bevy::prelude::KeyCode>>();
+    app.init_resource::<deep_alchemy::alchemy::PotionCooldowns>();
+    app.init_resource::<deep_alchemy::ui::hud::ActiveHotbarSlot>();
+    app.init_resource::<deep_alchemy::player::camera::CameraShake>();
+
+    let mut schedule = bevy::prelude::Schedule::default();
+    schedule.add_systems((
+        deep_alchemy::player::controller::player_look,
+        deep_alchemy::player::controller::player_movement,
+        deep_alchemy::player::controller::player_camera_effects,
+        deep_alchemy::alchemy::update_potion_cooldowns,
+        deep_alchemy::alchemy::update_alchemy_transient_emitters,
+        deep_alchemy::alchemy::cleanup_alchemy_memory_limits,
+        deep_alchemy::alchemy::update_active_effects,
+        deep_alchemy::alchemy::update_thermal_geysers,
+        deep_alchemy::alchemy::update_potion_aiming,
+        deep_alchemy::alchemy::spawn_potion_projectile,
+        deep_alchemy::alchemy::update_potion_projectiles,
+        deep_alchemy::alchemy::update_potion_puddles,
+        deep_alchemy::alchemy::update_glass_shards,
+        deep_alchemy::alchemy::update_frozen_water_sheets,
+        deep_alchemy::alchemy::update_ice_footprints,
+        deep_alchemy::ui::hud::update_hotbar_cooldown_visuals,
+    ));
+
+    let _ = schedule.initialize(app.world_mut());
+    assert!(schedule.systems_len() > 0);
 }

@@ -24,6 +24,7 @@ impl Plugin for HudPlugin {
                     update_hud_visibility,
                     handle_hotbar_input,
                     update_hotbar_selection_visuals,
+                    update_hotbar_cooldown_visuals,
                     update_fps_counter,
                 ),
             );
@@ -416,6 +417,24 @@ fn update_hotbar_selection_visuals(
         } else {
             *border = BorderColor(COLOR_BORDER_GOLD);
             node.border = UiRect::all(Val::Px(1.0));
+        }
+    }
+}
+
+pub fn update_hotbar_cooldown_visuals(
+    cooldowns: Option<Res<crate::alchemy::PotionCooldowns>>,
+    mut icons_query: Query<(&PotionSlotIcon, &mut ImageNode)>,
+) {
+    let Some(cooldowns) = cooldowns else {
+        return;
+    };
+    for (icon, mut img) in icons_query.iter_mut() {
+        let idx = icon.slot_index.clamp(1, 5);
+        let timer = cooldowns.timers[idx];
+        if timer > 0.0 {
+            img.color = Color::srgba(0.38, 0.40, 0.44, 0.40);
+        } else {
+            img.color = Color::WHITE;
         }
     }
 }

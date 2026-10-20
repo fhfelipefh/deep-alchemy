@@ -32,6 +32,37 @@ pub struct Stamina {
     pub max: f32,
 }
 
+#[derive(Resource, Debug, Clone)]
+pub struct CameraShake {
+    pub trauma: f32,
+    pub direction: Vec3,
+    pub timer: f32,
+}
+
+impl Default for CameraShake {
+    fn default() -> Self {
+        Self {
+            trauma: 0.0,
+            direction: Vec3::ZERO,
+            timer: 0.0,
+        }
+    }
+}
+
+impl CameraShake {
+    pub fn add_trauma(&mut self, amount: f32, direction: Vec3) {
+        self.trauma = (self.trauma + amount).clamp(0.0, 1.0);
+        if direction.length_squared() > 1e-4 {
+            let dir_norm = direction.normalize();
+            self.direction = if self.direction.length_squared() > 1e-4 {
+                (self.direction + dir_norm).normalize()
+            } else {
+                dir_norm
+            };
+        }
+    }
+}
+
 #[derive(Component, Debug, Clone)]
 pub struct LocomotionState {
     pub is_sprinting: bool,
@@ -42,6 +73,23 @@ pub struct LocomotionState {
     pub head_bob_timer: f32,
     pub current_speed: f32,
     pub horizontal_velocity: Vec2,
+    pub is_in_water: bool,
+    pub is_frozen: bool,
+    pub freeze_timer: f32,
+    pub is_on_ice: bool,
+    pub footstep_side: bool,
+    pub distance_since_footprint: f32,
+    pub distance_since_footstep: f32,
+    pub coyote_timer: f32,
+    pub jump_buffer_timer: f32,
+    pub camera_landing_dip: f32,
+    pub squash_scale: Vec3,
+    pub takeoff_timer: f32,
+    pub last_fall_velocity: f32,
+    pub camera_roll: f32,
+    pub target_camera_roll: f32,
+    pub throw_windup: f32,
+    pub throw_recoil: f32,
 }
 
 impl Default for LocomotionState {
@@ -55,6 +103,23 @@ impl Default for LocomotionState {
             head_bob_timer: 0.0,
             current_speed: 4.2,
             horizontal_velocity: Vec2::ZERO,
+            is_in_water: false,
+            is_frozen: false,
+            freeze_timer: 0.0,
+            is_on_ice: false,
+            footstep_side: false,
+            distance_since_footprint: 0.0,
+            distance_since_footstep: 0.0,
+            coyote_timer: 0.0,
+            jump_buffer_timer: 0.0,
+            camera_landing_dip: 0.0,
+            squash_scale: Vec3::ONE,
+            takeoff_timer: 0.0,
+            last_fall_velocity: 0.0,
+            camera_roll: 0.0,
+            target_camera_roll: 0.0,
+            throw_windup: 0.0,
+            throw_recoil: 0.0,
         }
     }
 }
@@ -83,6 +148,7 @@ pub fn setup_player(mut commands: Commands, asset_server: Res<AssetServer>) {
             Player,
             PlayerState::Active,
             LocomotionState::default(),
+            crate::alchemy::EffectReceiverComponent::default(),
             Health {
                 current: 100.0,
                 max: 100.0,

@@ -10,6 +10,7 @@ pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<interaction::InteractionState>()
+            .init_resource::<camera::CameraShake>()
             .add_systems(Startup, camera::setup_player)
             .add_systems(
                 Update,
@@ -17,6 +18,7 @@ impl Plugin for PlayerPlugin {
                     controller::player_movement,
                     controller::player_look,
                     controller::player_camera_effects,
+                    controller::update_player_body_squash,
                     interaction::player_raycast_interaction,
                     interaction::player_physics_grab,
                     ragdoll::check_player_death,

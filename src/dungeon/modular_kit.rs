@@ -43,6 +43,9 @@ pub enum ObstacleShape {
     Cuboid { half_extents: Vec3 },
 }
 
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct LakeWaterPool;
+
 pub struct DungeonPlugin;
 
 impl Plugin for DungeonPlugin {
@@ -433,9 +436,38 @@ pub fn setup_cavern_world(
     }
 
     commands.spawn((
-        Transform::from_xyz(0.0, 0.0, 0.0),
+        Name::new("Collider_Floor_Path_Entrance"),
+        Transform::from_xyz(0.0, -1.0, 0.0),
         RigidBody::Static,
-        Collider::half_space(Vec3::Y),
+        Collider::cuboid(16.0, 2.0, 10.0),
+    ));
+
+    commands.spawn((
+        Name::new("Collider_Floor_Shore_Left"),
+        Transform::from_xyz(-6.5, -1.0, -8.5),
+        RigidBody::Static,
+        Collider::cuboid(6.0, 2.0, 18.0),
+    ));
+
+    commands.spawn((
+        Name::new("Collider_Floor_Shore_Right"),
+        Transform::from_xyz(6.5, -1.0, -8.5),
+        RigidBody::Static,
+        Collider::cuboid(6.0, 2.0, 18.0),
+    ));
+
+    commands.spawn((
+        Name::new("Collider_Floor_Waterfall_Rear"),
+        Transform::from_xyz(0.0, -1.0, -14.5),
+        RigidBody::Static,
+        Collider::cuboid(18.0, 2.0, 6.0),
+    ));
+
+    commands.spawn((
+        Name::new("Collider_Floor_Lake_Bed"),
+        Transform::from_xyz(0.0, -4.2, -8.5),
+        RigidBody::Static,
+        Collider::cuboid(12.0, 2.0, 12.0),
     ));
 
     commands.spawn((
@@ -638,6 +670,7 @@ pub fn setup_cavern_world(
         })),
         bevy::pbr::NotShadowCaster,
         bevy::pbr::NotShadowReceiver,
+        LakeWaterPool,
         Transform::from_xyz(0.0, 0.18, -8.5),
     ));
 
@@ -902,6 +935,33 @@ pub fn animate_waterfall_mesh(
             mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, new_positions);
         }
     }
+}
+
+pub fn get_grotto_terrain_height(x: f32, z: f32) -> f32 {
+    let lake_center_x = 0.0;
+    let lake_center_z = -8.5;
+    let lake_radius = 5.3;
+    let dx = x - lake_center_x;
+    let dz = z - lake_center_z;
+    let dist_lake = (dx * dx + dz * dz).sqrt();
+
+    if dist_lake < lake_radius {
+        let u = dist_lake / lake_radius;
+        let funnel_depth = (1.0 - u).max(0.0).powf(1.75) * 3.10 + (1.0 - u) * 0.35;
+        0.04 - funnel_depth
+    } else if dist_lake < lake_radius + 1.8 {
+        let rim_blend = (dist_lake - lake_radius) / 1.8;
+        0.04 + rim_blend * 0.03
+    } else {
+        0.04
+    }
+}
+
+pub fn is_in_lake_water(pos: Vec3) -> bool {
+    let dx = pos.x;
+    let dz = pos.z - (-8.5);
+    let dist = (dx * dx + dz * dz).sqrt();
+    dist <= 5.80 && pos.y <= 0.22
 }
 
 #[cfg(test)]
