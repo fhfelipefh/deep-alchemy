@@ -355,7 +355,7 @@ fn test_architecture_ui_utf8_strings_no_mojibake() {
 
     let menu_content = fs::read_to_string("src/ui/menu.rs").unwrap();
     assert!(menu_content.contains("CONFIGURAÇÕES"));
-    assert!(menu_content.contains("EXPLORAÇÃO"));
+    assert!(menu_content.contains("CONTINUAR"));
     assert!(menu_content.contains("1ª PESSOA"));
     assert!(menu_content.contains("Visão"));
 }

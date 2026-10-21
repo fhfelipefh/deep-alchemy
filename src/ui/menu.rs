@@ -1212,7 +1212,7 @@ pub fn update_menu_subview_visibility(
 
     for mut txt in start_btn_query.iter_mut() {
         txt.0 = if nav.has_started {
-            "CONTINUAR EXPLORAÇÃO".to_string()
+            "CONTINUAR".to_string()
         } else {
             "INICIAR JORNADA".to_string()
         };
@@ -1892,7 +1892,7 @@ mod tests {
         );
         assert_eq!(
             app.world().get::<Text>(btn_text).unwrap().0,
-            "CONTINUAR EXPLORAÇÃO"
+            "CONTINUAR"
         );
 
         app.world_mut()
