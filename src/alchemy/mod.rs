@@ -919,7 +919,7 @@ fn spawn_alchemical_puddle(
         } else {
             Vec3::NEG_Y
         };
-        let right = impact_normal.cross(down).normalize();
+        let right = down.cross(impact_normal).normalize();
         let rot = Quat::from_mat3(&Mat3::from_cols(right, impact_normal, -down));
         let mesh = meshes.add(create_wall_splatter_mesh(1.10, 32));
         (mesh, rot, impact_point + impact_normal * 0.038)
@@ -2189,20 +2189,45 @@ pub fn create_footprint_mesh(length: f32, width: f32) -> Mesh {
 pub fn create_lathe_mesh(profile: &[(f32, f32)], segments: usize) -> Mesh {
     let mut positions: Vec<[f32; 3]> = Vec::new();
     let mut normals: Vec<[f32; 3]> = Vec::new();
+    let mut uvs: Vec<[f32; 2]> = Vec::new();
     let mut indices: Vec<u32> = Vec::new();
 
-    for j in 0..profile.len() {
+    let n_pts = profile.len();
+    if n_pts < 2 || segments < 3 {
+        return Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    }
+
+    let mut profile_normals = Vec::with_capacity(n_pts);
+    for j in 0..n_pts {
+        let (dr, dy) = if j == 0 {
+            (profile[1].0 - profile[0].0, profile[1].1 - profile[0].1)
+        } else if j == n_pts - 1 {
+            (profile[j].0 - profile[j - 1].0, profile[j].1 - profile[j - 1].1)
+        } else {
+            (profile[j + 1].0 - profile[j - 1].0, profile[j + 1].1 - profile[j - 1].1)
+        };
+        let len = (dr * dr + dy * dy).sqrt().max(1e-6);
+        profile_normals.push((dy / len, -dr / len));
+    }
+
+    for j in 0..n_pts {
         let (r, y) = profile[j];
+        let (nr_2d, ny_2d) = profile_normals[j];
+        let v = j as f32 / (n_pts - 1) as f32;
+
         for i in 0..segments {
             let theta = i as f32 / segments as f32 * std::f32::consts::TAU;
             let cos_t = theta.cos();
             let sin_t = theta.sin();
+            let u = i as f32 / segments as f32;
+
             positions.push([r * cos_t, y, r * sin_t]);
-            normals.push([cos_t, 0.0, sin_t]);
+            normals.push([nr_2d * cos_t, ny_2d, nr_2d * sin_t]);
+            uvs.push([u, v]);
         }
     }
 
-    for j in 0..(profile.len() - 1) {
+    for j in 0..(n_pts - 1) {
         let r0 = (j * segments) as u32;
         let r1 = ((j + 1) * segments) as u32;
         for i in 0..segments {
@@ -2219,61 +2244,343 @@ pub fn create_lathe_mesh(profile: &[(f32, f32)], segments: usize) -> Mesh {
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
         .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
         .with_inserted_indices(Indices::U32(indices))
+}
+
+pub fn create_ring_mesh(radius: f32, tube_radius: f32, radial_segments: usize, tubular_segments: usize) -> Mesh {
+    let mut positions: Vec<[f32; 3]> = Vec::new();
+    let mut normals: Vec<[f32; 3]> = Vec::new();
+    let mut uvs: Vec<[f32; 2]> = Vec::new();
+    let mut indices: Vec<u32> = Vec::new();
+
+    for j in 0..tubular_segments {
+        let v = j as f32 / tubular_segments as f32 * std::f32::consts::TAU;
+        let cos_v = v.cos();
+        let sin_v = v.sin();
+
+        for i in 0..radial_segments {
+            let u = i as f32 / radial_segments as f32 * std::f32::consts::TAU;
+            let cos_u = u.cos();
+            let sin_u = u.sin();
+
+            let x = (radius + tube_radius * cos_v) * cos_u;
+            let y = tube_radius * sin_v;
+            let z = (radius + tube_radius * cos_v) * sin_u;
+
+            let nx = cos_v * cos_u;
+            let ny = sin_v;
+            let nz = cos_v * sin_u;
+
+            positions.push([x, y, z]);
+            normals.push([nx, ny, nz]);
+            uvs.push([i as f32 / radial_segments as f32, j as f32 / tubular_segments as f32]);
+        }
+    }
+
+    for j in 0..tubular_segments {
+        let next_j = (j + 1) % tubular_segments;
+        let r0 = (j * radial_segments) as u32;
+        let r1 = (next_j * radial_segments) as u32;
+
+        for i in 0..radial_segments {
+            let next_i = ((i + 1) % radial_segments) as u32;
+            let i = i as u32;
+            let a = r0 + i;
+            let b = r0 + next_i;
+            let c = r1 + next_i;
+            let d = r1 + i;
+            indices.extend_from_slice(&[a, b, c, a, c, d]);
+        }
+    }
+
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_indices(Indices::U32(indices))
+}
+
+pub fn create_held_flask_mesh(slot: usize) -> Mesh {
+    match slot {
+        2 => {
+            let profile = [
+                (0.006, -0.048),
+                (0.046, -0.048),
+                (0.052, -0.042),
+                (0.042, -0.015),
+                (0.031, 0.015),
+                (0.019, 0.046),
+                (0.019, 0.082),
+                (0.024, 0.085),
+                (0.020, 0.089),
+            ];
+            create_lathe_mesh(&profile, 20)
+        }
+        3 => {
+            let profile = [
+                (0.006, -0.050),
+                (0.032, -0.050),
+                (0.048, -0.036),
+                (0.048, 0.024),
+                (0.025, 0.050),
+                (0.022, 0.052),
+                (0.022, 0.072),
+                (0.026, 0.075),
+                (0.022, 0.077),
+            ];
+            create_lathe_mesh(&profile, 8)
+        }
+        4 => {
+            let profile = [
+                (0.006, -0.052),
+                (0.026, -0.048),
+                (0.045, -0.024),
+                (0.046, -0.004),
+                (0.037, 0.022),
+                (0.024, 0.046),
+                (0.016, 0.072),
+                (0.016, 0.096),
+                (0.020, 0.099),
+                (0.017, 0.103),
+            ];
+            create_lathe_mesh(&profile, 20)
+        }
+        5 => {
+            let profile = [
+                (0.005, -0.060),
+                (0.022, -0.038),
+                (0.044, -0.012),
+                (0.044, 0.032),
+                (0.024, 0.062),
+                (0.018, 0.082),
+                (0.022, 0.085),
+                (0.019, 0.089),
+            ];
+            create_lathe_mesh(&profile, 6)
+        }
+        _ => {
+            let profile = [
+                (0.005, -0.046),
+                (0.024, -0.043),
+                (0.040, -0.028),
+                (0.048, -0.002),
+                (0.045, 0.024),
+                (0.030, 0.044),
+                (0.017, 0.054),
+                (0.017, 0.082),
+                (0.021, 0.085),
+                (0.018, 0.089),
+            ];
+            create_lathe_mesh(&profile, 20)
+        }
+    }
+}
+
+pub fn create_held_fluid_mesh(slot: usize) -> Mesh {
+    match slot {
+        2 => {
+            let profile = [
+                (0.005, -0.042),
+                (0.040, -0.042),
+                (0.045, -0.037),
+                (0.035, -0.012),
+                (0.025, 0.014),
+                (0.015, 0.038),
+            ];
+            create_lathe_mesh(&profile, 20)
+        }
+        3 => {
+            let profile = [
+                (0.005, -0.045),
+                (0.026, -0.045),
+                (0.042, -0.032),
+                (0.042, 0.018),
+                (0.021, 0.036),
+            ];
+            create_lathe_mesh(&profile, 8)
+        }
+        4 => {
+            let profile = [
+                (0.005, -0.046),
+                (0.021, -0.042),
+                (0.039, -0.020),
+                (0.040, -0.002),
+                (0.031, 0.018),
+                (0.019, 0.038),
+                (0.012, 0.052),
+            ];
+            create_lathe_mesh(&profile, 20)
+        }
+        5 => {
+            let profile = [
+                (0.004, -0.052),
+                (0.018, -0.034),
+                (0.038, -0.010),
+                (0.038, 0.025),
+                (0.019, 0.048),
+            ];
+            create_lathe_mesh(&profile, 6)
+        }
+        _ => {
+            let profile = [
+                (0.004, -0.040),
+                (0.020, -0.037),
+                (0.034, -0.024),
+                (0.041, -0.002),
+                (0.038, 0.020),
+                (0.024, 0.036),
+                (0.013, 0.046),
+            ];
+            create_lathe_mesh(&profile, 20)
+        }
+    }
+}
+
+pub fn create_held_stopper_mesh(slot: usize) -> Mesh {
+    match slot {
+        2 => {
+            let profile = [
+                (0.016, 0.080),
+                (0.018, 0.088),
+                (0.025, 0.102),
+                (0.018, 0.114),
+                (0.004, 0.118),
+            ];
+            create_lathe_mesh(&profile, 8)
+        }
+        3 => {
+            let profile = [
+                (0.019, 0.074),
+                (0.028, 0.077),
+                (0.029, 0.088),
+                (0.022, 0.092),
+                (0.005, 0.093),
+            ];
+            create_lathe_mesh(&profile, 8)
+        }
+        4 => {
+            let profile = [
+                (0.013, 0.094),
+                (0.018, 0.108),
+                (0.004, 0.126),
+            ];
+            create_lathe_mesh(&profile, 6)
+        }
+        5 => {
+            let profile = [
+                (0.015, 0.082),
+                (0.016, 0.094),
+                (0.015, 0.106),
+                (0.004, 0.124),
+            ];
+            create_lathe_mesh(&profile, 6)
+        }
+        _ => {
+            let profile = [
+                (0.013, 0.076),
+                (0.0155, 0.086),
+                (0.0185, 0.102),
+                (0.0170, 0.108),
+                (0.004, 0.110),
+            ];
+            create_lathe_mesh(&profile, 16)
+        }
+    }
+}
+
+pub fn create_held_accent_mesh(slot: usize) -> Option<Mesh> {
+    match slot {
+        1 => {
+            let profile = [
+                (0.0172, 0.059),
+                (0.0195, 0.061),
+                (0.0192, 0.064),
+                (0.0198, 0.067),
+                (0.0192, 0.070),
+                (0.0172, 0.072),
+            ];
+            Some(create_lathe_mesh(&profile, 18))
+        }
+        2 => {
+            let profile = [
+                (0.0192, 0.065),
+                (0.0220, 0.067),
+                (0.0220, 0.075),
+                (0.0192, 0.077),
+            ];
+            Some(create_lathe_mesh(&profile, 18))
+        }
+        3 => {
+            let profile = [
+                (0.0225, 0.052),
+                (0.0255, 0.054),
+                (0.0255, 0.068),
+                (0.0225, 0.070),
+            ];
+            Some(create_lathe_mesh(&profile, 8))
+        }
+        _ => None,
+    }
 }
 
 pub fn create_potion_flask_mesh(slot: usize) -> Mesh {
     match slot {
         2 => {
             let profile = [
-                (0.01, -0.12),
-                (0.14, -0.11),
-                (0.11, -0.04),
-                (0.06, 0.05),
+                (0.008, -0.12),
+                (0.12, -0.12),
+                (0.14, -0.10),
+                (0.11, -0.03),
+                (0.07, 0.04),
                 (0.04, 0.12),
                 (0.055, 0.14),
                 (0.035, 0.15),
-                (0.01, 0.18),
+                (0.015, 0.18),
             ];
-            create_lathe_mesh(&profile, 14)
+            create_lathe_mesh(&profile, 18)
         }
         3 => {
             let profile = [
                 (0.01, -0.12),
-                (0.10, -0.11),
-                (0.10, 0.04),
-                (0.08, 0.08),
-                (0.045, 0.12),
-                (0.06, 0.14),
-                (0.038, 0.15),
-                (0.01, 0.18),
+                (0.08, -0.12),
+                (0.12, -0.09),
+                (0.12, 0.04),
+                (0.065, 0.10),
+                (0.055, 0.13),
+                (0.07, 0.14),
+                (0.07, 0.17),
+                (0.015, 0.18),
             ];
-            create_lathe_mesh(&profile, 14)
+            create_lathe_mesh(&profile, 8)
         }
         4 => {
             let profile = [
                 (0.01, -0.13),
-                (0.065, -0.12),
-                (0.065, 0.08),
+                (0.06, -0.12),
+                (0.11, -0.06),
+                (0.11, -0.01),
+                (0.08, 0.05),
                 (0.04, 0.12),
                 (0.055, 0.14),
                 (0.035, 0.15),
-                (0.01, 0.18),
+                (0.015, 0.18),
             ];
-            create_lathe_mesh(&profile, 14)
+            create_lathe_mesh(&profile, 18)
         }
         5 => {
             let profile = [
                 (0.01, -0.15),
-                (0.07, -0.05),
-                (0.13, 0.02),
-                (0.06, 0.09),
-                (0.04, 0.12),
+                (0.05, -0.09),
+                (0.11, -0.03),
+                (0.11, 0.05),
+                (0.06, 0.10),
+                (0.04, 0.13),
                 (0.055, 0.14),
                 (0.035, 0.15),
-                (0.01, 0.18),
+                (0.015, 0.18),
             ];
-            create_lathe_mesh(&profile, 14)
+            create_lathe_mesh(&profile, 6)
         }
         _ => {
             let profile = [
@@ -2285,9 +2592,9 @@ pub fn create_potion_flask_mesh(slot: usize) -> Mesh {
                 (0.045, 0.11),
                 (0.06, 0.14),
                 (0.038, 0.15),
-                (0.01, 0.18),
+                (0.015, 0.18),
             ];
-            create_lathe_mesh(&profile, 14)
+            create_lathe_mesh(&profile, 18)
         }
     }
 }

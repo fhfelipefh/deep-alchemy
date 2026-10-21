@@ -23,31 +23,36 @@ fn fragment(
     let normal = normalize(slosh_normal.xyz);
     let fill_level = slosh_normal.w;
 
-    let ripple1 = sin(v_world.x * 220.0 + time * 7.5) * cos(v_world.z * 220.0 + time * 6.5) * wave_amp;
-    let ripple2 = sin((v_world.x + v_world.z) * 320.0 - time * 9.0) * (wave_amp * 0.4);
+    let ripple1 = sin(v_world.x * 52.0 + time * 4.5) * cos(v_world.z * 52.0 + time * 3.8) * (wave_amp * 0.65);
+    let ripple2 = sin((v_world.x + v_world.z) * 78.0 - time * 5.2) * (wave_amp * 0.35);
     let total_ripple = ripple1 + ripple2;
 
     let plane_dist = dot(v_world, normal) - (fill_level + total_ripple);
 
-    if (plane_dist > 0.0) {
-        let vapor_fade = clamp(1.0 - plane_dist * 50.0, 0.0, 1.0);
-        let vapor_alpha = clamp(0.04 * vapor_fade, 0.0, 0.08);
-        return vec4<f32>(base_color.rgb * 0.35, vapor_alpha);
-    }
+    let fill_factor = smoothstep(0.002, -0.002, plane_dist);
 
-    let depth = clamp(-plane_dist * 35.0, 0.0, 1.0);
+    let depth = clamp(-plane_dist * 28.0, 0.0, 1.0);
     let meniscus_dist = abs(plane_dist);
     let meniscus = smoothstep(meniscus_w, 0.0, meniscus_dist);
 
-    let core_color = mix(surface_color.rgb * 0.9, base_color.rgb, depth);
+    let core_color = mix(surface_color.rgb * 0.88, base_color.rgb, depth);
 
     let V = normalize(view.world_position.xyz - in.world_position.xyz);
     let N = normalize(in.world_normal);
     let NdotV = max(abs(dot(N, V)), 0.0);
-    let fresnel = pow(1.0 - NdotV, 2.5);
+    let fresnel = pow(1.0 - NdotV, 2.2);
 
-    let emissive = core_color * 1.5 + surface_color.rgb * (meniscus * 2.6 + fresnel * 0.7);
-    let alpha = clamp(base_color.a * 0.75 + depth * 0.22 + meniscus * 0.25 + fresnel * 0.12, 0.35, 0.98);
+    let liquid_emissive = core_color * 0.82 + surface_color.rgb * (meniscus * 1.15 + fresnel * 0.35);
 
-    return vec4<f32>(emissive, alpha);
+    let liquid_alpha = clamp(base_color.a * 0.44 + depth * 0.18 + meniscus * 0.20 + fresnel * 0.08, 0.20, 0.72);
+
+    let vapor_dist = max(plane_dist, 0.0);
+    let vapor_fade = clamp(1.0 - vapor_dist * 35.0, 0.0, 1.0);
+    let vapor_color = base_color.rgb * 0.16 + surface_color.rgb * (fresnel * 0.22);
+    let vapor_alpha = clamp(0.025 * vapor_fade + fresnel * 0.04, 0.0, 0.07);
+
+    let final_rgb = mix(vapor_color, liquid_emissive, fill_factor);
+    let final_alpha = mix(vapor_alpha, liquid_alpha, fill_factor);
+
+    return vec4<f32>(final_rgb, final_alpha);
 }

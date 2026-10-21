@@ -4,7 +4,7 @@ use super::camera::{
 };
 use crate::dungeon::modular_kit::{CavernObstacle, ObstacleShape};
 use crate::ui::menu::{GameSettings, GameState};
-use bevy::{input::mouse::MouseMotion, prelude::*};
+use bevy::{input::mouse::MouseMotion, prelude::*, render::view::RenderLayers};
 
 pub fn resolve_player_collision_sliding(
     desired_pos: Vec3,
@@ -1230,6 +1230,7 @@ pub fn update_held_potion_visuals(
     mut fluid_materials_res: Option<ResMut<Assets<crate::render::potion_fluid_material::PotionFluidMaterial>>>,
     mut potion_query: Query<(Entity, &mut FirstPersonHeldPotion)>,
     liquid_query: Query<&MeshMaterial3d<StandardMaterial>, With<HeldPotionLiquid>>,
+    slosh_query: Query<&crate::render::potion_fluid_material::PotionSloshState, With<HeldPotionLiquid>>,
 ) {
     let (Some(ref mut meshes), Some(ref mut materials)) =
         (meshes_res.as_mut(), materials_res.as_mut())
@@ -1250,91 +1251,143 @@ pub fn update_held_potion_visuals(
     };
 
     for (potion_entity, mut potion) in potion_query.iter_mut() {
-        if !potion.visuals_spawned {
+        if !potion.visuals_spawned || potion.current_slot != active_slot {
+            let prev_slosh = slosh_query.iter().next().cloned();
+            if potion.visuals_spawned {
+                commands.entity(potion_entity).despawn_descendants();
+            }
+
             potion.visuals_spawned = true;
             potion.current_slot = active_slot;
 
             let glass_mat = materials.add(StandardMaterial {
-                base_color: Color::srgba(0.85, 0.92, 1.0, 0.22),
-                perceptual_roughness: 0.08,
-                metallic: 0.1,
+                base_color: Color::srgba(0.88, 0.94, 1.0, 0.10),
+                perceptual_roughness: 0.12,
+                metallic: 0.0,
+                reflectance: 0.50,
                 alpha_mode: AlphaMode::Blend,
                 ..default()
             });
 
             let liquid_mat = materials.add(StandardMaterial {
                 base_color: liquid_color,
-                emissive: liquid_color.to_linear() * 1.8,
-                perceptual_roughness: 0.2,
+                emissive: liquid_color.to_linear() * 1.2,
+                perceptual_roughness: 0.25,
                 alpha_mode: AlphaMode::Blend,
                 ..default()
             });
 
-            let cork_mat = materials.add(StandardMaterial {
-                base_color: Color::srgb(0.38, 0.25, 0.16),
-                perceptual_roughness: 0.85,
+            let (stopper_color, stopper_roughness, stopper_metallic, stopper_emissive) = match active_slot {
+                2 => (Color::srgb(0.85, 0.15, 0.20), 0.25, 0.10, Color::srgb(0.40, 0.06, 0.08)),
+                3 => (Color::srgb(0.68, 0.52, 0.22), 0.35, 0.75, Color::BLACK),
+                4 => (Color::srgb(0.20, 0.65, 0.95), 0.15, 0.05, Color::srgb(0.06, 0.30, 0.55)),
+                5 => (Color::srgb(0.92, 0.95, 1.0), 0.12, 0.05, Color::srgb(0.30, 0.35, 0.42)),
+                _ => (Color::srgb(0.55, 0.38, 0.22), 0.85, 0.0, Color::BLACK),
+            };
+
+            let stopper_mat = materials.add(StandardMaterial {
+                base_color: stopper_color,
+                perceptual_roughness: stopper_roughness,
+                metallic: stopper_metallic,
+                emissive: stopper_emissive.to_linear(),
                 ..default()
             });
 
-            let bulb_mesh = meshes.add(Sphere::new(0.048).mesh().uv(24, 18));
-            let liquid_mesh = meshes.add(Sphere::new(0.040).mesh().uv(24, 18));
-            let neck_mesh = meshes.add(Cylinder::new(0.018, 0.05).mesh());
-            let cork_mesh = meshes.add(Cylinder::new(0.016, 0.022).mesh());
+            let flask_mesh = meshes.add(crate::alchemy::create_held_flask_mesh(active_slot));
+            let fluid_mesh = meshes.add(crate::alchemy::create_held_fluid_mesh(active_slot));
+            let stopper_mesh = meshes.add(crate::alchemy::create_held_stopper_mesh(active_slot));
+
+            
 
             commands.entity(potion_entity).with_children(|builder| {
                 builder.spawn((
-                    Mesh3d(bulb_mesh),
-                    MeshMaterial3d(glass_mat.clone()),
-                    Transform::from_xyz(0.0, 0.0, 0.0),
+                    Mesh3d(flask_mesh),
+                    MeshMaterial3d(glass_mat),
+                    Transform::IDENTITY,
+                    RenderLayers::layer(2),
                 ));
 
                 if let Some(ref mut fluid_materials) = fluid_materials_res {
                     let fluid_mat = fluid_materials.add(crate::render::potion_fluid_material::PotionFluidMaterial {
                         base_color: liquid_color.to_linear(),
                         surface_color: LinearRgba::new(
-                            (liquid_color.to_linear().red * 1.35).min(1.0),
-                            (liquid_color.to_linear().green * 1.35).min(1.0),
-                            (liquid_color.to_linear().blue * 1.35).min(1.0),
+                            (liquid_color.to_linear().red * 1.25).min(1.0),
+                            (liquid_color.to_linear().green * 1.25).min(1.0),
+                            (liquid_color.to_linear().blue * 1.25).min(1.0),
                             1.0,
                         ),
-                        slosh_normal: Vec4::new(0.0, 1.0, 0.0, 0.010),
-                        fluid_params: Vec4::new(0.0, 0.002, 0.0045, 1.0),
-                        bulb_center: Vec4::new(0.0, 0.0, 0.0, 0.040),
+                        slosh_normal: Vec4::new(0.0, 1.0, 0.0, 0.008),
+                        fluid_params: Vec4::new(0.0, 0.0018, 0.0035, 1.0),
+                        bulb_center: Vec4::new(0.0, 0.0, 0.0, 0.042),
                     });
                     builder.spawn((
                         HeldPotionLiquid,
-                        Mesh3d(liquid_mesh),
+                        Mesh3d(fluid_mesh),
                         MeshMaterial3d(fluid_mat),
-                        crate::render::potion_fluid_material::PotionSloshState::default(),
-                        Transform::from_xyz(0.0, -0.005, 0.0),
+                        prev_slosh.unwrap_or_default(),
+                        Transform::IDENTITY,
+                        RenderLayers::layer(2),
                     ));
                 } else {
                     builder.spawn((
                         HeldPotionLiquid,
-                        Mesh3d(liquid_mesh),
+                        Mesh3d(fluid_mesh),
                         MeshMaterial3d(liquid_mat),
-                        Transform::from_xyz(0.0, -0.005, 0.0),
+                        Transform::IDENTITY,
+                        RenderLayers::layer(2),
                     ));
                 }
 
                 builder.spawn((
-                    Mesh3d(neck_mesh),
-                    MeshMaterial3d(glass_mat),
-                    Transform::from_xyz(0.0, 0.048, 0.0),
+                    Mesh3d(stopper_mesh),
+                    MeshMaterial3d(stopper_mat),
+                    Transform::IDENTITY,
+                    RenderLayers::layer(2),
                 ));
 
-                builder.spawn((
-                    Mesh3d(cork_mesh),
-                    MeshMaterial3d(cork_mat),
-                    Transform::from_xyz(0.0, 0.075, 0.0),
-                ));
+                if let Some(accent_mesh_data) = crate::alchemy::create_held_accent_mesh(active_slot) {
+                    let accent_mesh = meshes.add(accent_mesh_data);
+                    let (accent_color, accent_roughness, accent_metallic) = match active_slot {
+                        1 => (Color::srgb(0.55, 0.40, 0.25), 0.90, 0.0),
+                        2 => (Color::srgb(0.85, 0.70, 0.22), 0.30, 0.8),
+                        3 => (Color::srgb(0.68, 0.52, 0.22), 0.35, 0.75),
+                        _ => (Color::srgb(0.50, 0.50, 0.50), 0.50, 0.5),
+                    };
+                    let accent_mat = materials.add(StandardMaterial {
+                        base_color: accent_color,
+                        perceptual_roughness: accent_roughness,
+                        metallic: accent_metallic,
+                        ..default()
+                    });
+                    builder.spawn((
+                        Mesh3d(accent_mesh),
+                        MeshMaterial3d(accent_mat),
+                        Transform::IDENTITY,
+                        RenderLayers::layer(2),
+                    ));
+                }
+
+                if active_slot == 3 {
+                    let loop_mesh = meshes.add(crate::alchemy::create_ring_mesh(0.0085, 0.0018, 16, 8));
+                    let loop_mat = materials.add(StandardMaterial {
+                        base_color: Color::srgb(0.68, 0.52, 0.22),
+                        perceptual_roughness: 0.35,
+                        metallic: 0.75,
+                        ..default()
+                    });
+                    builder.spawn((
+                        Mesh3d(loop_mesh),
+                        MeshMaterial3d(loop_mat),
+                        Transform::from_xyz(0.0, 0.099, 0.0).with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
+                        RenderLayers::layer(2),
+                    ));
+                }
             });
-        } else if potion.current_slot != active_slot {
-            potion.current_slot = active_slot;
+        } else {
             for mat_handle in liquid_query.iter() {
                 if let Some(mat) = materials.get_mut(mat_handle) {
                     mat.base_color = liquid_color;
-                    mat.emissive = liquid_color.to_linear() * 1.8;
+                    mat.emissive = liquid_color.to_linear() * 1.2;
                 }
             }
         }

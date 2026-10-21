@@ -204,7 +204,7 @@ pub fn setup_player(mut commands: Commands, asset_server: Res<AssetServer>) {
                 crate::render::outline::OutlineSettings::default(),
                 crate::render::heat_haze::HeatHazeSettings::default(),
                 bevy::core_pipeline::bloom::Bloom::NATURAL,
-                RenderLayers::layer(0),
+                RenderLayers::from_layers(&[0, 2]),
                 Transform::from_xyz(0.0, 0.55, 0.0),
                 DistanceFog {
                     color: Color::srgba(0.05, 0.09, 0.16, 1.0),
@@ -217,7 +217,7 @@ pub fn setup_player(mut commands: Commands, asset_server: Res<AssetServer>) {
                     FirstPersonHeldPotion::default(),
                     Transform::from_xyz(0.24, -0.20, -0.42),
                     Visibility::default(),
-                    RenderLayers::layer(0),
+                    RenderLayers::layer(2),
                 ));
             });
 
