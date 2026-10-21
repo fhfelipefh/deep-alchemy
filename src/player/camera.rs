@@ -218,6 +218,8 @@ pub fn setup_player(mut commands: Commands, asset_server: Res<AssetServer>) {
                     Transform::from_xyz(0.24, -0.20, -0.42),
                     Visibility::default(),
                     RenderLayers::layer(2),
+                    bevy::pbr::NotShadowCaster,
+                    bevy::pbr::NotShadowReceiver,
                 ));
             });
 

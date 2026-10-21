@@ -2154,6 +2154,117 @@ fn test_unit_potion_fluid_color_and_surface_update_per_slot() {
 }
 
 #[test]
+fn test_unit_held_potion_jump_takeoff_vertical_fluid_stability_rtx_on() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::transform::TransformPlugin,
+        bevy::asset::AssetPlugin::default(),
+    ));
+    app.init_resource::<Time>();
+    app.init_resource::<Assets<deep_alchemy::render::potion_fluid_material::PotionFluidMaterial>>();
+    app.init_resource::<deep_alchemy::ui::hud::ActiveHotbarSlot>();
+    app.init_resource::<deep_alchemy::alchemy::PotionCooldowns>();
+    app.init_resource::<deep_alchemy::ui::menu::GameSettings>();
+
+    app.world_mut().resource_mut::<deep_alchemy::ui::menu::GameSettings>().rtx_quality = deep_alchemy::ui::menu::RtxQuality::Medium;
+    app.world_mut().resource_mut::<deep_alchemy::ui::hud::ActiveHotbarSlot>().0 = 2;
+
+    let player = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            deep_alchemy::player::camera::PlayerState::Active,
+            deep_alchemy::player::camera::LocomotionState::default(),
+            Transform::from_xyz(0.0, 1.2, 0.0),
+            Visibility::default(),
+        ))
+        .id();
+
+    let camera = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::PlayerCamera,
+            Transform::from_xyz(0.0, 0.55, 0.0),
+            Visibility::default(),
+        ))
+        .id();
+
+    let viewmodel = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::FirstPersonHeldPotion::default(),
+            Transform::from_xyz(0.24, -0.20, -0.42),
+            Visibility::default(),
+            bevy::pbr::NotShadowCaster,
+            bevy::pbr::NotShadowReceiver,
+        ))
+        .id();
+
+    let mut materials = app
+        .world_mut()
+        .resource_mut::<Assets<deep_alchemy::render::potion_fluid_material::PotionFluidMaterial>>();
+    let mat_handle = materials.add(deep_alchemy::render::potion_fluid_material::PotionFluidMaterial::default());
+
+    let liquid = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::HeldPotionLiquid,
+            MeshMaterial3d(mat_handle.clone()),
+            deep_alchemy::render::potion_fluid_material::PotionSloshState::default(),
+            Transform::IDENTITY,
+            bevy::pbr::NotShadowCaster,
+            bevy::pbr::NotShadowReceiver,
+        ))
+        .id();
+
+    app.world_mut().entity_mut(player).add_child(camera);
+    app.world_mut().entity_mut(camera).add_child(viewmodel);
+    app.world_mut().entity_mut(viewmodel).add_child(liquid);
+
+    app.add_systems(
+        Update,
+        deep_alchemy::player::controller::update_first_person_potion_sway,
+    );
+    app.add_systems(
+        PostUpdate,
+        deep_alchemy::render::potion_fluid_material::update_potion_sloshing
+            .after(bevy::transform::TransformSystem::TransformPropagate),
+    );
+
+    app.world_mut()
+        .resource_mut::<Time>()
+        .advance_by(std::time::Duration::from_millis(16));
+    app.update();
+
+    let initial_pos = app.world().get::<GlobalTransform>(liquid).unwrap().translation();
+    let initial_bulb = app.world().resource::<Assets<deep_alchemy::render::potion_fluid_material::PotionFluidMaterial>>().get(&mat_handle).unwrap().bulb_center;
+    assert!((initial_pos.y - initial_bulb.y).abs() < 0.005);
+
+    {
+        let mut p_mut = app.world_mut().get_mut::<Transform>(player).unwrap();
+        p_mut.translation.y += 6.8 * 0.016;
+        let mut l_mut = app.world_mut().get_mut::<deep_alchemy::player::camera::LocomotionState>(player).unwrap();
+        l_mut.vertical_velocity = 6.8;
+    }
+
+    app.world_mut()
+        .resource_mut::<Time>()
+        .advance_by(std::time::Duration::from_millis(16));
+    app.update();
+
+    let jumped_pos = app.world().get::<GlobalTransform>(liquid).unwrap().translation();
+    let jumped_bulb = app.world().resource::<Assets<deep_alchemy::render::potion_fluid_material::PotionFluidMaterial>>().get(&mat_handle).unwrap().bulb_center;
+    assert!((jumped_pos.y - jumped_bulb.y).abs() < 0.005);
+    assert!(jumped_pos.y > initial_pos.y + 0.05);
+
+    let not_caster = app.world().get::<bevy::pbr::NotShadowCaster>(liquid);
+    let not_receiver = app.world().get::<bevy::pbr::NotShadowReceiver>(liquid);
+    assert!(not_caster.is_some());
+    assert!(not_receiver.is_some());
+}
+
+#[test]
 fn test_unit_frost_potion_water_sinking_and_ice_puzzle_mechanics() {
     let mut app = App::new();
     app.add_plugins((

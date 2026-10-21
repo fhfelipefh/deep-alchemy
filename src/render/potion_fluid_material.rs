@@ -1,5 +1,5 @@
 use crate::alchemy::{selected_potion_effects, PotionCooldowns};
-use crate::player::camera::{HeldPotionLiquid, LocomotionState, Player, PlayerCamera};
+use crate::player::camera::{FirstPersonHeldPotion, HeldPotionLiquid, LocomotionState, Player, PlayerCamera};
 use crate::ui::hud::ActiveHotbarSlot;
 use bevy::{
     pbr::{Material, MaterialPipeline, MaterialPipelineKey},
@@ -83,6 +83,7 @@ pub fn update_potion_sloshing(
     time: Res<Time>,
     player_query: Query<(&Transform, &LocomotionState), With<Player>>,
     camera_query: Query<&Transform, With<PlayerCamera>>,
+    viewmodel_query: Query<&Transform, With<FirstPersonHeldPotion>>,
     mut potion_query: Query<(
         Option<&GlobalTransform>,
         &mut PotionSloshState,
@@ -197,9 +198,26 @@ pub fn update_potion_sloshing(
             let meniscus_thickness: f32 = 0.0045;
             mat.fluid_params = Vec4::new(t, ripple_amp, meniscus_thickness, 1.0);
 
+            let calculated_center = {
+                let cam_rot = camera_query
+                    .get_single()
+                    .map(|ct| ct.rotation)
+                    .unwrap_or(Quat::IDENTITY);
+                let cam_pos = camera_query
+                    .get_single()
+                    .map(|ct| ct.translation)
+                    .unwrap_or(Vec3::new(0.0, 0.55, 0.0));
+                let sway_pos = viewmodel_query
+                    .get_single()
+                    .map(|st| st.translation)
+                    .unwrap_or(Vec3::new(0.24, -0.20, -0.42));
+                player_tf.translation + player_tf.rotation * (cam_pos + cam_rot * sway_pos)
+            };
+
             let center = global_tf_opt
                 .map(|gt| gt.translation())
-                .unwrap_or(player_tf.translation + Vec3::new(0.24, 0.35, -0.42));
+                .filter(|pos| pos.length_squared() > 1e-4)
+                .unwrap_or(calculated_center);
             mat.bulb_center = Vec4::new(center.x, center.y, center.z, 0.040);
         }
     }

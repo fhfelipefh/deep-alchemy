@@ -1305,6 +1305,8 @@ pub fn update_held_potion_visuals(
                     MeshMaterial3d(glass_mat),
                     Transform::IDENTITY,
                     RenderLayers::layer(2),
+                    bevy::pbr::NotShadowCaster,
+                    bevy::pbr::NotShadowReceiver,
                 ));
 
                 if let Some(ref mut fluid_materials) = fluid_materials_res {
@@ -1327,6 +1329,8 @@ pub fn update_held_potion_visuals(
                         prev_slosh.unwrap_or_default(),
                         Transform::IDENTITY,
                         RenderLayers::layer(2),
+                        bevy::pbr::NotShadowCaster,
+                        bevy::pbr::NotShadowReceiver,
                     ));
                 } else {
                     builder.spawn((
@@ -1335,6 +1339,8 @@ pub fn update_held_potion_visuals(
                         MeshMaterial3d(liquid_mat),
                         Transform::IDENTITY,
                         RenderLayers::layer(2),
+                        bevy::pbr::NotShadowCaster,
+                        bevy::pbr::NotShadowReceiver,
                     ));
                 }
 
@@ -1343,6 +1349,8 @@ pub fn update_held_potion_visuals(
                     MeshMaterial3d(stopper_mat),
                     Transform::IDENTITY,
                     RenderLayers::layer(2),
+                    bevy::pbr::NotShadowCaster,
+                    bevy::pbr::NotShadowReceiver,
                 ));
 
                 if let Some(accent_mesh_data) = crate::alchemy::create_held_accent_mesh(active_slot) {
@@ -1364,6 +1372,8 @@ pub fn update_held_potion_visuals(
                         MeshMaterial3d(accent_mat),
                         Transform::IDENTITY,
                         RenderLayers::layer(2),
+                        bevy::pbr::NotShadowCaster,
+                        bevy::pbr::NotShadowReceiver,
                     ));
                 }
 
@@ -1380,6 +1390,8 @@ pub fn update_held_potion_visuals(
                         MeshMaterial3d(loop_mat),
                         Transform::from_xyz(0.0, 0.099, 0.0).with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
                         RenderLayers::layer(2),
+                        bevy::pbr::NotShadowCaster,
+                        bevy::pbr::NotShadowReceiver,
                     ));
                 }
             });

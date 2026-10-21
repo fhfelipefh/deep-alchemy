@@ -29,9 +29,11 @@ fn fragment(
 
     let plane_dist = dot(v_world, normal) - (fill_level + total_ripple);
 
-    let fill_factor = smoothstep(0.002, -0.002, plane_dist);
+    let base_fill_factor = smoothstep(0.002, -0.002, plane_dist);
+    let bottom_anchor = smoothstep(-0.010, -0.025, v_world.y);
+    let fill_factor = max(base_fill_factor, bottom_anchor);
 
-    let depth = clamp(-plane_dist * 28.0, 0.0, 1.0);
+    let depth = clamp(max(-plane_dist * 28.0, bottom_anchor * 0.8), 0.0, 1.0);
     let meniscus_dist = abs(plane_dist);
     let meniscus = smoothstep(meniscus_w, 0.0, meniscus_dist);
 

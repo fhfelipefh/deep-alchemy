@@ -31,12 +31,15 @@ impl Plugin for RenderPipelinePlugin {
             Update,
             (
                 update_water_time,
-                update_potion_sloshing,
                 sync_heat_sources_system,
                 update_heat_haze_uniforms,
                 spawn_particles,
                 update_particles,
             ),
+        )
+        .add_systems(
+            PostUpdate,
+            update_potion_sloshing.after(bevy::transform::TransformSystem::TransformPropagate),
         );
     }
 }
@@ -48,7 +51,11 @@ mod tests {
     #[test]
     fn test_render_pipeline_plugin_build() {
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()));
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::asset::AssetPlugin::default(),
+            bevy::transform::TransformPlugin,
+        ));
         app.init_asset::<bevy::render::render_resource::Shader>();
         app.add_plugins(RenderPipelinePlugin);
         assert!(app.is_plugin_added::<RenderPipelinePlugin>());
