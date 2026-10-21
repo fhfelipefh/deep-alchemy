@@ -11,6 +11,7 @@ pub fn resolve_player_collision_sliding(
     prev_pos: Vec3,
     player_radius: f32,
     is_grounded: bool,
+    has_grotto_terrain: bool,
     obstacles: &[(&Transform, ObstacleShape)],
 ) -> Vec3 {
     let mut resolved = desired_pos;
@@ -20,10 +21,10 @@ pub fn resolve_player_collision_sliding(
     const STEP_OFFSET: f32 = 0.40;
     const PLAYER_BASE_HEIGHT: f32 = 1.2;
 
-    let terrain_h = if obstacles.is_empty() {
-        0.0
-    } else {
+    let terrain_h = if has_grotto_terrain {
         crate::dungeon::modular_kit::get_grotto_terrain_height(resolved.x, resolved.z)
+    } else {
+        0.0
     };
     let player_feet = prev_pos.y - PLAYER_BASE_HEIGHT;
     let step_max_feet = player_feet + STEP_OFFSET;
@@ -167,41 +168,6 @@ pub fn resolve_player_collision_sliding(
             }
         }
 
-        let portal_x_limit = 2.2 - player_radius;
-
-        if resolved.z < 3.2 {
-            let x_limit = 6.8 - player_radius;
-            resolved.x = resolved.x.clamp(-x_limit, x_limit);
-
-            let z_min = -13.2 + player_radius;
-            if resolved.z < z_min {
-                resolved.z = z_min;
-            }
-
-            if resolved.x.abs() > portal_x_limit && resolved.z > 3.2 - player_radius {
-                resolved.z = 3.2 - player_radius;
-            }
-        } else if resolved.z <= 5.0 {
-            if resolved.x.abs() > portal_x_limit {
-                if prev_pos.z <= 3.2 {
-                    resolved.z = 3.2 - player_radius;
-                    let x_limit = 6.8 - player_radius;
-                    resolved.x = resolved.x.clamp(-x_limit, x_limit);
-                } else if prev_pos.z > 5.0 {
-                    resolved.z = 5.0 + player_radius;
-                } else {
-                    resolved.x = resolved.x.clamp(-portal_x_limit, portal_x_limit);
-                }
-            } else {
-                resolved.x = resolved.x.clamp(-portal_x_limit, portal_x_limit);
-            }
-        } else {
-            let dungeon_limit = 46.0 - player_radius;
-            resolved.x = resolved.x.clamp(-dungeon_limit, dungeon_limit);
-            if resolved.z > dungeon_limit {
-                resolved.z = dungeon_limit;
-            }
-        }
     }
 
     if is_grounded {
@@ -977,6 +943,7 @@ pub fn player_movement(
                 tf.translation,
                 player_radius,
                 locomotion.is_grounded,
+                has_lake,
                 &obstacle_list,
             );
 
@@ -1696,6 +1663,13 @@ mod tests {
     }
 
     #[test]
+    fn test_collision_resolver_does_not_create_scene_bounds_without_geometry() {
+        let desired = Vec3::new(48.0, 1.2, 48.0);
+        let resolved = resolve_player_collision_sliding(desired, Vec3::ZERO, 0.38, true, false, &[]);
+        assert_eq!(resolved, desired);
+    }
+
+    #[test]
     fn test_collision_slides_player_diagonally_along_obstacle() {
         let mut app = App::new();
         app.add_systems(Update, player_movement);
@@ -1834,6 +1808,14 @@ mod tests {
             ))
             .id();
 
+        app.world_mut().spawn((
+            CavernObstacle,
+            ObstacleShape::Cuboid {
+                half_extents: Vec3::new(1.4, 5.0, 9.0),
+            },
+            Transform::from_xyz(-7.8, 3.5, -4.5),
+        ));
+
         let mut keys = ButtonInput::<KeyCode>::default();
         keys.press(KeyCode::KeyA);
         app.world_mut().insert_resource(keys);
@@ -1962,6 +1944,14 @@ mod tests {
                 },
             ))
             .id();
+
+        app.world_mut().spawn((
+            CavernObstacle,
+            ObstacleShape::Cuboid {
+                half_extents: Vec3::new(3.15, 4.0, 1.0),
+            },
+            Transform::from_xyz(5.35, 3.0, 4.0),
+        ));
 
         let mut keys = ButtonInput::<KeyCode>::default();
         keys.press(KeyCode::KeyW);

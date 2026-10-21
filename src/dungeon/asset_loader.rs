@@ -23,6 +23,7 @@ impl Default for SceneAssetRegistry {
         assets.insert("alchemy_props".to_string(), "models/alchemy_props.glb#Scene0".to_string());
         assets.insert("faceted_rocks_kit".to_string(), "models/faceted_rocks_kit.glb#Scene0".to_string());
         assets.insert("dungeon_kit".to_string(), "models/dungeon_kit.glb#Scene0".to_string());
+        assets.insert("secret_white_test_room".to_string(), "models/secret_white_test_room.glb#Scene0".to_string());
         Self { assets }
     }
 }
@@ -103,6 +104,7 @@ mod tests {
         assert!(registry.get_path("macro_alchemical_shrine").is_some());
         assert!(registry.get_path("macro_crystal_cluster").is_some());
         assert!(registry.get_path("cavern_grotto").is_some());
+        assert!(registry.get_path("secret_white_test_room").is_some());
     }
 
     #[test]

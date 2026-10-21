@@ -8,7 +8,7 @@ use bevy::{
 
 use deep_alchemy::{
     alchemy::AlchemyPlugin,
-    dungeon::DungeonPlugin,
+    dungeon::{DungeonPlugin, SecretTestRoomPlugin},
     player::PlayerPlugin,
     render::RenderPipelinePlugin,
     ui::{menu::GameState, HudPlugin, MenuPlugin},
@@ -21,6 +21,7 @@ fn main() {
         .any(|arg| arg == "--screenshot-test" || arg == "--validate-frame");
     let is_menu_screenshot = args.iter().any(|arg| arg == "--screenshot-menu");
     let is_settings_screenshot = args.iter().any(|arg| arg == "--screenshot-settings");
+    let is_test_room_screenshot = args.iter().any(|arg| arg == "--screenshot-test-room");
 
     let mut app = App::new();
 
@@ -43,6 +44,7 @@ fn main() {
         .add_plugins(RenderPipelinePlugin)
         .add_plugins(PlayerPlugin)
         .add_plugins(DungeonPlugin)
+        .add_plugins(SecretTestRoomPlugin)
         .add_plugins(AlchemyPlugin)
         .add_plugins(HudPlugin)
         .add_plugins(MenuPlugin);
@@ -63,9 +65,39 @@ fn main() {
     } else if is_settings_screenshot {
         info!(">>> [SETTINGS SCREENSHOT] Capturing settings subview frame to ./debug_output/settings_check.png");
         app.add_systems(Update, handle_settings_screenshot_lifecycle);
+    } else if is_test_room_screenshot {
+        info!(">>> [TEST ROOM SCREENSHOT] Capturing secret white test room frame to ./debug_output/test_room_check.png");
+        app.add_systems(Startup, switch_to_ingame_for_test_room_screenshot)
+            .add_systems(Update, handle_test_room_screenshot_lifecycle);
     }
 
     app.run();
+}
+
+fn switch_to_ingame_for_test_room_screenshot(
+    mut next_state: ResMut<NextState<GameState>>,
+    mut request: ResMut<deep_alchemy::dungeon::test_room::SecretTestRoomRequest>,
+) {
+    request.requested = true;
+    next_state.set(GameState::InGame);
+}
+
+fn handle_test_room_screenshot_lifecycle(
+    mut commands: Commands,
+    mut counter: Local<u32>,
+    mut app_exit: EventWriter<AppExit>,
+) {
+    *counter += 1;
+    if *counter == 30 {
+        std::fs::create_dir_all("debug_output").ok();
+        commands
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk("debug_output/test_room_check.png"));
+        info!(">>> [TEST ROOM SCREENSHOT] Triggered screenshot at frame 30 -> debug_output/test_room_check.png");
+    } else if *counter >= 60 {
+        info!(">>> [TEST ROOM SCREENSHOT] Frame 60 reached, gracefully exiting.");
+        app_exit.send(AppExit::Success);
+    }
 }
 
 fn switch_to_ingame_for_screenshot_test(mut next_state: ResMut<NextState<GameState>>) {

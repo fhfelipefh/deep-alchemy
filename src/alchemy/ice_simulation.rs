@@ -164,7 +164,7 @@ pub fn update_lake_freeze_simulation(
                 ))
                 .id();
             if should_solid {
-                commands.entity(entity).insert((RigidBody::Static, Collider::cuboid(ICE_CELL_SIZE * 0.47, thickness * 0.5, ICE_CELL_SIZE * 0.47)));
+                commands.entity(entity).insert((RigidBody::Static, Collider::cuboid(ICE_CELL_SIZE * 0.94, thickness, ICE_CELL_SIZE * 0.94)));
             }
             simulation.tiles[index] = Some(entity);
         } else if !should_exist {
@@ -183,11 +183,11 @@ pub fn update_lake_freeze_simulation(
             mat.emissive = LinearRgba::new(0.04, 0.20, 0.32, freeze * 0.18);
         }
         let solid = freeze >= SOLID_FREEZE;
+        let entity = simulation.tiles[cell.index].expect("ice cell entity must exist");
         if solid != cell.solid {
             cell.solid = solid;
-            let entity = simulation.tiles[cell.index].expect("ice cell entity must exist");
             if solid {
-                commands.entity(entity).insert((RigidBody::Static, Collider::cuboid(ICE_CELL_SIZE * 0.47, thickness * 0.5, ICE_CELL_SIZE * 0.47)));
+                commands.entity(entity).insert((RigidBody::Static, Collider::cuboid(ICE_CELL_SIZE * 0.94, thickness, ICE_CELL_SIZE * 0.94)));
             } else {
                 commands.entity(entity).remove::<(RigidBody, Collider)>();
                 commands.spawn((
@@ -200,6 +200,12 @@ pub fn update_lake_freeze_simulation(
                     AlchemyTransientEmitter { elapsed: 0.0, max_lifetime: 0.75 },
                 ));
             }
+        } else if solid {
+            commands.entity(entity).insert(Collider::cuboid(
+                ICE_CELL_SIZE * 0.94,
+                thickness,
+                ICE_CELL_SIZE * 0.94,
+            ));
         }
     }
 }

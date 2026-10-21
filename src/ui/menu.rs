@@ -1,4 +1,4 @@
-use crate::player::camera::PlayerCamera;
+use crate::{dungeon::test_room::SecretTestRoomRequest, player::camera::PlayerCamera};
 use bevy::{
     app::AppExit,
     prelude::*,
@@ -30,6 +30,24 @@ pub struct MenuNavigation {
     pub current_view: MenuView,
     pub has_started: bool,
 }
+
+#[derive(Resource, Debug, Default)]
+struct SecretSequenceProgress {
+    next_index: usize,
+    last_input_secs: f32,
+}
+
+const SECRET_SEQUENCE: [KeyCode; 9] = [
+    KeyCode::Digit1,
+    KeyCode::Digit2,
+    KeyCode::Digit3,
+    KeyCode::Digit1,
+    KeyCode::Digit2,
+    KeyCode::Digit3,
+    KeyCode::Digit4,
+    KeyCode::Digit5,
+    KeyCode::Digit6,
+];
 
 impl Default for MenuNavigation {
     fn default() -> Self {
@@ -215,6 +233,8 @@ impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<GameState>()
             .init_resource::<MenuNavigation>()
+            .init_resource::<SecretSequenceProgress>()
+            .init_resource::<SecretTestRoomRequest>()
             .init_resource::<GameSettings>()
             .init_resource::<GameSettingsPath>()
             .add_systems(Startup, (load_game_settings, setup_menu_ui, setup_window_icon).chain())
@@ -222,6 +242,7 @@ impl Plugin for MenuPlugin {
                 Update,
                 (
                     handle_global_shortcuts,
+                    detect_secret_test_room_sequence,
                     handle_menu_button_interactions,
                     update_menu_subview_visibility,
                     update_settings_labels,
@@ -235,6 +256,45 @@ impl Plugin for MenuPlugin {
             )
             .add_systems(OnEnter(GameState::MainMenu), on_enter_menu_state)
             .add_systems(OnEnter(GameState::InGame), on_enter_ingame_state);
+    }
+}
+
+fn detect_secret_test_room_sequence(
+    keys: Option<Res<ButtonInput<KeyCode>>>,
+    time: Res<Time>,
+    current_state: Res<State<GameState>>,
+    mut next_state: ResMut<NextState<GameState>>,
+    mut nav: ResMut<MenuNavigation>,
+    mut progress: ResMut<SecretSequenceProgress>,
+    mut request: ResMut<SecretTestRoomRequest>,
+) {
+    if *current_state.get() != GameState::MainMenu || nav.current_view != MenuView::Main || nav.has_started {
+        *progress = SecretSequenceProgress::default();
+        return;
+    }
+
+    let Some(keys) = keys else { return; };
+    let Some(key) = SECRET_SEQUENCE.iter().copied().find(|key| keys.just_pressed(*key)) else {
+        return;
+    };
+
+    let now = time.elapsed_secs();
+    if progress.next_index > 0 && now - progress.last_input_secs > 2.0 {
+        progress.next_index = 0;
+    }
+
+    if key == SECRET_SEQUENCE[progress.next_index] {
+        progress.next_index += 1;
+    } else {
+        progress.next_index = usize::from(key == SECRET_SEQUENCE[0]);
+    }
+    progress.last_input_secs = now;
+
+    if progress.next_index == SECRET_SEQUENCE.len() {
+        request.requested = true;
+        nav.has_started = true;
+        *progress = SecretSequenceProgress::default();
+        next_state.set(GameState::InGame);
     }
 }
 
@@ -1447,6 +1507,33 @@ mod tests {
         app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin));
         app.add_plugins(MenuPlugin);
         assert!(app.is_plugin_added::<MenuPlugin>());
+    }
+
+    #[test]
+    fn test_secret_sequence_requests_the_test_room_from_the_initial_menu() {
+        let mut app = App::new();
+        app.add_plugins(bevy::state::app::StatesPlugin);
+        app.init_resource::<Time>();
+        app.init_resource::<ButtonInput<KeyCode>>();
+        app.init_state::<GameState>();
+        app.init_resource::<MenuNavigation>();
+        app.init_resource::<SecretSequenceProgress>();
+        app.init_resource::<SecretTestRoomRequest>();
+        app.add_systems(Update, detect_secret_test_room_sequence);
+
+        for key in SECRET_SEQUENCE {
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_millis(200));
+            app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(key);
+            app.update();
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.release(key);
+            keys.clear_just_pressed(key);
+        }
+
+        assert!(app.world().resource::<SecretTestRoomRequest>().requested);
+        assert!(app.world().resource::<MenuNavigation>().has_started);
     }
 
     #[test]
