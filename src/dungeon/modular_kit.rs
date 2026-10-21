@@ -604,7 +604,7 @@ pub fn setup_cavern_world(
 
     commands.insert_resource(AmbientLight {
         color: Color::srgb(0.10, 0.20, 0.32),
-        brightness: 480.0,
+        brightness: 380.0,
     });
 
     commands.spawn((
@@ -631,8 +631,8 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.20, 0.94, 0.88),
-            intensity: 26000.0,
-            range: 11.0,
+            intensity: 14500.0,
+            range: 9.5,
             shadows_enabled: false,
             ..default()
         },
@@ -642,8 +642,8 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.25, 0.70, 0.98),
-            intensity: 85000.0,
-            range: 28.0,
+            intensity: 38000.0,
+            range: 24.0,
             shadows_enabled: false,
             ..default()
         },
@@ -653,14 +653,14 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.12, 0.96, 0.88),
-            intensity: 46000.0,
+            intensity: 22000.0,
             range: 16.0,
             shadows_enabled: false,
             ..default()
         },
         Transform::from_xyz(-3.4, 2.4, -2.8),
         BioluminescentMushroom {
-            base_intensity: 46000.0,
+            base_intensity: 22000.0,
             base_color: Color::srgb(0.12, 0.96, 0.88),
             phase: 0.0,
             surge_timer: 0.0,
@@ -671,14 +671,14 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.12, 0.96, 0.88),
-            intensity: 46000.0,
+            intensity: 22000.0,
             range: 16.0,
             shadows_enabled: false,
             ..default()
         },
         Transform::from_xyz(4.1, 2.4, -3.3),
         BioluminescentMushroom {
-            base_intensity: 46000.0,
+            base_intensity: 22000.0,
             base_color: Color::srgb(0.12, 0.96, 0.88),
             phase: 1.57,
             surge_timer: 0.0,
@@ -688,8 +688,8 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.35, 0.90, 1.0),
-            intensity: 55000.0,
-            range: 20.0,
+            intensity: 26000.0,
+            range: 18.0,
             shadows_enabled: false,
             ..default()
         },
@@ -700,8 +700,8 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.40, 0.95, 1.0),
-            intensity: 65000.0,
-            range: 26.0,
+            intensity: 30000.0,
+            range: 22.0,
             shadows_enabled: false,
             ..default()
         },
@@ -711,8 +711,8 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.24, 0.38, 0.55),
-            intensity: 85000.0,
-            range: 35.0,
+            intensity: 36000.0,
+            range: 29.0,
             shadows_enabled: false,
             ..default()
         },
@@ -722,7 +722,7 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.25, 0.45, 0.65),
-            intensity: 42000.0,
+            intensity: 18000.0,
             range: 18.0,
             shadows_enabled: false,
             ..default()
@@ -732,7 +732,7 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.25, 0.45, 0.65),
-            intensity: 42000.0,
+            intensity: 18000.0,
             range: 18.0,
             shadows_enabled: false,
             ..default()
@@ -743,8 +743,8 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.18, 0.92, 0.98),
-            intensity: 45000.0,
-            range: 22.0,
+            intensity: 22000.0,
+            range: 18.0,
             shadows_enabled: false,
             ..default()
         },
@@ -754,8 +754,8 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.20, 0.45, 0.65),
-            intensity: 75000.0,
-            range: 32.0,
+            intensity: 32000.0,
+            range: 28.0,
             shadows_enabled: false,
             ..default()
         },
@@ -765,7 +765,7 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.17, 0.95, 0.88),
-            intensity: 45000.0,
+            intensity: 19000.0,
             range: 22.0,
             shadows_enabled: false,
             ..default()
@@ -776,7 +776,7 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.17, 0.95, 0.88),
-            intensity: 45000.0,
+            intensity: 19000.0,
             range: 22.0,
             shadows_enabled: false,
             ..default()
@@ -787,8 +787,8 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.55, 0.95, 1.0),
-            intensity: 95000.0,
-            range: 36.0,
+            intensity: 38000.0,
+            range: 30.0,
             shadows_enabled: false,
             ..default()
         },
@@ -805,7 +805,7 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.22, 0.92, 0.96),
-            intensity: 8500.0,
+            intensity: 5200.0,
             range: 16.0,
             shadows_enabled: false,
             ..default()
@@ -1042,10 +1042,10 @@ pub fn setup_cavern_world(
     commands.spawn((
         Mesh3d(meshes.add(waterfall_mesh)),
         MeshMaterial3d(water_materials.add(WaterMaterial {
-            base_color: LinearRgba::new(0.12, 0.82, 0.92, 0.35),
-            deep_color: LinearRgba::new(0.03, 0.28, 0.45, 0.48),
-            foam_color: LinearRgba::new(0.92, 0.97, 1.0, 0.65),
-            params: Vec4::new(0.0, 1.4, 1.0, 0.45),
+            base_color: LinearRgba::new(0.10, 0.67, 0.78, 0.25),
+            deep_color: LinearRgba::new(0.025, 0.20, 0.33, 0.36),
+            foam_color: LinearRgba::new(0.82, 0.93, 0.96, 0.46),
+            params: Vec4::new(0.0, 1.15, 1.0, 0.22),
             reflection_texture: None,
             reflection_params: Vec4::new(0.18, 0.0, 0.0, 0.0),
         })),
@@ -1059,10 +1059,10 @@ pub fn setup_cavern_world(
     commands.spawn((
         Mesh3d(meshes.add(create_water_disk_mesh(5.85, 64))),
         MeshMaterial3d(water_materials.add(WaterMaterial {
-            base_color: LinearRgba::new(0.12, 0.85, 0.92, 0.12),
-            deep_color: LinearRgba::new(0.012, 0.045, 0.14, 0.96),
-            foam_color: LinearRgba::new(0.92, 0.98, 1.0, 0.88),
-            params: Vec4::new(0.0, 1.0, 0.0, 0.45),
+            base_color: LinearRgba::new(0.10, 0.62, 0.70, 0.16),
+            deep_color: LinearRgba::new(0.012, 0.055, 0.12, 0.88),
+            foam_color: LinearRgba::new(0.84, 0.94, 0.96, 0.74),
+            params: Vec4::new(0.0, 0.82, 0.0, 0.26),
             reflection_texture: None,
             reflection_params: Vec4::new(0.18, 0.045, 0.85, 0.70),
         })),

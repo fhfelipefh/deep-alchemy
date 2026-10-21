@@ -83,11 +83,11 @@ fn fragment(
         let glisten = pow(filament_metric * (1.0 - spray_noise * 0.5), 3.0) * 0.28;
         let specular_highlight = vec3<f32>(0.85, 0.96, 1.0) * (fresnel * 0.25 + glisten);
 
-        let ambient_froth_glow = aerated_white * (total_froth * bloom_boost * 0.12);
+        let ambient_froth_glow = aerated_white * (total_froth * bloom_boost * 0.065);
 
-        let base_alpha = mix(0.18, 0.32, aeration_depth * 0.4 + fresnel * 0.20);
+        let base_alpha = mix(0.11, 0.22, aeration_depth * 0.4 + fresnel * 0.20);
         let entry_dissolve = smoothstep(0.02, 0.25, in.world_position.y);
-        let final_alpha = clamp((base_alpha + total_froth * 0.25) * entry_dissolve, 0.08, 0.58);
+        let final_alpha = clamp((base_alpha + total_froth * 0.18) * entry_dissolve, 0.06, 0.42);
 
         return vec4<f32>(surface_color + specular_highlight + ambient_froth_glow, final_alpha);
     } else {
@@ -161,8 +161,8 @@ fn fragment(
         let col_rgb = mix(reflected_lake, foam_cel_tint, total_foam * 0.94);
 
         let lake_specular = vec3<f32>(0.88, 0.97, 1.0) * (pow(lake_fresnel, 2.0) * 0.32 + pow(ripple_crests, 2.0) * 0.18);
-        let lake_glow = material_foam.rgb * (total_foam * bloom_boost * 0.16);
-        let lake_alpha = clamp(clear_water_alpha + total_foam * 0.42 + lake_fresnel * 0.22, 0.10, 0.98);
+        let lake_glow = material_foam.rgb * (total_foam * bloom_boost * 0.085);
+        let lake_alpha = clamp(clear_water_alpha + total_foam * 0.30 + lake_fresnel * 0.16, 0.10, 0.88);
 
         return vec4<f32>(col_rgb + lake_specular + lake_glow, lake_alpha);
     }

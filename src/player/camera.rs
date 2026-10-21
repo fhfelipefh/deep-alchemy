@@ -203,12 +203,17 @@ pub fn setup_player(mut commands: Commands, asset_server: Res<AssetServer>) {
                 bevy::core_pipeline::prepass::NormalPrepass,
                 crate::render::outline::OutlineSettings::default(),
                 crate::render::heat_haze::HeatHazeSettings::default(),
-                bevy::core_pipeline::bloom::Bloom::NATURAL,
+                bevy::core_pipeline::bloom::Bloom {
+                    intensity: 0.055,
+                    low_frequency_boost: 0.32,
+                    low_frequency_boost_curvature: 0.72,
+                    ..bevy::core_pipeline::bloom::Bloom::NATURAL
+                },
                 RenderLayers::from_layers(&[0, 2]),
                 Transform::from_xyz(0.0, 0.55, 0.0),
                 DistanceFog {
-                    color: Color::srgba(0.05, 0.09, 0.16, 1.0),
-                    falloff: FogFalloff::ExponentialSquared { density: 0.008 },
+                    color: Color::srgba(0.055, 0.11, 0.16, 1.0),
+                    falloff: FogFalloff::ExponentialSquared { density: 0.012 },
                     ..default()
                 },
             ))
