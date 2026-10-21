@@ -2,9 +2,12 @@ use crate::alchemy::{selected_potion_effects, PotionCooldowns};
 use crate::player::camera::{HeldPotionLiquid, LocomotionState, Player, PlayerCamera};
 use crate::ui::hud::ActiveHotbarSlot;
 use bevy::{
-    pbr::Material,
+    pbr::{Material, MaterialPipeline, MaterialPipelineKey},
     prelude::*,
-    render::render_resource::{AsBindGroup, ShaderRef},
+    render::{
+        mesh::MeshVertexBufferLayoutRef,
+        render_resource::{AsBindGroup, RenderPipelineDescriptor, ShaderRef, SpecializedMeshPipelineError},
+    },
 };
 
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
@@ -17,6 +20,8 @@ pub struct PotionFluidMaterial {
     pub slosh_normal: Vec4,
     #[uniform(3)]
     pub fluid_params: Vec4,
+    #[uniform(4)]
+    pub bulb_center: Vec4,
 }
 
 impl Default for PotionFluidMaterial {
@@ -24,8 +29,9 @@ impl Default for PotionFluidMaterial {
         Self {
             base_color: LinearRgba::new(0.12, 0.92, 0.42, 0.85),
             surface_color: LinearRgba::new(0.35, 1.0, 0.65, 1.0),
-            slosh_normal: Vec4::new(0.0, 1.0, 0.0, 0.08),
-            fluid_params: Vec4::new(0.0, 0.015, 0.08, 1.0),
+            slosh_normal: Vec4::new(0.0, 1.0, 0.0, 0.010),
+            fluid_params: Vec4::new(0.0, 0.003, 0.0045, 1.0),
+            bulb_center: Vec4::new(0.24, -0.20, -0.42, 0.040),
         }
     }
 }
@@ -37,6 +43,16 @@ impl Material for PotionFluidMaterial {
 
     fn alpha_mode(&self) -> AlphaMode {
         AlphaMode::Blend
+    }
+
+    fn specialize(
+        _pipeline: &MaterialPipeline<Self>,
+        descriptor: &mut RenderPipelineDescriptor,
+        _layout: &MeshVertexBufferLayoutRef,
+        _key: MaterialPipelineKey<Self>,
+    ) -> Result<(), SpecializedMeshPipelineError> {
+        descriptor.primitive.cull_mode = None;
+        Ok(())
     }
 }
 
@@ -67,7 +83,11 @@ pub fn update_potion_sloshing(
     time: Res<Time>,
     player_query: Query<(&Transform, &LocomotionState), With<Player>>,
     camera_query: Query<&Transform, With<PlayerCamera>>,
-    mut potion_query: Query<(&mut PotionSloshState, &MeshMaterial3d<PotionFluidMaterial>), With<HeldPotionLiquid>>,
+    mut potion_query: Query<(
+        Option<&GlobalTransform>,
+        &mut PotionSloshState,
+        &MeshMaterial3d<PotionFluidMaterial>,
+    ), With<HeldPotionLiquid>>,
     mut materials: ResMut<Assets<PotionFluidMaterial>>,
     active_slot_res: Option<Res<ActiveHotbarSlot>>,
     cooldowns_res: Option<Res<PotionCooldowns>>,
@@ -98,11 +118,12 @@ pub fn update_potion_sloshing(
         )
     };
 
-    let (player_tf, mouse_look_extra) = player_query
+    let (player_tf, locomotion) = player_query
         .get_single()
-        .map(|(t, l)| (*t, l.mouse_look_delta))
-        .unwrap_or((Transform::IDENTITY, Vec2::ZERO));
+        .map(|(t, l)| (*t, l.clone()))
+        .unwrap_or((Transform::IDENTITY, LocomotionState::default()));
 
+    let (player_yaw, _, _) = player_tf.rotation.to_euler(EulerRot::YXZ);
     let (cam_yaw, cam_pitch) = camera_query
         .get_single()
         .map(|ct| {
@@ -110,30 +131,45 @@ pub fn update_potion_sloshing(
             (y, p)
         })
         .unwrap_or((0.0, 0.0));
+    let effective_yaw = player_yaw + cam_yaw;
 
-    for (mut slosh, mat_handle) in potion_query.iter_mut() {
+    for (global_tf_opt, mut slosh, mat_handle) in potion_query.iter_mut() {
         if !slosh.initialized {
             slosh.initialized = true;
             slosh.prev_player_pos = player_tf.translation;
-            slosh.prev_camera_yaw = cam_yaw;
+            slosh.prev_camera_yaw = effective_yaw;
             slosh.prev_camera_pitch = cam_pitch;
         }
 
-        let yaw_delta = cam_yaw - slosh.prev_camera_yaw;
+        let raw_yaw_delta = effective_yaw - slosh.prev_camera_yaw;
+        let yaw_delta = (raw_yaw_delta + std::f32::consts::PI).rem_euclid(2.0 * std::f32::consts::PI) - std::f32::consts::PI;
         let pitch_delta = cam_pitch - slosh.prev_camera_pitch;
-        slosh.prev_camera_yaw = cam_yaw;
+        slosh.prev_camera_yaw = effective_yaw;
         slosh.prev_camera_pitch = cam_pitch;
 
         let player_pos_delta = player_tf.translation - slosh.prev_player_pos;
         slosh.prev_player_pos = player_tf.translation;
 
-        let forward = player_tf.forward();
-        let right = player_tf.right();
-        let local_accel_x = player_pos_delta.dot(*right) / (dt * dt + 1e-5);
-        let local_accel_z = player_pos_delta.dot(*forward) / (dt * dt + 1e-5);
+        let cam_right = Quat::from_rotation_y(effective_yaw) * Vec3::X;
+        let cam_forward = Quat::from_rotation_y(effective_yaw) * Vec3::NEG_Z;
 
-        let inertial_x = -yaw_delta * 14.0 - mouse_look_extra.x * 0.025 - local_accel_x.clamp(-35.0, 35.0) * 0.012;
-        let inertial_y = pitch_delta * 12.0 - mouse_look_extra.y * 0.020 - local_accel_z.clamp(-35.0, 35.0) * 0.012;
+        let local_vel_x = player_pos_delta.dot(cam_right) / dt;
+        let local_vel_z = player_pos_delta.dot(cam_forward) / dt;
+
+        let bob_impact = if locomotion.head_bob_timer > 0.0 {
+            (locomotion.head_bob_timer * 2.0).sin() * 0.08 * locomotion.head_bob_intensity
+        } else {
+            0.0
+        };
+
+        let landing_impact = if locomotion.camera_landing_dip > 0.005 {
+            (locomotion.camera_landing_dip * 3.5).min(0.4)
+        } else {
+            0.0
+        };
+
+        let inertial_x = -yaw_delta * 14.0 - locomotion.mouse_look_delta.x * 0.025 - local_vel_x * 0.04;
+        let inertial_y = pitch_delta * 12.0 - locomotion.mouse_look_delta.y * 0.020 - local_vel_z * 0.04 + bob_impact + landing_impact;
 
         let k_slosh: f32 = 110.0;
         let c_slosh: f32 = 13.5;
@@ -145,20 +181,26 @@ pub fn update_potion_sloshing(
 
         let tilt_vel = slosh.tilt_velocity;
         slosh.current_tilt += tilt_vel * dt;
-        slosh.current_tilt.x = slosh.current_tilt.x.clamp(-0.75, 0.75);
-        slosh.current_tilt.y = slosh.current_tilt.y.clamp(-0.75, 0.75);
+        slosh.current_tilt.x = slosh.current_tilt.x.clamp(-0.55, 0.55);
+        slosh.current_tilt.y = slosh.current_tilt.y.clamp(-0.55, 0.55);
 
         if let Some(mat) = materials.get_mut(mat_handle) {
             mat.base_color = base_linear;
             mat.surface_color = surface_linear;
 
-            let normal = Vec3::new(-slosh.current_tilt.x, 1.0, -slosh.current_tilt.y).normalize();
-            let fill_level: f32 = 0.06;
-            mat.slosh_normal = Vec4::new(normal.x, normal.y, normal.z, fill_level);
+            let world_up = Vec3::Y;
+            let slosh_world_normal = (world_up + cam_right * slosh.current_tilt.x + cam_forward * slosh.current_tilt.y).normalize();
+            let fill_level: f32 = 0.010;
+            mat.slosh_normal = Vec4::new(slosh_world_normal.x, slosh_world_normal.y, slosh_world_normal.z, fill_level);
 
-            let ripple_amp = (slosh.tilt_velocity.length() * 0.025 + 0.010).clamp(0.006, 0.038);
-            let meniscus_thickness: f32 = 0.09;
+            let ripple_amp = (slosh.tilt_velocity.length() * 0.0025 + 0.0012).clamp(0.0008, 0.0045);
+            let meniscus_thickness: f32 = 0.0045;
             mat.fluid_params = Vec4::new(t, ripple_amp, meniscus_thickness, 1.0);
+
+            let center = global_tf_opt
+                .map(|gt| gt.translation())
+                .unwrap_or(player_tf.translation + Vec3::new(0.24, 0.35, -0.42));
+            mat.bulb_center = Vec4::new(center.x, center.y, center.z, 0.040);
         }
     }
 }

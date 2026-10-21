@@ -289,6 +289,462 @@ pub fn player_look(
     }
 }
 
+fn detect_player_surfaces<'a>(
+    translation: Vec3,
+    ice_sheets_iter: impl Iterator<Item = (&'a Transform, &'a crate::alchemy::FrozenIceSheet)>,
+    has_lake: bool,
+) -> (bool, bool) {
+    let p_xz = Vec2::new(translation.x, translation.z);
+    let mut on_ice = false;
+    for (ice_tf, ice_sheet) in ice_sheets_iter {
+        let d = (p_xz - ice_sheet.center).length();
+        let current_radius = ice_sheet.radius * ice_tf.scale.x;
+        if d <= current_radius + 0.35 {
+            let ice_surface_y = ice_sheet.top_y + 1.2;
+            if (translation.y - ice_surface_y).abs() <= 0.65 {
+                on_ice = true;
+                break;
+            }
+        }
+    }
+    let in_lake = has_lake && crate::dungeon::modular_kit::is_in_lake_water(translation - Vec3::new(0.0, 0.40, 0.0));
+    let is_in_water = in_lake && !on_ice;
+    (on_ice, is_in_water)
+}
+
+fn compute_player_locomotion_input(
+    keys: Option<&ButtonInput<KeyCode>>,
+    gamepads: &Query<&Gamepad>,
+    forward: Vec3,
+    right: Vec3,
+    is_frozen: bool,
+) -> (Vec3, Vec2, bool, f32) {
+    let mut move_dir = Vec3::ZERO;
+    let mut strafe_target_roll: f32 = 0.0;
+    if !is_frozen {
+        if let Some(k) = keys {
+            if k.pressed(KeyCode::KeyW) {
+                move_dir += forward;
+            }
+            if k.pressed(KeyCode::KeyS) {
+                move_dir -= forward;
+            }
+            if k.pressed(KeyCode::KeyD) {
+                move_dir += right;
+                strafe_target_roll += 0.020;
+            }
+            if k.pressed(KeyCode::KeyA) {
+                move_dir -= right;
+                strafe_target_roll -= 0.020;
+            }
+        }
+
+        for gamepad in gamepads.iter() {
+            let raw_x = gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0);
+            let raw_y = gamepad.get(GamepadAxis::LeftStickY).unwrap_or(0.0);
+            let stick = Vec2::new(raw_x, raw_y);
+            let len = stick.length();
+            const DEADZONE: f32 = 0.15;
+            if len > DEADZONE {
+                let norm = stick / len;
+                let remapped = ((len - DEADZONE) / (1.0 - DEADZONE)).clamp(0.0, 1.0);
+                let stick_move = norm * remapped;
+                move_dir += forward * stick_move.y;
+                move_dir += right * stick_move.x;
+                strafe_target_roll += stick_move.x * 0.020;
+            }
+            if gamepad.pressed(GamepadButton::DPadUp) {
+                move_dir += forward;
+            }
+            if gamepad.pressed(GamepadButton::DPadDown) {
+                move_dir -= forward;
+            }
+        }
+    }
+
+    move_dir.y = 0.0;
+    let is_moving = move_dir.length_squared() > 0.0001;
+    let wish_dir = if is_moving {
+        Vec2::new(move_dir.x, move_dir.z).normalize()
+    } else {
+        Vec2::ZERO
+    };
+
+    (move_dir, wish_dir, is_moving, strafe_target_roll)
+}
+
+fn try_execute_jump(locomotion: &mut LocomotionState, is_frozen: bool) -> bool {
+    if locomotion.jump_buffer_timer > 0.0
+        && (locomotion.coyote_timer > 0.0 || locomotion.is_grounded)
+        && !locomotion.is_crouching
+        && !is_frozen
+    {
+        locomotion.vertical_velocity = if locomotion.is_in_water { 3.8 } else { 6.8 };
+        locomotion.is_grounded = false;
+        locomotion.coyote_timer = 0.0;
+        locomotion.jump_buffer_timer = 0.0;
+        locomotion.squash_scale = Vec3::new(0.96, 1.08, 0.96);
+        locomotion.takeoff_timer = 0.06;
+        true
+    } else {
+        false
+    }
+}
+
+fn calculate_landing_elevation(
+    pos: Vec3,
+    obstacle_list: &[(&Transform, ObstacleShape)],
+    has_lake: bool,
+) -> f32 {
+    let floor_y = if has_lake {
+        crate::dungeon::modular_kit::get_grotto_terrain_height(pos.x, pos.z)
+    } else {
+        0.0
+    };
+    let min_wade_floor = floor_y.max(-1.1);
+    let mut landing_y = min_wade_floor + 1.2;
+    let p_xz = Vec2::new(pos.x, pos.z);
+    for (obs_tf, shape) in obstacle_list {
+        match shape {
+            ObstacleShape::Cylinder { radius, height } => {
+                let center = Vec2::new(obs_tf.translation.x, obs_tf.translation.z);
+                if (p_xz - center).length() <= *radius + 0.38 {
+                    let top = obs_tf.translation.y + height * 0.5 + 1.2;
+                    if top <= pos.y + 0.1 && top > landing_y {
+                        landing_y = top;
+                    }
+                }
+            }
+            ObstacleShape::Cuboid { half_extents } => {
+                let (_, rot_y, _) = obs_tf.rotation.to_euler(EulerRot::YXZ);
+                let diff_world = p_xz - Vec2::new(obs_tf.translation.x, obs_tf.translation.z);
+                let cos_r = (-rot_y).cos();
+                let sin_r = (-rot_y).sin();
+                let lx = diff_world.x * cos_r - diff_world.y * sin_r;
+                let lz = diff_world.x * sin_r + diff_world.y * cos_r;
+                if lx.abs() <= half_extents.x + 0.38 && lz.abs() <= half_extents.z + 0.38 {
+                    let top = obs_tf.translation.y + half_extents.y + 1.2;
+                    if top <= pos.y + 0.1 && top > landing_y {
+                        landing_y = top;
+                    }
+                }
+            }
+        }
+    }
+    landing_y
+}
+
+fn spawn_water_splash_burst(
+    commands: &mut Commands,
+    mesh_assets: &mut Assets<Mesh>,
+    mat_assets: &mut Assets<StandardMaterial>,
+    origin: Vec3,
+    count: usize,
+    speed_scale: f32,
+    radius: f32,
+) {
+    for _ in 0..count {
+        let vel = Vec3::new(
+            (crate::render::particles::fastrand::f32() - 0.5) * speed_scale * 1.6,
+            0.6 * speed_scale + crate::render::particles::fastrand::f32() * 0.8 * speed_scale,
+            (crate::render::particles::fastrand::f32() - 0.5) * speed_scale * 1.6,
+        );
+        commands.spawn((
+            Mesh3d(mesh_assets.add(Sphere::new(radius).mesh().uv(8, 6))),
+            MeshMaterial3d(mat_assets.add(StandardMaterial {
+                base_color: Color::LinearRgba(LinearRgba::new(0.30, 0.60, 0.82, 0.30)),
+                alpha_mode: AlphaMode::Add,
+                unlit: true,
+                ..default()
+            })),
+            Transform::from_translation(origin),
+            crate::render::particles::Particle {
+                lifetime: 0.0,
+                max_lifetime: 0.9,
+                velocity: vel,
+                p_type: crate::render::particles::ParticleType::WaterSplash,
+            },
+        ));
+    }
+}
+
+fn spawn_spore_burst(
+    commands: &mut Commands,
+    mesh_assets: &mut Assets<Mesh>,
+    mat_assets: &mut Assets<StandardMaterial>,
+    origin: Vec3,
+    count: usize,
+    base_color: Color,
+    radius: f32,
+) {
+    for _ in 0..count {
+        let angle = crate::render::particles::fastrand::f32() * std::f32::consts::TAU;
+        let speed = 0.5 + crate::render::particles::fastrand::f32() * 0.6;
+        let vel = Vec3::new(
+            angle.cos() * speed,
+            0.20 + crate::render::particles::fastrand::f32() * 0.30,
+            angle.sin() * speed,
+        );
+        commands.spawn((
+            Mesh3d(mesh_assets.add(Sphere::new(radius).mesh().uv(8, 6))),
+            MeshMaterial3d(mat_assets.add(StandardMaterial {
+                base_color,
+                alpha_mode: AlphaMode::Blend,
+                unlit: true,
+                ..default()
+            })),
+            Transform::from_translation(origin),
+            crate::render::particles::Particle {
+                lifetime: 0.0,
+                max_lifetime: 1.5,
+                velocity: vel,
+                p_type: crate::render::particles::ParticleType::GlowSpore,
+            },
+        ));
+    }
+}
+
+fn update_airborne_and_landing(
+    tf: &mut Transform,
+    locomotion: &mut LocomotionState,
+    obstacle_list: &[(&Transform, ObstacleShape)],
+    has_lake: bool,
+    commands: &mut Commands,
+    meshes: &mut Option<ResMut<Assets<Mesh>>>,
+    materials: &mut Option<ResMut<Assets<StandardMaterial>>>,
+    shake: &mut Option<ResMut<CameraShake>>,
+    is_frozen: bool,
+    dt: f32,
+) {
+    if locomotion.is_grounded {
+        return;
+    }
+
+    let landing_y = calculate_landing_elevation(tf.translation, obstacle_list, has_lake);
+    let gravity = if locomotion.vertical_velocity > 0.0 {
+        24.0
+    } else {
+        36.0
+    };
+    locomotion.last_fall_velocity = locomotion.vertical_velocity;
+    locomotion.vertical_velocity -= gravity * dt;
+    tf.translation.y += locomotion.vertical_velocity * dt;
+
+    if tf.translation.y <= landing_y {
+        tf.translation.y = landing_y;
+        let impact_speed = locomotion.vertical_velocity.abs().max(locomotion.last_fall_velocity.abs());
+        locomotion.vertical_velocity = 0.0;
+        locomotion.is_grounded = true;
+        locomotion.coyote_timer = 0.10;
+
+        let impact_ratio = (impact_speed / 14.0).clamp(0.0, 1.0);
+        let squash_factor = 0.06 + 0.10 * impact_ratio;
+        locomotion.squash_scale = Vec3::new(
+            1.0 + squash_factor * 0.5,
+            1.0 - squash_factor,
+            1.0 + squash_factor * 0.5,
+        );
+        locomotion.camera_landing_dip = (impact_speed * 0.016).clamp(0.04, 0.10);
+
+        if impact_speed > 5.0 {
+            if let Some(ref mut s) = shake {
+                let trauma_val = ((impact_speed - 5.0) / 9.0).clamp(0.18, 0.70);
+                s.add_trauma(trauma_val, Vec3::new(0.0, -1.0, 0.0));
+            }
+        }
+
+        if impact_speed > 4.2 {
+            if let (Some(ref mut mesh_assets), Some(ref mut mat_assets)) =
+                (meshes.as_mut(), materials.as_mut())
+            {
+                if locomotion.is_in_water {
+                    spawn_water_splash_burst(
+                        commands,
+                        mesh_assets,
+                        mat_assets,
+                        Vec3::new(tf.translation.x, 0.22, tf.translation.z),
+                        6,
+                        1.5,
+                        0.08,
+                    );
+                    crate::dungeon::modular_kit::spawn_water_ripple(
+                        commands,
+                        mesh_assets,
+                        mat_assets,
+                        Vec3::new(tf.translation.x, 0.19, tf.translation.z),
+                        0.22,
+                        1.45,
+                        1.5,
+                        0.85,
+                    );
+                } else {
+                    spawn_spore_burst(
+                        commands,
+                        mesh_assets,
+                        mat_assets,
+                        Vec3::new(tf.translation.x, landing_y - 1.15, tf.translation.z),
+                        5,
+                        Color::srgba(0.35, 0.95, 0.80, 0.65),
+                        0.035,
+                    );
+                }
+            }
+        }
+
+        try_execute_jump(locomotion, is_frozen);
+    }
+}
+
+fn spawn_player_footstep_feedback(
+    commands: &mut Commands,
+    meshes: &mut Option<ResMut<Assets<Mesh>>>,
+    materials: &mut Option<ResMut<Assets<StandardMaterial>>>,
+    tf: &Transform,
+    locomotion: &mut LocomotionState,
+    right: &Dir3,
+    is_moving: bool,
+    is_sprinting: bool,
+    move_dir: Vec3,
+    dt: f32,
+) {
+    if !locomotion.is_grounded || !is_moving || locomotion.is_frozen {
+        return;
+    }
+
+    let step_dist = locomotion.horizontal_velocity.length() * dt;
+    locomotion.distance_since_footstep += step_dist;
+    let step_threshold = if is_sprinting { 0.48 } else { 0.62 };
+    if locomotion.distance_since_footstep < step_threshold {
+        return;
+    }
+
+    locomotion.distance_since_footstep = 0.0;
+    locomotion.footstep_side = !locomotion.footstep_side;
+    let side_offset = if locomotion.footstep_side { 0.18 } else { -0.18 };
+    let foot_pos = tf.translation + *right * side_offset - Vec3::new(0.0, 1.15, 0.0);
+
+    let (Some(ref mut mesh_assets), Some(ref mut mat_assets)) =
+        (meshes.as_mut(), materials.as_mut())
+    else {
+        return;
+    };
+
+    if locomotion.is_in_water {
+        spawn_water_splash_burst(
+            commands,
+            mesh_assets,
+            mat_assets,
+            Vec3::new(foot_pos.x, 0.18, foot_pos.z),
+            3,
+            0.9,
+            0.06,
+        );
+        crate::dungeon::modular_kit::spawn_water_ripple(
+            commands,
+            mesh_assets,
+            mat_assets,
+            Vec3::new(foot_pos.x, 0.19, foot_pos.z),
+            0.12,
+            0.75,
+            1.1,
+            0.70,
+        );
+    } else if !locomotion.is_on_ice {
+        if is_sprinting {
+            spawn_spore_burst(
+                commands,
+                mesh_assets,
+                mat_assets,
+                foot_pos + Vec3::new(0.0, 0.08, 0.0),
+                2,
+                Color::srgba(0.20, 0.95, 0.75, 0.70),
+                0.022,
+            );
+        } else {
+            let vel = Vec3::new(
+                -move_dir.x * 0.25 + (crate::render::particles::fastrand::f32() - 0.5) * 0.15,
+                0.10 + crate::render::particles::fastrand::f32() * 0.12,
+                -move_dir.z * 0.25 + (crate::render::particles::fastrand::f32() - 0.5) * 0.15,
+            );
+            commands.spawn((
+                Mesh3d(mesh_assets.add(Sphere::new(0.035).mesh().uv(8, 6))),
+                MeshMaterial3d(mat_assets.add(StandardMaterial {
+                    base_color: Color::srgba(0.65, 0.60, 0.50, 0.25),
+                    alpha_mode: AlphaMode::Blend,
+                    unlit: true,
+                    ..default()
+                })),
+                Transform::from_translation(foot_pos + Vec3::new(0.0, 0.05, 0.0)),
+                crate::render::particles::Particle {
+                    lifetime: 0.0,
+                    max_lifetime: 0.7,
+                    velocity: vel,
+                    p_type: crate::render::particles::ParticleType::Steam,
+                },
+            ));
+        }
+    }
+}
+
+fn spawn_player_ice_footprints(
+    commands: &mut Commands,
+    meshes: &mut Option<ResMut<Assets<Mesh>>>,
+    materials: &mut Option<ResMut<Assets<StandardMaterial>>>,
+    tf: &Transform,
+    locomotion: &mut LocomotionState,
+    right: &Dir3,
+    is_moving: bool,
+    dt: f32,
+) {
+    if !locomotion.is_on_ice || !is_moving || !locomotion.is_grounded {
+        return;
+    }
+
+    let step_dist = locomotion.horizontal_velocity.length() * dt;
+    locomotion.distance_since_footprint += step_dist;
+    if locomotion.distance_since_footprint < 0.52 {
+        return;
+    }
+
+    locomotion.distance_since_footprint = 0.0;
+    locomotion.footstep_side = !locomotion.footstep_side;
+    let side_offset = if locomotion.footstep_side { 0.16 } else { -0.16 };
+    let foot_pos = tf.translation + *right * side_offset;
+
+    let (Some(ref mut mesh_assets), Some(ref mut mat_assets)) =
+        (meshes.as_mut(), materials.as_mut())
+    else {
+        return;
+    };
+
+    let footprint_mesh = mesh_assets.add(crate::alchemy::create_footprint_mesh(0.24, 0.11));
+    let footprint_mat = mat_assets.add(StandardMaterial {
+        base_color: Color::srgba(0.82, 0.94, 1.0, 0.75),
+        emissive: LinearRgba::new(0.12, 0.30, 0.45, 0.4),
+        metallic: 0.1,
+        perceptual_roughness: 0.4,
+        reflectance: 0.8,
+        alpha_mode: AlphaMode::Blend,
+        cull_mode: None,
+        unlit: false,
+        ..default()
+    });
+    let player_yaw = tf.rotation;
+    commands.spawn((
+        crate::alchemy::IceFootprint {
+            lifetime: 0.0,
+            max_lifetime: 18.0,
+        },
+        Transform {
+            translation: Vec3::new(foot_pos.x, 0.305, foot_pos.z),
+            rotation: player_yaw,
+            scale: Vec3::ONE,
+        },
+        Mesh3d(footprint_mesh),
+        MeshMaterial3d(footprint_mat),
+    ));
+}
+
 pub fn player_movement(
     game_state: Option<Res<State<GameState>>>,
     time: Res<Time>,
@@ -342,29 +798,20 @@ pub fn player_movement(
         })
         .collect();
 
+    let has_lake = !lake_query.is_empty();
+
     for (state, mut tf, mut stamina, mut locomotion) in query.iter_mut() {
         if *state != PlayerState::Active {
             continue;
         }
 
-        let p_xz = Vec2::new(tf.translation.x, tf.translation.z);
-        let mut on_ice = false;
-        for (ice_tf, ice_sheet) in ice_sheets_query.iter() {
-            let d = (p_xz - ice_sheet.center).length();
-            let current_radius = ice_sheet.radius * ice_tf.scale.x;
-            if d <= current_radius + 0.35 {
-                let ice_surface_y = ice_sheet.top_y + 1.2;
-                if (tf.translation.y - ice_surface_y).abs() <= 0.65 {
-                    on_ice = true;
-                    break;
-                }
-            }
-        }
+        let (on_ice, is_in_water) = detect_player_surfaces(
+            tf.translation,
+            ice_sheets_query.iter(),
+            has_lake,
+        );
         locomotion.is_on_ice = on_ice;
-
-        let has_lake = !lake_query.is_empty();
-        let in_lake = has_lake && crate::dungeon::modular_kit::is_in_lake_water(tf.translation - Vec3::new(0.0, 0.40, 0.0));
-        locomotion.is_in_water = in_lake && !locomotion.is_on_ice;
+        locomotion.is_in_water = is_in_water;
 
         if locomotion.is_frozen {
             locomotion.freeze_timer = (locomotion.freeze_timer - dt).max(0.0);
@@ -389,51 +836,16 @@ pub fn player_movement(
             ));
         }
 
-        let mut move_dir = Vec3::ZERO;
         let forward = tf.forward();
         let right = tf.right();
 
-        let mut strafe_target_roll: f32 = 0.0;
-        if !is_frozen {
-            if let Some(ref k) = keys {
-                if k.pressed(KeyCode::KeyW) {
-                    move_dir += *forward;
-                }
-                if k.pressed(KeyCode::KeyS) {
-                    move_dir -= *forward;
-                }
-                if k.pressed(KeyCode::KeyD) {
-                    move_dir += *right;
-                    strafe_target_roll += 0.020;
-                }
-                if k.pressed(KeyCode::KeyA) {
-                    move_dir -= *right;
-                    strafe_target_roll -= 0.020;
-                }
-            }
-
-            for gamepad in gamepads.iter() {
-                let raw_x = gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0);
-                let raw_y = gamepad.get(GamepadAxis::LeftStickY).unwrap_or(0.0);
-                let stick = Vec2::new(raw_x, raw_y);
-                let len = stick.length();
-                const DEADZONE: f32 = 0.15;
-                if len > DEADZONE {
-                    let norm = stick / len;
-                    let remapped = ((len - DEADZONE) / (1.0 - DEADZONE)).clamp(0.0, 1.0);
-                    let stick_move = norm * remapped;
-                    move_dir += *forward * stick_move.y;
-                    move_dir += *right * stick_move.x;
-                    strafe_target_roll += stick_move.x * 0.020;
-                }
-                if gamepad.pressed(GamepadButton::DPadUp) {
-                    move_dir += *forward;
-                }
-                if gamepad.pressed(GamepadButton::DPadDown) {
-                    move_dir -= *forward;
-                }
-            }
-        }
+        let (move_dir, wish_dir, is_moving, strafe_target_roll) = compute_player_locomotion_input(
+            keys.as_deref(),
+            &gamepads,
+            *forward,
+            *right,
+            is_frozen,
+        );
 
         if strafe_target_roll.abs() > 1e-4 {
             locomotion.target_camera_roll = (locomotion.target_camera_roll + strafe_target_roll).clamp(-0.028, 0.028);
@@ -442,15 +854,6 @@ pub fn player_movement(
         locomotion.camera_roll = locomotion.camera_roll.lerp(locomotion.target_camera_roll, (10.0 * dt).min(1.0));
         locomotion.target_camera_roll = locomotion.target_camera_roll.lerp(0.0, (8.0 * dt).min(1.0));
         locomotion.throw_recoil = (locomotion.throw_recoil - 6.0 * dt).max(0.0);
-
-        move_dir.y = 0.0;
-        let is_moving = move_dir.length_squared() > 0.0001;
-
-        let wish_dir = if is_moving {
-            Vec2::new(move_dir.x, move_dir.z).normalize()
-        } else {
-            Vec2::ZERO
-        };
 
         let gamepad_crouch = gamepads.iter().any(|g| {
             g.pressed(GamepadButton::RightThumb) || g.pressed(GamepadButton::DPadDown)
@@ -531,18 +934,7 @@ pub fn player_movement(
                 locomotion.horizontal_velocity = Vec2::ZERO;
             }
 
-            if locomotion.jump_buffer_timer > 0.0
-                && locomotion.coyote_timer > 0.0
-                && !locomotion.is_crouching
-                && !is_frozen
-            {
-                locomotion.vertical_velocity = if locomotion.is_in_water { 3.8 } else { 6.8 };
-                locomotion.is_grounded = false;
-                locomotion.coyote_timer = 0.0;
-                locomotion.jump_buffer_timer = 0.0;
-                locomotion.squash_scale = Vec3::new(0.96, 1.08, 0.96);
-                locomotion.takeoff_timer = 0.06;
-            }
+            try_execute_jump(&mut locomotion, is_frozen);
         } else {
             let drag = (1.0 - 0.05 * dt).clamp(0.0, 1.0);
             locomotion.horizontal_velocity *= drag;
@@ -559,166 +951,21 @@ pub fn player_movement(
                 }
             }
 
-            if locomotion.jump_buffer_timer > 0.0
-                && locomotion.coyote_timer > 0.0
-                && !locomotion.is_crouching
-                && !is_frozen
-            {
-                locomotion.vertical_velocity = if locomotion.is_in_water { 3.8 } else { 6.8 };
-                locomotion.is_grounded = false;
-                locomotion.coyote_timer = 0.0;
-                locomotion.jump_buffer_timer = 0.0;
-                locomotion.squash_scale = Vec3::new(0.96, 1.08, 0.96);
-                locomotion.takeoff_timer = 0.06;
-            }
+            try_execute_jump(&mut locomotion, is_frozen);
         }
 
-        if !locomotion.is_grounded {
-            let floor_y = if has_lake {
-                crate::dungeon::modular_kit::get_grotto_terrain_height(tf.translation.x, tf.translation.z)
-            } else {
-                0.0
-            };
-            let min_wade_floor = floor_y.max(-1.1);
-            let mut landing_y = min_wade_floor + 1.2;
-            let p_xz = Vec2::new(tf.translation.x, tf.translation.z);
-            for (obs_tf, shape) in &obstacle_list {
-                match shape {
-                    ObstacleShape::Cylinder { radius, height } => {
-                        let center = Vec2::new(obs_tf.translation.x, obs_tf.translation.z);
-                        if (p_xz - center).length() <= *radius + 0.38 {
-                            let top = obs_tf.translation.y + height * 0.5 + 1.2;
-                            if top <= tf.translation.y + 0.1 && top > landing_y {
-                                landing_y = top;
-                            }
-                        }
-                    }
-                    ObstacleShape::Cuboid { half_extents } => {
-                        let (_, rot_y, _) = obs_tf.rotation.to_euler(EulerRot::YXZ);
-                        let diff_world = p_xz - Vec2::new(obs_tf.translation.x, obs_tf.translation.z);
-                        let cos_r = (-rot_y).cos();
-                        let sin_r = (-rot_y).sin();
-                        let lx = diff_world.x * cos_r - diff_world.y * sin_r;
-                        let lz = diff_world.x * sin_r + diff_world.y * cos_r;
-                        if lx.abs() <= half_extents.x + 0.38 && lz.abs() <= half_extents.z + 0.38 {
-                            let top = obs_tf.translation.y + half_extents.y + 1.2;
-                            if top <= tf.translation.y + 0.1 && top > landing_y {
-                                landing_y = top;
-                            }
-                        }
-                    }
-                }
-            }
-
-            let gravity = if locomotion.vertical_velocity > 0.0 {
-                24.0
-            } else {
-                36.0
-            };
-            locomotion.last_fall_velocity = locomotion.vertical_velocity;
-            locomotion.vertical_velocity -= gravity * dt;
-            tf.translation.y += locomotion.vertical_velocity * dt;
-            if tf.translation.y <= landing_y {
-                tf.translation.y = landing_y;
-                let impact_speed = locomotion.vertical_velocity.abs().max(locomotion.last_fall_velocity.abs());
-                locomotion.vertical_velocity = 0.0;
-                locomotion.is_grounded = true;
-                locomotion.coyote_timer = 0.10;
-
-                let impact_ratio = (impact_speed / 14.0).clamp(0.0, 1.0);
-                let squash_factor = 0.06 + 0.10 * impact_ratio;
-                locomotion.squash_scale = Vec3::new(
-                    1.0 + squash_factor * 0.5,
-                    1.0 - squash_factor,
-                    1.0 + squash_factor * 0.5,
-                );
-                locomotion.camera_landing_dip = (impact_speed * 0.016).clamp(0.04, 0.10);
-
-                if impact_speed > 5.0 {
-                    if let Some(ref mut s) = shake {
-                        let trauma_val = ((impact_speed - 5.0) / 9.0).clamp(0.18, 0.70);
-                        s.add_trauma(trauma_val, Vec3::new(0.0, -1.0, 0.0));
-                    }
-                }
-
-                if impact_speed > 4.2 {
-                    if let (Some(ref mut mesh_assets), Some(ref mut mat_assets)) =
-                        (meshes.as_mut(), materials.as_mut())
-                    {
-                        if locomotion.is_in_water {
-                            for _ in 0..6 {
-                                let vel = Vec3::new(
-                                    (crate::render::particles::fastrand::f32() - 0.5) * 2.4,
-                                    0.8 + crate::render::particles::fastrand::f32() * 1.2,
-                                    (crate::render::particles::fastrand::f32() - 0.5) * 2.4,
-                                );
-                                commands.spawn((
-                                    Mesh3d(mesh_assets.add(Sphere::new(0.08).mesh().uv(8, 6))),
-                                    MeshMaterial3d(mat_assets.add(StandardMaterial {
-                                        base_color: Color::LinearRgba(LinearRgba::new(0.32, 0.65, 0.88, 0.35)),
-                                        alpha_mode: AlphaMode::Add,
-                                        unlit: true,
-                                        ..default()
-                                    })),
-                                    Transform::from_translation(Vec3::new(tf.translation.x, 0.22, tf.translation.z)),
-                                    crate::render::particles::Particle {
-                                        lifetime: 0.0,
-                                        max_lifetime: 1.0,
-                                        velocity: vel,
-                                        p_type: crate::render::particles::ParticleType::WaterSplash,
-                                    },
-                                ));
-                            }
-                            crate::dungeon::modular_kit::spawn_water_ripple(
-                                &mut commands,
-                                mesh_assets,
-                                mat_assets,
-                                Vec3::new(tf.translation.x, 0.19, tf.translation.z),
-                                0.22,
-                                1.45,
-                                1.5,
-                                0.85,
-                            );
-                        } else {
-                            for _ in 0..5 {
-                                let angle = crate::render::particles::fastrand::f32() * std::f32::consts::TAU;
-                                let speed = 0.6 + crate::render::particles::fastrand::f32() * 0.8;
-                                let vel = Vec3::new(
-                                    angle.cos() * speed,
-                                    0.25 + crate::render::particles::fastrand::f32() * 0.35,
-                                    angle.sin() * speed,
-                                );
-                                commands.spawn((
-                                    Mesh3d(mesh_assets.add(Sphere::new(0.035).mesh().uv(8, 6))),
-                                    MeshMaterial3d(mat_assets.add(StandardMaterial {
-                                        base_color: Color::srgba(0.35, 0.95, 0.80, 0.65),
-                                        alpha_mode: AlphaMode::Blend,
-                                        unlit: true,
-                                        ..default()
-                                    })),
-                                    Transform::from_translation(Vec3::new(tf.translation.x, landing_y - 1.15, tf.translation.z)),
-                                    crate::render::particles::Particle {
-                                        lifetime: 0.0,
-                                        max_lifetime: 1.5,
-                                        velocity: vel,
-                                        p_type: crate::render::particles::ParticleType::GlowSpore,
-                                    },
-                                ));
-                            }
-                        }
-                    }
-                }
-
-                if locomotion.jump_buffer_timer > 0.0 && !locomotion.is_crouching && !is_frozen {
-                    locomotion.vertical_velocity = if locomotion.is_in_water { 3.8 } else { 6.8 };
-                    locomotion.is_grounded = false;
-                    locomotion.coyote_timer = 0.0;
-                    locomotion.jump_buffer_timer = 0.0;
-                    locomotion.squash_scale = Vec3::new(0.96, 1.08, 0.96);
-                    locomotion.takeoff_timer = 0.06;
-                }
-            }
-        }
+        update_airborne_and_landing(
+            &mut tf,
+            &mut locomotion,
+            &obstacle_list,
+            has_lake,
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &mut shake,
+            is_frozen,
+            dt,
+        );
 
         let h_speed_sq = locomotion.horizontal_velocity.length_squared();
         if h_speed_sq > 0.0001 {
@@ -745,144 +992,29 @@ pub fn player_movement(
             }
         }
 
-        if locomotion.is_grounded && is_moving && !is_frozen {
-            let step_dist = locomotion.horizontal_velocity.length() * dt;
-            locomotion.distance_since_footstep += step_dist;
-            let step_threshold = if is_sprinting { 0.48 } else { 0.62 };
-            if locomotion.distance_since_footstep >= step_threshold {
-                locomotion.distance_since_footstep = 0.0;
-                locomotion.footstep_side = !locomotion.footstep_side;
-                let side_offset = if locomotion.footstep_side { 0.18 } else { -0.18 };
-                let foot_pos = tf.translation + *right * side_offset - Vec3::new(0.0, 1.15, 0.0);
+        spawn_player_footstep_feedback(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &tf,
+            &mut locomotion,
+            &right,
+            is_moving,
+            is_sprinting,
+            move_dir,
+            dt,
+        );
 
-                if let (Some(ref mut mesh_assets), Some(ref mut mat_assets)) =
-                    (meshes.as_mut(), materials.as_mut())
-                {
-                    if locomotion.is_in_water {
-                        for _ in 0..3 {
-                            let vel = Vec3::new(
-                                (crate::render::particles::fastrand::f32() - 0.5) * 1.4,
-                                0.6 + crate::render::particles::fastrand::f32() * 0.7,
-                                (crate::render::particles::fastrand::f32() - 0.5) * 1.4,
-                            );
-                            commands.spawn((
-                                Mesh3d(mesh_assets.add(Sphere::new(0.06).mesh().uv(8, 6))),
-                                MeshMaterial3d(mat_assets.add(StandardMaterial {
-                                    base_color: Color::LinearRgba(LinearRgba::new(0.28, 0.55, 0.75, 0.25)),
-                                    alpha_mode: AlphaMode::Add,
-                                    unlit: true,
-                                    ..default()
-                                })),
-                                Transform::from_translation(Vec3::new(foot_pos.x, 0.18, foot_pos.z)),
-                                crate::render::particles::Particle {
-                                    lifetime: 0.0,
-                                    max_lifetime: 0.8,
-                                    velocity: vel,
-                                    p_type: crate::render::particles::ParticleType::WaterSplash,
-                                },
-                            ));
-                        }
-                        crate::dungeon::modular_kit::spawn_water_ripple(
-                            &mut commands,
-                            mesh_assets,
-                            mat_assets,
-                            Vec3::new(foot_pos.x, 0.19, foot_pos.z),
-                            0.12,
-                            0.75,
-                            1.1,
-                            0.70,
-                        );
-                    } else if !locomotion.is_on_ice {
-                        if is_sprinting {
-                            for _ in 0..2 {
-                                let vel = Vec3::new(
-                                    (crate::render::particles::fastrand::f32() - 0.5) * 0.25,
-                                    0.18 + crate::render::particles::fastrand::f32() * 0.20,
-                                    (crate::render::particles::fastrand::f32() - 0.5) * 0.25,
-                                );
-                                commands.spawn((
-                                    Mesh3d(mesh_assets.add(Sphere::new(0.022).mesh().uv(8, 6))),
-                                    MeshMaterial3d(mat_assets.add(StandardMaterial {
-                                        base_color: Color::srgba(0.20, 0.95, 0.75, 0.70),
-                                        alpha_mode: AlphaMode::Blend,
-                                        unlit: true,
-                                        ..default()
-                                    })),
-                                    Transform::from_translation(foot_pos + Vec3::new(0.0, 0.08, 0.0)),
-                                    crate::render::particles::Particle {
-                                        lifetime: 0.0,
-                                        max_lifetime: 1.8,
-                                        velocity: vel,
-                                        p_type: crate::render::particles::ParticleType::GlowSpore,
-                                    },
-                                ));
-                            }
-                        } else {
-                            let vel = Vec3::new(
-                                -move_dir.x * 0.25 + (crate::render::particles::fastrand::f32() - 0.5) * 0.15,
-                                0.10 + crate::render::particles::fastrand::f32() * 0.12,
-                                -move_dir.z * 0.25 + (crate::render::particles::fastrand::f32() - 0.5) * 0.15,
-                            );
-                            commands.spawn((
-                                Mesh3d(mesh_assets.add(Sphere::new(0.035).mesh().uv(8, 6))),
-                                MeshMaterial3d(mat_assets.add(StandardMaterial {
-                                    base_color: Color::srgba(0.65, 0.60, 0.50, 0.25),
-                                    alpha_mode: AlphaMode::Blend,
-                                    unlit: true,
-                                    ..default()
-                                })),
-                                Transform::from_translation(foot_pos + Vec3::new(0.0, 0.05, 0.0)),
-                                crate::render::particles::Particle {
-                                    lifetime: 0.0,
-                                    max_lifetime: 0.7,
-                                    velocity: vel,
-                                    p_type: crate::render::particles::ParticleType::Steam,
-                                },
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-
-        if locomotion.is_on_ice && is_moving && locomotion.is_grounded {
-            let step_dist = locomotion.horizontal_velocity.length() * dt;
-            locomotion.distance_since_footprint += step_dist;
-            if locomotion.distance_since_footprint >= 0.52 {
-                locomotion.distance_since_footprint = 0.0;
-                locomotion.footstep_side = !locomotion.footstep_side;
-                let side_offset = if locomotion.footstep_side { 0.16 } else { -0.16 };
-                let foot_pos = tf.translation + *right * side_offset;
-                if let (Some(ref mut mesh_assets), Some(ref mut mat_assets)) = (meshes.as_mut(), materials.as_mut()) {
-                    let footprint_mesh = mesh_assets.add(crate::alchemy::create_footprint_mesh(0.24, 0.11));
-                    let footprint_mat = mat_assets.add(StandardMaterial {
-                        base_color: Color::srgba(0.82, 0.94, 1.0, 0.75),
-                        emissive: LinearRgba::new(0.12, 0.30, 0.45, 0.4),
-                        metallic: 0.1,
-                        perceptual_roughness: 0.4,
-                        reflectance: 0.8,
-                        alpha_mode: AlphaMode::Blend,
-                        cull_mode: None,
-                        unlit: false,
-                        ..default()
-                    });
-                    let player_yaw = tf.rotation;
-                    commands.spawn((
-                        crate::alchemy::IceFootprint {
-                            lifetime: 0.0,
-                            max_lifetime: 18.0,
-                        },
-                        Transform {
-                            translation: Vec3::new(foot_pos.x, 0.305, foot_pos.z),
-                            rotation: player_yaw,
-                            scale: Vec3::ONE,
-                        },
-                        Mesh3d(footprint_mesh),
-                        MeshMaterial3d(footprint_mat),
-                    ));
-                }
-            }
-        }
+        spawn_player_ice_footprints(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &tf,
+            &mut locomotion,
+            &right,
+            is_moving,
+            dt,
+        );
 
         let floor_h = if has_lake {
             crate::dungeon::modular_kit::get_grotto_terrain_height(tf.translation.x, tf.translation.z)
@@ -1123,8 +1255,8 @@ pub fn update_held_potion_visuals(
             potion.current_slot = active_slot;
 
             let glass_mat = materials.add(StandardMaterial {
-                base_color: Color::srgba(0.85, 0.92, 1.0, 0.32),
-                perceptual_roughness: 0.12,
+                base_color: Color::srgba(0.85, 0.92, 1.0, 0.22),
+                perceptual_roughness: 0.08,
                 metallic: 0.1,
                 alpha_mode: AlphaMode::Blend,
                 ..default()
@@ -1144,8 +1276,8 @@ pub fn update_held_potion_visuals(
                 ..default()
             });
 
-            let bulb_mesh = meshes.add(Sphere::new(0.048).mesh().uv(16, 12));
-            let liquid_mesh = meshes.add(Sphere::new(0.040).mesh().uv(12, 10));
+            let bulb_mesh = meshes.add(Sphere::new(0.048).mesh().uv(24, 18));
+            let liquid_mesh = meshes.add(Sphere::new(0.040).mesh().uv(24, 18));
             let neck_mesh = meshes.add(Cylinder::new(0.018, 0.05).mesh());
             let cork_mesh = meshes.add(Cylinder::new(0.016, 0.022).mesh());
 
@@ -1165,8 +1297,9 @@ pub fn update_held_potion_visuals(
                             (liquid_color.to_linear().blue * 1.35).min(1.0),
                             1.0,
                         ),
-                        slosh_normal: Vec4::new(0.0, 1.0, 0.0, 0.06),
-                        fluid_params: Vec4::new(0.0, 0.012, 0.09, 1.0),
+                        slosh_normal: Vec4::new(0.0, 1.0, 0.0, 0.010),
+                        fluid_params: Vec4::new(0.0, 0.002, 0.0045, 1.0),
+                        bulb_center: Vec4::new(0.0, 0.0, 0.0, 0.040),
                     });
                     builder.spawn((
                         HeldPotionLiquid,

@@ -35,20 +35,21 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
 
         if (dist < source.radius && source.radius > 0.001) {
             let norm_dist = dist / source.radius;
-            let falloff = (1.0 - norm_dist) * (1.0 - norm_dist);
+            let vertical_bias = select(1.0, 0.15, diff.y > 0.02);
+            let falloff = (1.0 - norm_dist) * (1.0 - norm_dist) * (1.0 - norm_dist) * vertical_bias;
 
             let flow_t = settings.time * settings.flow_speed;
-            let uv_scaled = in.uv * 50.0;
+            let uv_scaled = in.uv * 65.0;
 
-            let wave_x = sin(uv_scaled.y * 1.5 + flow_t * 6.0 + diff.x * 20.0) 
-                       * cos(uv_scaled.x * 0.8 + flow_t * 4.0);
-            let wave_y = cos(uv_scaled.x * 1.4 - flow_t * 5.0 + diff.y * 15.0) 
-                       * sin(uv_scaled.y * 1.1 + flow_t * 7.0);
+            let wave_x = sin(uv_scaled.y * 3.0 + flow_t * 4.0 + diff.x * 20.0) 
+                       * cos(uv_scaled.x * 1.5 + flow_t * 2.8);
+            let wave_y = cos(uv_scaled.x * 2.5 - flow_t * 3.8 + diff.y * 18.0) 
+                       * sin(uv_scaled.y * 2.2 + flow_t * 4.5);
 
-            let drift_up = -abs(sin(flow_t * 3.0 + uv_scaled.x * 2.0)) * 0.4;
+            let drift_up = -abs(sin(flow_t * 2.0 + uv_scaled.x * 3.5)) * 0.2;
 
             let distortion = vec2<f32>(wave_x, wave_y + drift_up) 
-                           * source.intensity 
+                           * (source.intensity * 0.015)
                            * settings.distortion_scale 
                            * falloff;
 
@@ -57,22 +58,22 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
         }
     }
 
-    if (length(total_offset) < 0.0001) {
+    if (length(total_offset) < 0.00005) {
         return textureSample(screen_texture, texture_sampler, in.uv);
     }
 
-    let clamped_offset = clamp(total_offset, vec2<f32>(-0.08, -0.08), vec2<f32>(0.08, 0.08));
+    let clamped_offset = clamp(total_offset, vec2<f32>(-0.0015, -0.0015), vec2<f32>(0.0015, 0.0015));
 
-    let uv_r = clamp(in.uv + clamped_offset * 1.04, vec2<f32>(0.001, 0.001), vec2<f32>(0.999, 0.999));
+    let uv_r = clamp(in.uv + clamped_offset * 1.008, vec2<f32>(0.001, 0.001), vec2<f32>(0.999, 0.999));
     let uv_g = clamp(in.uv + clamped_offset, vec2<f32>(0.001, 0.001), vec2<f32>(0.999, 0.999));
-    let uv_b = clamp(in.uv + clamped_offset * 0.96, vec2<f32>(0.001, 0.001), vec2<f32>(0.999, 0.999));
+    let uv_b = clamp(in.uv + clamped_offset * 0.992, vec2<f32>(0.001, 0.001), vec2<f32>(0.999, 0.999));
 
     let col_r = textureSample(screen_texture, texture_sampler, uv_r).r;
     let col_g = textureSample(screen_texture, texture_sampler, uv_g).g;
     let col_b = textureSample(screen_texture, texture_sampler, uv_b).b;
     let base_a = textureSample(screen_texture, texture_sampler, uv_g).a;
 
-    let heat_tint = vec3<f32>(0.12, 0.04, 0.01) * min(max_heat_factor * 25.0, 0.18);
+    let heat_tint = vec3<f32>(0.04, 0.015, 0.005) * min(max_heat_factor * 2.0, 0.03);
     let final_rgb = vec3<f32>(col_r, col_g, col_b) + heat_tint;
 
     return vec4<f32>(final_rgb, base_a);

@@ -279,7 +279,7 @@ pub fn project_world_to_viewport(
     }
 
     let dist = to_source.length().max(0.4);
-    let screen_radius = (radius_world / dist * 0.85).clamp(0.02, 0.75);
+    let screen_radius = (radius_world / dist * 0.12).clamp(0.01, 0.09);
 
     Some(HeatSourceGpu {
         screen_pos: Vec2::new(screen_x, screen_y),
@@ -302,14 +302,14 @@ pub fn sync_heat_sources_system(
 ) {
     for (entity, geyser) in geysers.iter() {
         let (radius, intensity) = if geyser.is_erupting {
-            (3.4, 0.032)
+            (3.4, 0.008)
         } else {
-            (1.8, 0.012)
+            (1.8, 0.003)
         };
         commands.entity(entity).insert(HeatHazeSource {
             radius,
             intensity,
-            speed: 1.2,
+            speed: 1.0,
             is_active: true,
         });
     }
@@ -321,8 +321,8 @@ pub fn sync_heat_sources_system(
         if is_thermal {
             commands.entity(entity).insert(HeatHazeSource {
                 radius: 2.2,
-                intensity: 0.022,
-                speed: 1.1,
+                intensity: 0.004,
+                speed: 1.0,
                 is_active: true,
             });
         }
@@ -336,8 +336,8 @@ pub fn sync_heat_sources_system(
         if is_fire {
             commands.entity(entity).insert(HeatHazeSource {
                 radius: 1.4,
-                intensity: 0.028,
-                speed: 1.5,
+                intensity: 0.005,
+                speed: 1.2,
                 is_active: true,
             });
         }
@@ -346,8 +346,8 @@ pub fn sync_heat_sources_system(
         if flammable.is_burning {
             commands.entity(entity).insert(HeatHazeSource {
                 radius: 2.0,
-                intensity: 0.024,
-                speed: 1.3,
+                intensity: 0.004,
+                speed: 1.0,
                 is_active: true,
             });
         }
@@ -356,12 +356,12 @@ pub fn sync_heat_sources_system(
         if let Some(geyser) = maybe_geyser {
             if geyser.is_erupting {
                 haze.radius = 3.4;
-                haze.intensity = 0.032;
-                haze.speed = 2.0;
+                haze.intensity = 0.008;
+                haze.speed = 1.2;
             } else {
                 haze.radius = 1.8;
-                haze.intensity = 0.012;
-                haze.speed = 1.0;
+                haze.intensity = 0.003;
+                haze.speed = 0.8;
             }
         }
         if let Some(flammable) = maybe_flammable {

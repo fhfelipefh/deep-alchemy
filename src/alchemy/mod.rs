@@ -173,6 +173,17 @@ impl Flammable {
     pub fn ignite(&mut self) {
         self.is_burning = true;
     }
+
+    pub fn extinguish(&mut self, commands: &mut Commands) {
+        self.is_burning = false;
+        self.elapsed = 0.0;
+        if let Some(light) = self.fire_light.take() {
+            commands.entity(light).despawn();
+        }
+        if let Some(emitter) = self.fire_emitter.take() {
+            commands.entity(emitter).despawn();
+        }
+    }
 }
 
 #[derive(Resource, Debug, Clone)]
@@ -673,6 +684,375 @@ pub fn spawn_potion_projectile(
     ));
 }
 
+fn apply_splash_effects(
+    receivers: &mut Query<(Entity, &Transform, &mut EffectReceiverComponent), (Without<PotionProjectile>, Without<PotionPuddle>, Without<Player>)>,
+    player_query: &mut Query<(Entity, &Transform, &mut LocomotionState, &mut EffectReceiverComponent), (With<Player>, Without<PotionProjectile>)>,
+    impact_point: Vec3,
+    effects: &[ActiveEffect],
+    excluded_entity: Entity,
+    radius: f32,
+) {
+    for (r_entity, r_tf, mut receiver) in receivers.iter_mut() {
+        if r_entity != excluded_entity && r_tf.translation.distance(impact_point) <= radius {
+            for effect in effects {
+                receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
+            }
+        }
+    }
+
+    for (_p_entity, p_tf, _p_loco, mut p_recv) in player_query.iter_mut() {
+        if p_tf.translation.distance(impact_point) <= radius {
+            for effect in effects {
+                p_recv.apply_effect(effect.kind, effect.duration, effect.magnitude);
+            }
+        }
+    }
+}
+
+fn ignite_nearby_flammables(
+    flammables: &mut Query<(Entity, &Transform, &mut Flammable), (Without<PotionProjectile>, Without<PotionPuddle>, Without<Player>)>,
+    impact_point: Vec3,
+    radius: f32,
+) {
+    for (_f_entity, f_tf, mut flammable) in flammables.iter_mut() {
+        if f_tf.translation.length_squared() > 0.01 && f_tf.translation.distance(impact_point) <= radius {
+            flammable.ignite();
+        }
+    }
+}
+
+fn extinguish_nearby_flammables(
+    flammables: &mut Query<(Entity, &Transform, &mut Flammable), (Without<PotionProjectile>, Without<PotionPuddle>, Without<Player>)>,
+    commands: &mut Commands,
+    impact_point: Vec3,
+    radius: f32,
+) {
+    for (_f_entity, f_tf, mut flammable) in flammables.iter_mut() {
+        if flammable.is_burning && f_tf.translation.length_squared() > 0.01 && f_tf.translation.distance(impact_point) <= radius {
+            flammable.extinguish(commands);
+            commands.spawn((
+                Transform::from_translation(f_tf.translation + Vec3::new(0.0, 0.35, 0.0)),
+                crate::render::particles::ParticleEmitter {
+                    spawn_timer: 0.0,
+                    spawn_rate: 0.02,
+                    particle_type: crate::render::particles::ParticleType::Steam,
+                },
+                AlchemyTransientEmitter {
+                    elapsed: 0.0,
+                    max_lifetime: 1.2,
+                },
+            ));
+        }
+    }
+}
+
+fn apply_radial_kinetic_impulse(
+    dynamic_props: &mut Query<(Entity, &Transform, &RigidBody, Option<&mut LinearVelocity>, Option<&mut AngularVelocity>), (Without<PotionProjectile>, Without<Player>)>,
+    player_query: &mut Query<(Entity, &Transform, &mut LocomotionState, &mut EffectReceiverComponent), (With<Player>, Without<PotionProjectile>)>,
+    commands: &mut Commands,
+    impact_point: Vec3,
+    force: f32,
+    radius: f32,
+) {
+    for (prop_ent, prop_tf, rb, mut lin_vel_opt, mut ang_vel_opt) in dynamic_props.iter_mut() {
+        if *rb != RigidBody::Dynamic {
+            continue;
+        }
+        let prop_pos = prop_tf.translation;
+        let delta = prop_pos - impact_point;
+        let dist = delta.length();
+        if dist <= radius && dist > 1e-4 {
+            let dir = (delta / dist + Vec3::new(0.0, 0.45, 0.0)).normalize();
+            let falloff = force / (dist * dist + 0.5);
+            let impulse = dir * falloff;
+            if let Some(ref mut lin_vel) = lin_vel_opt {
+                lin_vel.0 += impulse;
+            } else {
+                commands.entity(prop_ent).insert(LinearVelocity(impulse));
+            }
+            if let Some(ref mut ang) = ang_vel_opt {
+                ang.0 += Vec3::new(
+                    (crate::render::particles::fastrand::f32() - 0.5) * 8.0,
+                    (crate::render::particles::fastrand::f32() - 0.5) * 8.0,
+                    (crate::render::particles::fastrand::f32() - 0.5) * 8.0,
+                );
+            }
+        }
+    }
+
+    for (_, p_tf, mut loco, _) in player_query.iter_mut() {
+        let p_pos = p_tf.translation;
+        let delta = p_pos - impact_point;
+        let dist = delta.length();
+        if dist <= radius * 1.35 && dist > 1e-4 {
+            let dir_2d = Vec2::new(delta.x, delta.z).normalize_or_zero();
+            let knockback = dir_2d * (force * 0.45 / (dist + 0.3));
+            loco.horizontal_velocity += knockback;
+        }
+    }
+}
+
+fn apply_impact_trauma_shake(
+    player_query: &Query<(Entity, &Transform, &mut LocomotionState, &mut EffectReceiverComponent), (With<Player>, Without<PotionProjectile>)>,
+    shake: &mut Option<ResMut<CameraShake>>,
+    impact_point: Vec3,
+    max_radius: f32,
+    multiplier: f32,
+) {
+    let Some(ref mut s) = shake else { return; };
+    for (_p_ent, p_tf, _p_loco, _p_recv) in player_query.iter() {
+        let dist = p_tf.translation.distance(impact_point);
+        if dist < max_radius {
+            let dir = (p_tf.translation - impact_point).normalize_or_zero();
+            let intensity = (((max_radius - dist) / max_radius).clamp(0.20, 0.85)) * multiplier;
+            s.add_trauma(intensity, dir);
+        }
+    }
+}
+
+fn spawn_glass_shards_burst(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    impact_point: Vec3,
+    impact_normal: Vec3,
+    color: Color,
+    floor_y: f32,
+    count: usize,
+    is_wall: bool,
+) {
+    let tangent = if impact_normal.y.abs() < 0.9 {
+        impact_normal.cross(Vec3::Y).normalize()
+    } else {
+        impact_normal.cross(Vec3::X).normalize()
+    };
+    let bitangent = impact_normal.cross(tangent).normalize();
+
+    let c = color.to_srgba();
+    let stain_base = Color::srgb(
+        c.red * 0.78 + 0.18,
+        c.green * 0.78 + 0.18,
+        c.blue * 0.78 + 0.18,
+    );
+    let stain_emissive = color.to_linear() * 0.6;
+
+    for i in 0..count {
+        let angle_noise = (i as f32 * 4.37).sin() * 0.35;
+        let phi = (i as f32) * (std::f32::consts::TAU / (count as f32)) + angle_noise;
+        let radial_speed = 0.8 + 1.4 * ((i as f32 * 2.3).sin().abs());
+        let normal_speed = 0.4 + 0.7 * ((i as f32 * 3.1).cos().abs());
+
+        let shard_vel = if is_wall {
+            let burst = impact_normal * (1.6 + 1.2 * ((i as f32 * 2.5).sin().abs()));
+            let lateral = tangent * (phi.cos() * 1.4);
+            let down_push = Vec3::NEG_Y * (0.6 + 0.8 * ((i as f32 * 3.1).cos().abs()));
+            burst + lateral + down_push
+        } else {
+            tangent * (phi.cos() * radial_speed)
+                + bitangent * (phi.sin() * radial_speed)
+                + impact_normal * normal_speed
+        };
+
+        let shard_scale = 0.08 + 0.09 * ((i as f32 * 1.7).sin().abs());
+        let shard_mesh = meshes.add(create_glass_shard_mesh(shard_scale, i));
+        let shard_mat = materials.add(StandardMaterial {
+            base_color: stain_base,
+            emissive: stain_emissive,
+            perceptual_roughness: 0.10,
+            metallic: 0.18,
+            reflectance: 0.98,
+            cull_mode: None,
+            double_sided: true,
+            alpha_mode: AlphaMode::Opaque,
+            depth_bias: 1000.0,
+            ..default()
+        });
+
+        let rot_x = (i as f32 * 1.9).sin() * 0.35;
+        let rot_y = phi + (i as f32 * 2.8).cos() * 1.2;
+        let rot_z = (i as f32 * 3.4).sin() * 0.35;
+        let shard_rot = Quat::from_euler(EulerRot::XYZ, rot_x, rot_y, rot_z);
+
+        let ang_vel = Vec3::new(
+            (i as f32 * 3.7).sin() * 8.5,
+            (i as f32 * 2.1).cos() * 12.0,
+            (i as f32 * 4.9).sin() * 9.5,
+        );
+
+        let bounces = if i % 6 == 1 || i % 6 == 3 { 1 } else { 0 };
+
+        commands.spawn((
+            GlassShardParticle {
+                velocity: shard_vel,
+                lifetime: 0.0,
+                max_lifetime: 60.0 + 15.0 * ((i as f32 * 1.9).sin().abs()),
+                ground_y: floor_y,
+                settled: false,
+                color,
+                angular_velocity: ang_vel,
+                bounces_remaining: bounces,
+            },
+            Mesh3d(shard_mesh),
+            MeshMaterial3d(shard_mat),
+            Transform::from_translation(impact_point + impact_normal * 0.055)
+                .with_rotation(shard_rot),
+        ));
+    }
+}
+
+fn spawn_alchemical_puddle(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    impact_point: Vec3,
+    impact_normal: Vec3,
+    color: Color,
+    effects: Vec<ActiveEffect>,
+    is_wall: bool,
+    is_rtx: bool,
+) {
+    let (puddle_mesh_handle, puddle_rot, puddle_pos) = if is_wall {
+        let grav = Vec3::NEG_Y;
+        let down_proj = (grav - impact_normal * grav.dot(impact_normal)).normalize_or_zero();
+        let down = if down_proj.length_squared() > 0.01 {
+            down_proj
+        } else {
+            Vec3::NEG_Y
+        };
+        let right = impact_normal.cross(down).normalize();
+        let rot = Quat::from_mat3(&Mat3::from_cols(right, impact_normal, -down));
+        let mesh = meshes.add(create_wall_splatter_mesh(1.10, 32));
+        (mesh, rot, impact_point + impact_normal * 0.038)
+    } else {
+        let rot = Quat::from_rotation_arc(Vec3::Y, impact_normal);
+        let mesh = meshes.add(create_irregular_puddle_mesh(1.15, 32));
+        (mesh, rot, impact_point + impact_normal * 0.055)
+    };
+
+    let puddle_mat = materials.add(StandardMaterial {
+        base_color: color.with_alpha(0.88),
+        emissive: color.to_linear() * 0.32,
+        perceptual_roughness: 0.85,
+        metallic: 0.0,
+        reflectance: 0.12,
+        cull_mode: None,
+        double_sided: true,
+        alpha_mode: AlphaMode::Blend,
+        depth_bias: 600.0,
+        ..default()
+    });
+
+    commands.spawn((
+        PotionPuddle {
+            color,
+            elapsed: 0.0,
+            max_lifetime: 75.0,
+            radius: 1.15,
+            effects,
+            is_wall,
+        },
+        Mesh3d(puddle_mesh_handle),
+        MeshMaterial3d(puddle_mat),
+        Transform::from_translation(puddle_pos)
+            .with_rotation(puddle_rot)
+            .with_scale(Vec3::new(0.15, 1.0, 0.15)),
+        PointLight {
+            color,
+            intensity: if is_rtx { 2400.0 } else { 0.0 },
+            range: 3.8,
+            shadows_enabled: false,
+            ..default()
+        },
+    ));
+}
+
+fn process_underwater_freeze_block(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    player_query: &mut Query<(Entity, &Transform, &mut LocomotionState, &mut EffectReceiverComponent), (With<Player>, Without<PotionProjectile>)>,
+    freeze_center: Vec2,
+    floor_y: f32,
+) {
+    let freeze_radius = 2.65;
+    let water_surface_y = 0.18;
+    let water_depth = (water_surface_y - floor_y).max(0.0);
+    const MAX_FREEZE_REACH: f32 = 1.45;
+
+    let (block_height, block_center_y, top_y) = if water_depth <= MAX_FREEZE_REACH {
+        let h = (water_depth + 0.06).max(0.25);
+        (h, floor_y + h * 0.5, floor_y + h)
+    } else {
+        let h = MAX_FREEZE_REACH;
+        (h, floor_y + h * 0.5, floor_y + h)
+    };
+
+    for (_p_entity, p_tf, mut p_loco, mut p_recv) in player_query.iter_mut() {
+        let p_pos = p_tf.translation;
+        let p_in_water = crate::dungeon::modular_kit::is_in_lake_water(p_pos - Vec3::new(0.0, 1.2, 0.0));
+        let dist = (Vec2::new(p_pos.x, p_pos.z) - freeze_center).length();
+        let vertical_reach = (p_pos.y - 1.2) <= top_y + 0.40;
+        if p_in_water && dist <= freeze_radius + 0.65 && vertical_reach {
+            p_loco.is_frozen = true;
+            p_loco.freeze_timer = 3.5;
+            p_recv.apply_effect(AlchemicalEffectKind::Frost, 8.0, 25.0);
+        }
+    }
+
+    let ice_mesh = meshes.add(create_irregular_ice_block_mesh(freeze_radius, block_height, 28));
+    let ice_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.78, 0.94, 1.0, 0.88),
+        perceptual_roughness: 0.10,
+        metallic: 0.05,
+        reflectance: 0.85,
+        emissive: LinearRgba::new(0.18, 0.52, 0.90, 0.40),
+        cull_mode: None,
+        double_sided: true,
+        alpha_mode: AlphaMode::Blend,
+        depth_bias: 500.0,
+        ..default()
+    });
+
+    commands.spawn((
+        Name::new("Frozen_Water_Ice_Block"),
+        FrozenIceSheet {
+            center: freeze_center,
+            radius: freeze_radius,
+            top_y,
+            height: block_height,
+            elapsed: 0.0,
+            max_lifetime: 35.0,
+        },
+        crate::dungeon::modular_kit::CavernObstacle,
+        crate::dungeon::modular_kit::ObstacleShape::Cylinder {
+            radius: freeze_radius,
+            height: block_height,
+        },
+        RigidBody::Static,
+        Collider::cylinder(freeze_radius, block_height),
+        Mesh3d(ice_mesh),
+        MeshMaterial3d(ice_mat),
+        Transform::from_xyz(freeze_center.x, block_center_y, freeze_center.y),
+    ));
+
+    for i in 0..10 {
+        let angle = i as f32 * (std::f32::consts::TAU / 10.0);
+        let r = freeze_radius * 0.55;
+        commands.spawn((
+            Transform::from_xyz(freeze_center.x + angle.cos() * r, top_y + 0.05, freeze_center.y + angle.sin() * r),
+            crate::render::particles::ParticleEmitter {
+                spawn_timer: 0.0,
+                spawn_rate: 0.05,
+                particle_type: crate::render::particles::ParticleType::Steam,
+            },
+            AlchemyTransientEmitter {
+                elapsed: 0.0,
+                max_lifetime: 3.0,
+            },
+        ));
+    }
+}
+
 pub fn update_potion_projectiles(
     time: Res<Time>,
     settings: Option<Res<GameSettings>>,
@@ -681,6 +1061,7 @@ pub fn update_potion_projectiles(
     mut player_query: Query<(Entity, &Transform, &mut LocomotionState, &mut EffectReceiverComponent), (With<Player>, Without<PotionProjectile>)>,
     mut receivers: Query<(Entity, &Transform, &mut EffectReceiverComponent), (Without<PotionProjectile>, Without<PotionPuddle>, Without<Player>)>,
     mut flammables: Query<(Entity, &Transform, &mut Flammable), (Without<PotionProjectile>, Without<PotionPuddle>, Without<Player>)>,
+    mut dynamic_props: Query<(Entity, &Transform, &RigidBody, Option<&mut LinearVelocity>, Option<&mut AngularVelocity>), (Without<PotionProjectile>, Without<Player>)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
@@ -704,87 +1085,33 @@ pub fn update_potion_projectiles(
             let impact_point = transform.translation;
             let impact_normal = (transform.rotation * Vec3::Y).normalize();
 
-            for (r_entity, r_tf, mut receiver) in receivers.iter_mut() {
-                if r_entity != entity && r_tf.translation.distance(impact_point) <= 2.8 {
-                    for effect in &projectile.effects {
-                        receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
-                    }
-                }
-            }
+            apply_splash_effects(&mut receivers, &mut player_query, impact_point, &projectile.effects, entity, 2.8);
+            apply_radial_kinetic_impulse(&mut dynamic_props, &mut player_query, &mut commands, impact_point, 14.0, 3.8);
 
-            for (_p_entity, p_tf, _p_loco, mut p_recv) in player_query.iter_mut() {
-                if p_tf.translation.distance(impact_point) <= 2.8 {
-                    for effect in &projectile.effects {
-                        p_recv.apply_effect(effect.kind, effect.duration, effect.magnitude);
-                    }
-                }
+            let is_frost = projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::Frost);
+            if is_frost {
+                extinguish_nearby_flammables(&mut flammables, &mut commands, impact_point, 2.8);
             }
 
             let is_fire_impact = projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat) || projectile.slot == 2;
             if is_fire_impact {
-                for (_f_entity, f_tf, mut flammable) in flammables.iter_mut() {
-                    if f_tf.translation.length_squared() > 0.01 && f_tf.translation.distance(impact_point) <= 2.8 {
-                        flammable.ignite();
-                    }
-                }
+                ignite_nearby_flammables(&mut flammables, impact_point, 2.8);
             }
 
             let is_wall = impact_normal.y.abs() < 0.65;
-            let (puddle_mesh_handle, puddle_rot, puddle_pos) = if is_wall {
-                let grav = Vec3::NEG_Y;
-                let down_proj = (grav - impact_normal * grav.dot(impact_normal)).normalize_or_zero();
-                let down = if down_proj.length_squared() > 0.01 {
-                    down_proj
-                } else {
-                    Vec3::NEG_Y
-                };
-                let right = impact_normal.cross(down).normalize();
-                let rot = Quat::from_mat3(&Mat3::from_cols(right, impact_normal, -down));
-                let mesh = meshes.add(create_wall_splatter_mesh(1.10, 32));
-                (mesh, rot, impact_point + impact_normal * 0.038)
-            } else {
-                let rot = Quat::from_rotation_arc(Vec3::Y, impact_normal);
-                let mesh = meshes.add(create_irregular_puddle_mesh(1.15, 32));
-                (mesh, rot, impact_point + impact_normal * 0.055)
-            };
-
-            let puddle_mat = materials.add(StandardMaterial {
-                base_color: projectile.color.with_alpha(0.88),
-                emissive: projectile.color.to_linear() * 0.32,
-                perceptual_roughness: 0.85,
-                metallic: 0.0,
-                reflectance: 0.12,
-                cull_mode: None,
-                double_sided: true,
-                alpha_mode: AlphaMode::Blend,
-                depth_bias: 600.0,
-                ..default()
-            });
-
             let is_rtx = settings.as_ref().map(|s| s.rtx_enabled).unwrap_or(false);
 
-            commands.spawn((
-                PotionPuddle {
-                    color: projectile.color,
-                    elapsed: 0.0,
-                    max_lifetime: 75.0,
-                    radius: 1.15,
-                    effects: projectile.effects.clone(),
-                    is_wall,
-                },
-                Mesh3d(puddle_mesh_handle),
-                MeshMaterial3d(puddle_mat),
-                Transform::from_translation(puddle_pos)
-                    .with_rotation(puddle_rot)
-                    .with_scale(Vec3::new(0.15, 1.0, 0.15)),
-                PointLight {
-                    color: projectile.color,
-                    intensity: if is_rtx { 2400.0 } else { 0.0 },
-                    range: 3.8,
-                    shadows_enabled: false,
-                    ..default()
-                },
-            ));
+            spawn_alchemical_puddle(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+                impact_point,
+                impact_normal,
+                projectile.color,
+                projectile.effects.clone(),
+                is_wall,
+                is_rtx,
+            );
 
             commands.entity(entity).despawn();
 
@@ -801,82 +1128,17 @@ pub fn update_potion_projectiles(
                 impact_point.y + 0.052
             };
 
-            let tangent = if impact_normal.y.abs() < 0.9 {
-                impact_normal.cross(Vec3::Y).normalize()
-            } else {
-                impact_normal.cross(Vec3::X).normalize()
-            };
-            let bitangent = impact_normal.cross(tangent).normalize();
-
-            let c = projectile.color.to_srgba();
-            let stain_base = Color::srgb(
-                c.red * 0.78 + 0.18,
-                c.green * 0.78 + 0.18,
-                c.blue * 0.78 + 0.18,
+            spawn_glass_shards_burst(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+                impact_point,
+                impact_normal,
+                projectile.color,
+                floor_y,
+                16,
+                is_wall,
             );
-            let stain_emissive = projectile.color.to_linear() * 0.6;
-
-            for i in 0..16 {
-                let angle_noise = (i as f32 * 4.37).sin() * 0.35;
-                let phi = (i as f32) * (std::f32::consts::TAU / 16.0) + angle_noise;
-                let radial_speed = 0.8 + 1.4 * ((i as f32 * 2.3).sin().abs());
-                let normal_speed = 0.4 + 0.7 * ((i as f32 * 3.1).cos().abs());
-
-                let shard_vel = if is_wall {
-                    let burst = impact_normal * (1.6 + 1.2 * ((i as f32 * 2.5).sin().abs()));
-                    let lateral = tangent * (phi.cos() * 1.4);
-                    let down_push = Vec3::NEG_Y * (0.6 + 0.8 * ((i as f32 * 3.1).cos().abs()));
-                    burst + lateral + down_push
-                } else {
-                    tangent * (phi.cos() * radial_speed)
-                        + bitangent * (phi.sin() * radial_speed)
-                        + impact_normal * normal_speed
-                };
-
-                let shard_scale = 0.08 + 0.09 * ((i as f32 * 1.7).sin().abs());
-                let shard_mesh = meshes.add(create_glass_shard_mesh(shard_scale, i));
-                let shard_mat = materials.add(StandardMaterial {
-                    base_color: stain_base,
-                    emissive: stain_emissive,
-                    perceptual_roughness: 0.10,
-                    metallic: 0.18,
-                    reflectance: 0.98,
-                    cull_mode: None,
-                    double_sided: true,
-                    alpha_mode: AlphaMode::Opaque,
-                    depth_bias: 1000.0,
-                    ..default()
-                });
-
-                let rot_x = (i as f32 * 1.9).sin() * 0.35;
-                let rot_y = phi + (i as f32 * 2.8).cos() * 1.2;
-                let rot_z = (i as f32 * 3.4).sin() * 0.35;
-                let shard_rot = Quat::from_euler(EulerRot::XYZ, rot_x, rot_y, rot_z);
-
-                let ang_vel = Vec3::new(
-                    (i as f32 * 3.7).sin() * 8.5,
-                    (i as f32 * 2.1).cos() * 12.0,
-                    (i as f32 * 4.9).sin() * 9.5,
-                );
-                let bounces = if i % 6 == 1 || i % 6 == 3 { 1 } else { 0 };
-
-                commands.spawn((
-                    GlassShardParticle {
-                        velocity: shard_vel,
-                        lifetime: 0.0,
-                        max_lifetime: 60.0 + 15.0 * ((i as f32 * 1.9).sin().abs()),
-                        ground_y: floor_y,
-                        settled: false,
-                        color: projectile.color,
-                        angular_velocity: ang_vel,
-                        bounces_remaining: bounces,
-                    },
-                    Mesh3d(shard_mesh),
-                    MeshMaterial3d(shard_mat),
-                    Transform::from_translation(impact_point + impact_normal * 0.055)
-                        .with_rotation(shard_rot),
-                ));
-            }
 
             continue;
         }
@@ -952,200 +1214,53 @@ pub fn update_potion_projectiles(
             if current_pos.y <= floor_y + 0.08 {
                 let impact_point = Vec3::new(current_pos.x, floor_y + 0.04, current_pos.z);
 
-                for (_r_entity, r_tf, mut receiver) in receivers.iter_mut() {
-                    if r_tf.translation.distance(impact_point) <= 2.8 {
-                        for effect in &projectile.effects {
-                            receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
-                        }
-                    }
-                }
+                apply_splash_effects(&mut receivers, &mut player_query, impact_point, &projectile.effects, entity, 2.8);
+                apply_impact_trauma_shake(&player_query, &mut shake, impact_point, 6.0, 0.8);
+                apply_radial_kinetic_impulse(&mut dynamic_props, &mut player_query, &mut commands, impact_point, 10.0, 3.2);
 
-                for (_p_entity, p_tf, _p_loco, mut p_recv) in player_query.iter_mut() {
-                    if p_tf.translation.distance(impact_point) <= 2.8 {
-                        for effect in &projectile.effects {
-                            p_recv.apply_effect(effect.kind, effect.duration, effect.magnitude);
-                        }
-                    }
-                }
-
-                for (_p_ent, p_tf, _p_loco, _p_recv) in player_query.iter() {
-                    let dist = p_tf.translation.distance(impact_point);
-                    if dist < 6.0 {
-                        let dir = (p_tf.translation - impact_point).normalize_or_zero();
-                        let intensity = ((6.0 - dist) / 6.0).clamp(0.20, 0.75);
-                        if let Some(ref mut s) = shake {
-                            s.add_trauma(intensity * 0.8, dir);
-                        }
-                    }
-                }
-
-                for i in 0..8 {
-                    let angle_noise = (i as f32 * 4.37).sin() * 0.35;
-                    let phi = (i as f32) * (std::f32::consts::TAU / 8.0) + angle_noise;
-                    let radial_speed = 0.4 + 0.6 * ((i as f32 * 2.3).sin().abs());
-                    let shard_vel = Vec3::new(
-                        phi.cos() * radial_speed,
-                        0.3 + 0.4 * ((i as f32 * 3.1).cos().abs()),
-                        phi.sin() * radial_speed,
-                    );
-                    let shard_scale = 0.07 + 0.05 * ((i as f32 * 1.7).sin().abs());
-                    let shard_mesh = meshes.add(create_glass_shard_mesh(shard_scale, i));
-                    let shard_mat = materials.add(StandardMaterial {
-                        base_color: Color::srgba(0.85, 0.95, 1.0, 0.75),
-                        emissive: projectile.color.to_linear() * 0.4,
-                        perceptual_roughness: 0.10,
-                        metallic: 0.18,
-                        reflectance: 0.98,
-                        cull_mode: None,
-                        double_sided: true,
-                        alpha_mode: AlphaMode::Opaque,
-                        depth_bias: 1000.0,
-                        ..default()
-                    });
-                    let shard_rot = Quat::from_euler(EulerRot::XYZ, (i as f32 * 1.9).sin() * 0.35, phi, (i as f32 * 3.4).sin() * 0.35);
-                    let ang_vel = Vec3::new(
-                        (i as f32 * 3.7).sin() * 4.5,
-                        (i as f32 * 2.1).cos() * 6.0,
-                        (i as f32 * 4.9).sin() * 5.0,
-                    );
-                    commands.spawn((
-                        GlassShardParticle {
-                            velocity: shard_vel,
-                            lifetime: 0.0,
-                            max_lifetime: 45.0,
-                            ground_y: floor_y + 0.02,
-                            settled: false,
-                            color: projectile.color,
-                            angular_velocity: ang_vel,
-                            bounces_remaining: 1,
-                        },
-                        Mesh3d(shard_mesh),
-                        MeshMaterial3d(shard_mat),
-                        Transform::from_translation(impact_point).with_rotation(shard_rot),
-                    ));
-                }
+                spawn_glass_shards_burst(
+                    &mut commands,
+                    &mut meshes,
+                    &mut materials,
+                    impact_point,
+                    Vec3::Y,
+                    projectile.color,
+                    floor_y + 0.02,
+                    8,
+                    false,
+                );
 
                 if is_frost {
-                    let freeze_center = Vec2::new(current_pos.x, current_pos.z);
-                    let freeze_radius = 2.65;
-                    let water_surface_y = 0.18;
-                    let water_depth = (water_surface_y - floor_y).max(0.0);
-                    const MAX_FREEZE_REACH: f32 = 1.45;
-
-                    let (block_height, block_center_y, top_y) = if water_depth <= MAX_FREEZE_REACH {
-                        let h = (water_depth + 0.06).max(0.25);
-                        (h, floor_y + h * 0.5, floor_y + h)
-                    } else {
-                        let h = MAX_FREEZE_REACH;
-                        (h, floor_y + h * 0.5, floor_y + h)
-                    };
-
-                    for (_p_entity, p_tf, mut p_loco, mut p_recv) in player_query.iter_mut() {
-                        let p_pos = p_tf.translation;
-                        let p_in_water = crate::dungeon::modular_kit::is_in_lake_water(p_pos - Vec3::new(0.0, 1.2, 0.0));
-                        let dist = (Vec2::new(p_pos.x, p_pos.z) - freeze_center).length();
-                        let vertical_reach = (p_pos.y - 1.2) <= top_y + 0.40;
-                        if p_in_water && dist <= freeze_radius + 0.65 && vertical_reach {
-                            p_loco.is_frozen = true;
-                            p_loco.freeze_timer = 3.5;
-                            p_recv.apply_effect(AlchemicalEffectKind::Frost, 8.0, 25.0);
-                        }
-                    }
-
-                    let ice_mesh = meshes.add(create_irregular_ice_block_mesh(freeze_radius, block_height, 28));
-                    let ice_mat = materials.add(StandardMaterial {
-                        base_color: Color::srgba(0.78, 0.94, 1.0, 0.88),
-                        perceptual_roughness: 0.10,
-                        metallic: 0.05,
-                        reflectance: 0.85,
-                        emissive: LinearRgba::new(0.18, 0.52, 0.90, 0.40),
-                        cull_mode: None,
-                        double_sided: true,
-                        alpha_mode: AlphaMode::Blend,
-                        depth_bias: 500.0,
-                        ..default()
-                    });
-
-                    commands.spawn((
-                        Name::new("Frozen_Water_Ice_Block"),
-                        FrozenIceSheet {
-                            center: freeze_center,
-                            radius: freeze_radius,
-                            top_y,
-                            height: block_height,
-                            elapsed: 0.0,
-                            max_lifetime: 35.0,
-                        },
-                        crate::dungeon::modular_kit::CavernObstacle,
-                        crate::dungeon::modular_kit::ObstacleShape::Cylinder {
-                            radius: freeze_radius,
-                            height: block_height,
-                        },
-                        RigidBody::Static,
-                        Collider::cylinder(freeze_radius, block_height),
-                        Mesh3d(ice_mesh),
-                        MeshMaterial3d(ice_mat),
-                        Transform::from_xyz(freeze_center.x, block_center_y, freeze_center.y),
-                    ));
-
-                    for i in 0..10 {
-                        let angle = i as f32 * (std::f32::consts::TAU / 10.0);
-                        let r = freeze_radius * 0.55;
-                        commands.spawn((
-                            Transform::from_xyz(freeze_center.x + angle.cos() * r, top_y + 0.05, freeze_center.y + angle.sin() * r),
-                            crate::render::particles::ParticleEmitter {
-                                spawn_timer: 0.0,
-                                spawn_rate: 0.05,
-                                particle_type: crate::render::particles::ParticleType::Steam,
-                            },
-                            AlchemyTransientEmitter {
-                                elapsed: 0.0,
-                                max_lifetime: 3.0,
-                            },
-                        ));
-                    }
-
+                    extinguish_nearby_flammables(&mut flammables, &mut commands, impact_point, 2.8);
+                    process_underwater_freeze_block(
+                        &mut commands,
+                        &mut meshes,
+                        &mut materials,
+                        &mut player_query,
+                        Vec2::new(current_pos.x, current_pos.z),
+                        floor_y,
+                    );
                     commands.entity(entity).despawn();
                     continue;
                 }
 
                 let is_fire_impact = projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat) || projectile.slot == 2;
                 if is_fire_impact {
-                    for (_f_entity, f_tf, mut flammable) in flammables.iter_mut() {
-                        if f_tf.translation.length_squared() > 0.01 && f_tf.translation.distance(impact_point) <= 2.8 {
-                            flammable.ignite();
-                        }
-                    }
+                    ignite_nearby_flammables(&mut flammables, impact_point, 2.8);
                 }
 
-                let puddle_mesh = meshes.add(create_irregular_puddle_mesh(1.15, 32));
-                let puddle_mat = materials.add(StandardMaterial {
-                    base_color: projectile.color.with_alpha(0.88),
-                    emissive: projectile.color.to_linear() * 0.40,
-                    perceptual_roughness: 0.85,
-                    metallic: 0.0,
-                    reflectance: 0.12,
-                    cull_mode: None,
-                    double_sided: true,
-                    alpha_mode: AlphaMode::Blend,
-                    depth_bias: 600.0,
-                    ..default()
-                });
-
-                commands.spawn((
-                    PotionPuddle {
-                        color: projectile.color,
-                        elapsed: 0.0,
-                        max_lifetime: 75.0,
-                        radius: 1.15,
-                        effects: projectile.effects.clone(),
-                        is_wall: false,
-                    },
-                    Mesh3d(puddle_mesh),
-                    MeshMaterial3d(puddle_mat),
-                    Transform::from_translation(impact_point)
-                        .with_scale(Vec3::new(0.15, 1.0, 0.15)),
-                ));
+                let is_rtx = settings.as_ref().map(|s| s.rtx_enabled).unwrap_or(false);
+                spawn_alchemical_puddle(
+                    &mut commands,
+                    &mut meshes,
+                    &mut materials,
+                    impact_point,
+                    Vec3::Y,
+                    projectile.color,
+                    projectile.effects.clone(),
+                    false,
+                    is_rtx,
+                );
 
                 commands.spawn((
                     Transform::from_xyz(impact_point.x, impact_point.y + 0.1, impact_point.z),
@@ -1211,16 +1326,7 @@ pub fn update_potion_projectiles(
                     },
                 ));
 
-                for (_p_ent, p_tf, _p_loco, _p_recv) in player_query.iter() {
-                    let dist = p_tf.translation.distance(impact_point);
-                    if dist < 5.0 {
-                        let dir = (p_tf.translation - impact_point).normalize_or_zero();
-                        let intensity = ((5.0 - dist) / 5.0).clamp(0.22, 0.85);
-                        if let Some(ref mut s) = shake {
-                            s.add_trauma(intensity, dir);
-                        }
-                    }
-                }
+                apply_impact_trauma_shake(&player_query, &mut shake, impact_point, 5.0, 1.0);
 
                 continue;
             }

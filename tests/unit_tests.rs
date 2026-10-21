@@ -2089,4 +2089,146 @@ fn test_unit_heat_haze_thermal_sources_sync_and_projection() {
     assert!(proj_behind.is_none(), "Sources behind camera must be rejected");
 }
 
+#[test]
+fn test_unit_radial_kinetic_impulse_on_dynamic_bodies_and_player() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::transform::TransformPlugin,
+        bevy::asset::AssetPlugin::default(),
+        bevy::scene::ScenePlugin::default(),
+        avian3d::prelude::PhysicsPlugins::default(),
+    ));
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(25),
+    ));
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.init_resource::<Assets<Mesh>>();
+    app.insert_resource(deep_alchemy::player::camera::CameraShake::default());
+    app.add_systems(Update, deep_alchemy::alchemy::update_potion_projectiles);
+
+    let prop_entity = app
+        .world_mut()
+        .spawn((
+            Transform::from_xyz(0.0, 0.5, -3.0),
+            GlobalTransform::from_translation(Vec3::new(0.0, 0.5, -3.0)),
+            avian3d::prelude::RigidBody::Dynamic,
+            avian3d::prelude::Collider::sphere(0.25),
+            avian3d::prelude::LinearVelocity(Vec3::ZERO),
+        ))
+        .id();
+
+    let player_entity = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            deep_alchemy::player::camera::PlayerState::Active,
+            deep_alchemy::player::camera::LocomotionState::default(),
+            deep_alchemy::alchemy::EffectReceiverComponent::default(),
+            Transform::from_xyz(0.0, 1.2, -1.0),
+            GlobalTransform::from_translation(Vec3::new(0.0, 1.2, -1.0)),
+        ))
+        .id();
+
+    let _proj_entity = app
+        .world_mut()
+        .spawn((
+            Transform::from_xyz(0.0, 0.5, -2.0),
+            deep_alchemy::alchemy::PotionProjectile {
+                velocity: Vec3::ZERO,
+                effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                    kind: deep_alchemy::alchemy::AlchemicalEffectKind::ThermalHeat,
+                    duration: 5.0,
+                    magnitude: 10.0,
+                    elapsed: 0.0,
+                }],
+                lifetime: 5.0,
+                color: Color::srgb(1.0, 0.3, 0.1),
+                slot: 2,
+                hitstop_timer: 0.01,
+                entered_water: false,
+            },
+        ))
+        .id();
+
+    app.update();
+    app.update();
+
+    let prop_vel = app.world().get::<avian3d::prelude::LinearVelocity>(prop_entity);
+    assert!(prop_vel.is_some(), "Dynamic prop must have LinearVelocity");
+    let speed = prop_vel.unwrap().0.length();
+    assert!(speed > 0.5, "Explosion must apply radial impulse to dynamic prop: speed = {:.3}", speed);
+
+    let player_loco = app.world().get::<deep_alchemy::player::camera::LocomotionState>(player_entity).unwrap();
+    let p_knockback = player_loco.horizontal_velocity.length();
+    assert!(p_knockback > 0.2, "Explosion must apply knockback to nearby player: knockback = {:.3}", p_knockback);
+}
+
+#[test]
+fn test_unit_frost_potion_extinguishes_burning_flammable_and_spawns_steam() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::transform::TransformPlugin,
+        bevy::asset::AssetPlugin::default(),
+        bevy::scene::ScenePlugin::default(),
+        avian3d::prelude::PhysicsPlugins::default(),
+    ));
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(25),
+    ));
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.init_resource::<Assets<Mesh>>();
+    app.insert_resource(deep_alchemy::player::camera::CameraShake::default());
+    app.add_systems(Update, deep_alchemy::alchemy::update_potion_projectiles);
+
+    let light_child = app.world_mut().spawn(PointLight::default()).id();
+    let emitter_child = app.world_mut().spawn(Transform::default()).id();
+
+    let flammable_entity = app
+        .world_mut()
+        .spawn((
+            Transform::from_xyz(0.0, 0.5, -2.0),
+            GlobalTransform::from_translation(Vec3::new(0.0, 0.5, -2.0)),
+            deep_alchemy::alchemy::Flammable {
+                burn_duration: 6.0,
+                elapsed: 1.5,
+                is_burning: true,
+                fire_light: Some(light_child),
+                fire_emitter: Some(emitter_child),
+                initial_scale: Some(Vec3::ONE),
+            },
+        ))
+        .id();
+
+    let _proj_entity = app
+        .world_mut()
+        .spawn((
+            Transform::from_xyz(0.0, 0.5, -2.2),
+            deep_alchemy::alchemy::PotionProjectile {
+                velocity: Vec3::ZERO,
+                effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                    kind: deep_alchemy::alchemy::AlchemicalEffectKind::Frost,
+                    duration: 5.0,
+                    magnitude: 15.0,
+                    elapsed: 0.0,
+                }],
+                lifetime: 5.0,
+                color: Color::srgb(0.2, 0.8, 1.0),
+                slot: 4,
+                hitstop_timer: 0.01,
+                entered_water: false,
+            },
+        ))
+        .id();
+
+    app.update();
+    app.update();
+
+    let flam = app.world().get::<deep_alchemy::alchemy::Flammable>(flammable_entity).unwrap();
+    assert!(!flam.is_burning, "Frost potion impact must extinguish burning flammable");
+    assert!(flam.fire_light.is_none(), "Extinguished flammable must clear fire light");
+    assert!(flam.fire_emitter.is_none(), "Extinguished flammable must clear fire emitter");
+}
+
 
