@@ -688,7 +688,13 @@ pub fn spawn_potion_projectile(
     let final_direction = apply_throw_inaccuracy(base_direction, is_sprinting, time.elapsed_secs());
 
     let (color, effects) = selected_potion_effects(slot_index);
-    let spawn_pos = camera.translation() + base_direction * 0.45 + Vec3::new(0.0, -0.10, 0.0);
+    let mut spawn_pos = camera.translation() + base_direction * 0.45 + Vec3::new(0.0, -0.10, 0.0);
+    if camera.translation().z > 200.0 {
+        let origin = crate::dungeon::test_room::SECRET_TEST_ROOM_ORIGIN;
+        spawn_pos.x = spawn_pos.x.clamp(origin.x - 39.8, origin.x + 39.8);
+        spawn_pos.y = spawn_pos.y.clamp(origin.y + 0.15, origin.y + 13.85);
+        spawn_pos.z = spawn_pos.z.clamp(origin.z - 39.8, origin.z + 39.8);
+    }
 
     let impulse_dir = (final_direction + Vec3::new(0.0, 0.22, 0.0)).normalize();
     let speed = 16.0;
@@ -1369,6 +1375,61 @@ pub fn update_potion_projectiles(
         }
 
         transform.translation += step;
+
+        if transform.translation.z > 200.0 {
+            let origin = crate::dungeon::test_room::SECRET_TEST_ROOM_ORIGIN;
+            let min_x = origin.x - 40.0;
+            let max_x = origin.x + 40.0;
+            let min_y = origin.y;
+            let max_y = origin.y + 14.0;
+            let min_z = origin.z - 40.0;
+            let max_z = origin.z + 40.0;
+
+            let mut wall_impact: Option<(Vec3, Vec3)> = None;
+            if transform.translation.x <= min_x {
+                wall_impact = Some((Vec3::new(min_x + 0.02, transform.translation.y.clamp(0.05, 13.95), transform.translation.z.clamp(min_z + 0.05, max_z - 0.05)), Vec3::X));
+            } else if transform.translation.x >= max_x {
+                wall_impact = Some((Vec3::new(max_x - 0.02, transform.translation.y.clamp(0.05, 13.95), transform.translation.z.clamp(min_z + 0.05, max_z - 0.05)), Vec3::NEG_X));
+            } else if transform.translation.z <= min_z {
+                wall_impact = Some((Vec3::new(transform.translation.x.clamp(min_x + 0.05, max_x - 0.05), transform.translation.y.clamp(0.05, 13.95), min_z + 0.02), Vec3::Z));
+            } else if transform.translation.z >= max_z {
+                wall_impact = Some((Vec3::new(transform.translation.x.clamp(min_x + 0.05, max_x - 0.05), transform.translation.y.clamp(0.05, 13.95), max_z - 0.02), Vec3::NEG_Z));
+            } else if transform.translation.y <= min_y {
+                wall_impact = Some((Vec3::new(transform.translation.x.clamp(min_x + 0.05, max_x - 0.05), min_y + 0.02, transform.translation.z.clamp(min_z + 0.05, max_z - 0.05)), Vec3::Y));
+            } else if transform.translation.y >= max_y {
+                wall_impact = Some((Vec3::new(transform.translation.x.clamp(min_x + 0.05, max_x - 0.05), max_y - 0.02, transform.translation.z.clamp(min_z + 0.05, max_z - 0.05)), Vec3::NEG_Y));
+            }
+
+            if let Some((impact_point, impact_normal)) = wall_impact {
+                projectile.hitstop_timer = 0.045;
+                transform.translation = impact_point;
+                transform.rotation = Quat::from_rotation_arc(Vec3::Y, impact_normal);
+                projectile.velocity = Vec3::ZERO;
+                commands.entity(entity).insert(PotionSurfaceImpact {
+                    host: entity,
+                    normal: impact_normal,
+                });
+                let flash_mesh = meshes.add(Sphere::new(0.20).mesh().uv(8, 6));
+                let flash_mat = materials.add(StandardMaterial {
+                    base_color: projectile.color.with_alpha(0.95),
+                    emissive: projectile.color.to_linear() * 6.5,
+                    unlit: true,
+                    alpha_mode: AlphaMode::Add,
+                    ..default()
+                });
+                commands.spawn((
+                    Mesh3d(flash_mesh),
+                    MeshMaterial3d(flash_mat),
+                    Transform::from_translation(impact_point + impact_normal * 0.04),
+                    AlchemyTransientEmitter {
+                        elapsed: 0.0,
+                        max_lifetime: 0.045,
+                    },
+                ));
+                apply_impact_trauma_shake(&player_query, &mut shake, impact_point, 5.0, 1.0);
+                continue;
+            }
+        }
         transform.rotate_local_x(7.5 * dt);
         transform.rotate_local_y(4.2 * dt);
         projectile.lifetime -= dt;
@@ -1708,6 +1769,15 @@ pub fn update_glass_shards(
             transform.translation.x += shard.velocity.x * dt;
             transform.translation.z += shard.velocity.z * dt;
             transform.translation.y = shard.ground_y;
+        }
+
+        if transform.translation.z > 200.0 {
+            let origin = crate::dungeon::test_room::SECRET_TEST_ROOM_ORIGIN;
+            transform.translation.x = transform.translation.x.clamp(origin.x - 39.9, origin.x + 39.9);
+            transform.translation.z = transform.translation.z.clamp(origin.z - 39.9, origin.z + 39.9);
+            if shard.settled {
+                transform.translation.y = origin.y;
+            }
         }
 
         let fade_time = 3.0;
@@ -3981,6 +4051,53 @@ mod tests {
         let mut puddle_query = app.world_mut().query::<&PotionPuddle>();
         assert_eq!(puddle_query.iter(app.world()).count(), 0, "Wall impacts must not create a disconnected ground puddle");
 
+    }
+
+    #[test]
+    fn test_secret_test_room_potion_boundary_containment() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::transform::TransformPlugin,
+            bevy::asset::AssetPlugin::default(),
+            bevy::scene::ScenePlugin::default(),
+            avian3d::prelude::PhysicsPlugins::default(),
+        ));
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_millis(50),
+        ));
+        app.init_resource::<Assets<StandardMaterial>>();
+        app.init_resource::<Assets<Mesh>>();
+        app.init_resource::<Assets<crate::render::surface_fluid_material::SurfaceFluidMaterial>>();
+        app.init_resource::<surface_fluid::PotionFluidProfiles>();
+        app.add_systems(Update, update_potion_projectiles);
+        app.update();
+
+        let origin = crate::dungeon::test_room::SECRET_TEST_ROOM_ORIGIN;
+        let proj_entity = app
+            .world_mut()
+            .spawn((
+                Transform::from_translation(origin + Vec3::new(39.0, 5.0, 0.0)),
+                GlobalTransform::from_translation(origin + Vec3::new(39.0, 5.0, 0.0)),
+                PotionProjectile {
+                    velocity: Vec3::new(40.0, 0.0, 0.0),
+                    effects: vec![],
+                    lifetime: 5.0,
+                    color: Color::srgb(1.0, 0.0, 0.0),
+                    slot: 1,
+                    hitstop_timer: 0.0,
+                    entered_water: false,
+                },
+            ))
+            .id();
+
+        app.update();
+        let proj = app.world().get::<PotionProjectile>(proj_entity).unwrap();
+        assert!(proj.hitstop_timer > 0.0);
+        let impact_opt = app.world().get::<PotionSurfaceImpact>(proj_entity);
+        assert!(impact_opt.is_some());
+        let tf = app.world().get::<Transform>(proj_entity).unwrap();
+        assert!(tf.translation.x <= origin.x + 40.0);
     }
 }
 

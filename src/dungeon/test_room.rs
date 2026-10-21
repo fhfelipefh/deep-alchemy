@@ -32,16 +32,22 @@ fn spawn_secret_test_room(
     asset_server: Res<AssetServer>,
     registry: Res<SceneAssetRegistry>,
     mut request: ResMut<SecretTestRoomRequest>,
-    mut player: Query<&mut Transform, With<Player>>,
+    mut player: Query<(&mut Transform, Option<&mut crate::player::camera::LocomotionState>), With<Player>>,
 ) {
     if !request.requested || request.active {
         return;
     }
 
     request.active = true;
-    if let Ok(mut transform) = player.get_single_mut() {
+    if let Ok((mut transform, loco_opt)) = player.get_single_mut() {
         transform.translation = SECRET_TEST_ROOM_ORIGIN + Vec3::new(0.0, 1.2, 0.0);
         transform.rotation = Quat::IDENTITY;
+        if let Some(mut loco) = loco_opt {
+            loco.vertical_velocity = 0.0;
+            loco.is_grounded = true;
+            loco.horizontal_velocity = Vec2::ZERO;
+            loco.coyote_timer = 0.10;
+        }
     }
 
     commands.spawn((
@@ -54,29 +60,25 @@ fn spawn_secret_test_room(
         Transform::from_translation(SECRET_TEST_ROOM_ORIGIN),
     ));
 
-    for (name, offset, dimensions, blocks_player) in [
-        ("Secret_Test_Floor", Vec3::new(0.0, -0.25, 0.0), Vec3::new(80.0, 0.5, 80.0), false),
-        ("Secret_Test_Ceiling", Vec3::new(0.0, 14.25, 0.0), Vec3::new(80.0, 0.5, 80.0), false),
-        ("Secret_Test_North", Vec3::new(0.0, 7.0, -40.25), Vec3::new(80.0, 14.0, 0.5), true),
-        ("Secret_Test_South", Vec3::new(0.0, 7.0, 40.25), Vec3::new(80.0, 14.0, 0.5), true),
-        ("Secret_Test_West", Vec3::new(-40.25, 7.0, 0.0), Vec3::new(0.5, 14.0, 80.0), true),
-        ("Secret_Test_East", Vec3::new(40.25, 7.0, 0.0), Vec3::new(0.5, 14.0, 80.0), true),
+    for (name, offset, dimensions) in [
+        ("Secret_Test_Floor", Vec3::new(0.0, -10.0, 0.0), Vec3::new(120.0, 20.0, 120.0)),
+        ("Secret_Test_Ceiling", Vec3::new(0.0, 24.0, 0.0), Vec3::new(120.0, 20.0, 120.0)),
+        ("Secret_Test_North", Vec3::new(0.0, 7.0, -50.0), Vec3::new(120.0, 34.0, 20.0)),
+        ("Secret_Test_South", Vec3::new(0.0, 7.0, 50.0), Vec3::new(120.0, 34.0, 20.0)),
+        ("Secret_Test_West", Vec3::new(-50.0, 7.0, 0.0), Vec3::new(20.0, 34.0, 120.0)),
+        ("Secret_Test_East", Vec3::new(50.0, 7.0, 0.0), Vec3::new(20.0, 34.0, 120.0)),
     ] {
-        let mut entity = commands.spawn((
+        commands.spawn((
             SecretTestRoom,
             Name::new(name),
             Transform::from_translation(SECRET_TEST_ROOM_ORIGIN + offset),
             RigidBody::Static,
             Collider::cuboid(dimensions.x, dimensions.y, dimensions.z),
+            CavernObstacle,
+            ObstacleShape::Cuboid {
+                half_extents: dimensions * 0.5,
+            },
         ));
-        if blocks_player {
-            entity.insert((
-                CavernObstacle,
-                ObstacleShape::Cuboid {
-                    half_extents: dimensions * 0.5,
-                },
-            ));
-        }
     }
 
     commands.insert_resource(ClearColor(Color::srgb(0.96, 0.96, 0.96)));

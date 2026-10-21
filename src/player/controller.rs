@@ -21,7 +21,8 @@ pub fn resolve_player_collision_sliding(
     const STEP_OFFSET: f32 = 0.40;
     const PLAYER_BASE_HEIGHT: f32 = 1.2;
 
-    let terrain_h = if has_grotto_terrain {
+    let in_test_room = resolved.z > 200.0;
+    let terrain_h = if has_grotto_terrain && !in_test_room {
         crate::dungeon::modular_kit::get_grotto_terrain_height(resolved.x, resolved.z)
     } else {
         0.0
@@ -176,6 +177,15 @@ pub fn resolve_player_collision_sliding(
         } else if resolved.y > highest_support_y && (resolved.y - highest_support_y) <= STEP_OFFSET {
             resolved.y = highest_support_y;
         }
+    }
+
+    if in_test_room {
+        let min_x = crate::dungeon::test_room::SECRET_TEST_ROOM_ORIGIN.x - 40.0 + player_radius;
+        let max_x = crate::dungeon::test_room::SECRET_TEST_ROOM_ORIGIN.x + 40.0 - player_radius;
+        let min_z = crate::dungeon::test_room::SECRET_TEST_ROOM_ORIGIN.z - 40.0 + player_radius;
+        let max_z = crate::dungeon::test_room::SECRET_TEST_ROOM_ORIGIN.z + 40.0 - player_radius;
+        resolved.x = resolved.x.clamp(min_x, max_x);
+        resolved.z = resolved.z.clamp(min_z, max_z);
     }
 
     resolved
@@ -357,7 +367,8 @@ fn calculate_landing_elevation(
     obstacle_list: &[(&Transform, ObstacleShape)],
     has_lake: bool,
 ) -> f32 {
-    let floor_y = if has_lake {
+    let in_test_room = pos.z > 200.0;
+    let floor_y = if has_lake && !in_test_room {
         crate::dungeon::modular_kit::get_grotto_terrain_height(pos.x, pos.z)
     } else {
         0.0
@@ -490,6 +501,14 @@ fn update_airborne_and_landing(
     locomotion.last_fall_velocity = locomotion.vertical_velocity;
     locomotion.vertical_velocity -= gravity * dt;
     tf.translation.y += locomotion.vertical_velocity * dt;
+
+    if tf.translation.z > 200.0 {
+        let max_ceiling = crate::dungeon::test_room::SECRET_TEST_ROOM_ORIGIN.y + 14.0 - 0.40;
+        if tf.translation.y > max_ceiling {
+            tf.translation.y = max_ceiling;
+            locomotion.vertical_velocity = 0.0;
+        }
+    }
 
     if tf.translation.y <= landing_y {
         tf.translation.y = landing_y;
@@ -2091,5 +2110,20 @@ mod tests {
             "Horizontal air momentum must be conserved even after releasing inputs: air_speed={:.2}",
             air_speed
         );
+    }
+
+    #[test]
+    fn test_secret_test_room_bounds_and_grounding_containment() {
+        let origin = crate::dungeon::test_room::SECRET_TEST_ROOM_ORIGIN;
+        let landing_y = calculate_landing_elevation(origin + Vec3::new(0.0, 1.2, 0.0), &[], true);
+        assert_eq!(landing_y, 1.2);
+
+        let outside_east = origin + Vec3::new(50.0, 1.2, 0.0);
+        let clamped_east = resolve_player_collision_sliding(outside_east, origin, 0.38, true, true, &[]);
+        assert_eq!(clamped_east.x, origin.x + 40.0 - 0.38);
+
+        let outside_north = origin + Vec3::new(0.0, 1.2, -50.0);
+        let clamped_north = resolve_player_collision_sliding(outside_north, origin, 0.38, true, true, &[]);
+        assert_eq!(clamped_north.z, origin.z - 40.0 + 0.38);
     }
 }
