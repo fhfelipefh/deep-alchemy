@@ -34,6 +34,11 @@ Você é o Engenheiro de Jogos Principal deste projeto. O jogo é um RPG de expl
 * **Object Pooling para Efeitos e Projéteis:** Frascos quebrados, partículas de vapor, esporos e decalques de poções no chão devem ser reciclados via *Object Pool*.
 * **Desacoplamento por Eventos:** A UI (corações de vida e hotbar de poções) e o sistema de som reagem exclusivamente a eventos disparados pelo estado do jogador e do mundo, sem acoplamento direto.
 
+## 5.1. Proibição de Geração de Assets em Runtime e Editabilidade Total pelo Desenvolvedor
+* **Zero Geração sob Demanda em Runtime:** É terminantemente proibido qualquer script ou lógica interna que gere, converta ou sobreponha assets sob demanda em runtime (chamadas a `python`, `blender`, processos externos ou escrita de arquivos de assets durante o jogo). O jogo deve ser 100% autossuficiente e carregar assets estáticos pré-exportados do diretório `assets/`.
+* **Assets Exportados e Editáveis pelo Desenvolvedor:** Todos os assets do jogo (modelos 3D `.glb` acompanhados das fontes `.blend` em `source_blend/`, ícones e texturas `.png` acompanhados de arquivos vetoriais `.svg` editáveis, shaders `.wgsl`, tabelas `.ron`, especificações `.json` e fontes `.ttf`) devem ser mantidos como arquivos físicos independentes no repositório. O desenvolvedor pode abrir e alterar qualquer asset a qualquer momento em ferramentas como Blender, Inkscape, Illustrator, Photoshop ou editores de texto.
+* **Garantia por Testes Automatizados:** Testes arquiteturais em `tests/architecture.rs` devem auditar continuamente o código para garantir zero chamadas a scripts externos em runtime, a existência e validade de todos os assets exportados, e a tolerância a alterações pelo desenvolvedor sem falhas de compilação ou pânicos de execução.
+
 ---
 
 ## 📜 6. Diretrizes Gerais da Game Jam (Alquimia e Bichinhos)

@@ -1316,6 +1316,305 @@ fn test_unit_fire_potion_impact_ignites_flammable() {
 }
 
 #[test]
+fn test_unit_fire_potion_ignites_imported_tall_grass_and_mushroom_caps() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::transform::TransformPlugin,
+        bevy::asset::AssetPlugin::default(),
+        bevy::scene::ScenePlugin::default(),
+        avian3d::prelude::PhysicsPlugins::default(),
+    ));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(25)));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.insert_resource(deep_alchemy::player::camera::CameraShake::default());
+    app.add_systems(
+        Update,
+        (
+            deep_alchemy::dungeon::modular_kit::mark_imported_tall_grass,
+            deep_alchemy::dungeon::modular_kit::attach_mushroom_spore_emitters,
+            deep_alchemy::alchemy::update_potion_projectiles,
+        ),
+    );
+
+    let grass_ent = app
+        .world_mut()
+        .spawn((
+            Name::new("TallGrass_Meadow_L2"),
+            Transform::from_xyz(0.0, 0.0, 0.0),
+        ))
+        .id();
+
+    let mushroom_ent = app
+        .world_mut()
+        .spawn((
+            Name::new("Left_Shroom_Large_Cap"),
+            Transform::from_xyz(0.0, 0.0, 0.0),
+        ))
+        .id();
+
+    app.update();
+
+    let grass_flam = app.world().get::<deep_alchemy::alchemy::Flammable>(grass_ent);
+    assert!(grass_flam.is_some(), "Imported tall grass must have Flammable component");
+    let mushroom_flam = app.world().get::<deep_alchemy::alchemy::Flammable>(mushroom_ent);
+    assert!(mushroom_flam.is_some(), "Imported mushroom cap must have Flammable component");
+
+    app.world_mut()
+        .get_mut::<deep_alchemy::alchemy::Flammable>(grass_ent)
+        .unwrap()
+        .center_offset = Some(Vec3::new(-2.14, 0.49, 2.79));
+    app.world_mut()
+        .get_mut::<deep_alchemy::alchemy::Flammable>(mushroom_ent)
+        .unwrap()
+        .center_offset = Some(Vec3::new(-3.39, 2.31, -3.41));
+
+    app.world_mut().spawn((
+        Transform::from_xyz(-2.10, 0.50, 2.80),
+        deep_alchemy::alchemy::PotionProjectile {
+            velocity: Vec3::ZERO,
+            effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                kind: deep_alchemy::alchemy::AlchemicalEffectKind::ThermalHeat,
+                duration: 5.0,
+                magnitude: 25.0,
+                elapsed: 0.0,
+            }],
+            lifetime: 8.0,
+            color: Color::srgb(0.95, 0.12, 0.16),
+            slot: 2,
+            hitstop_timer: 0.001,
+            entered_water: false,
+        },
+    ));
+
+    app.update();
+    app.update();
+
+    let grass_flam_after = app.world().get::<deep_alchemy::alchemy::Flammable>(grass_ent).unwrap();
+    assert!(grass_flam_after.is_burning, "Fire potion impact must ignite tall grass at its world center");
+
+    app.world_mut().spawn((
+        Transform::from_xyz(-3.35, 2.30, -3.40),
+        deep_alchemy::alchemy::PotionProjectile {
+            velocity: Vec3::ZERO,
+            effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                kind: deep_alchemy::alchemy::AlchemicalEffectKind::ThermalHeat,
+                duration: 5.0,
+                magnitude: 25.0,
+                elapsed: 0.0,
+            }],
+            lifetime: 8.0,
+            color: Color::srgb(0.95, 0.12, 0.16),
+            slot: 2,
+            hitstop_timer: 0.001,
+            entered_water: false,
+        },
+    ));
+
+    app.update();
+    app.update();
+
+    let mushroom_flam_after = app.world().get::<deep_alchemy::alchemy::Flammable>(mushroom_ent).unwrap();
+    assert!(mushroom_flam_after.is_burning, "Fire potion impact must ignite mushroom cap at its world center");
+}
+
+#[test]
+fn test_unit_fire_puddle_ignites_nearby_tall_grass_and_mushrooms() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::transform::TransformPlugin,
+        bevy::asset::AssetPlugin::default(),
+    ));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(25)));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.add_systems(Update, deep_alchemy::alchemy::update_potion_puddles);
+
+    let grass_ent = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::dungeon::modular_kit::TallGrassClump,
+            Transform::from_xyz(0.0, 0.0, 0.0),
+            deep_alchemy::alchemy::Flammable::with_duration(2.5)
+                .with_center_offset(Vec3::new(2.1, 0.05, 1.9)),
+        ))
+        .id();
+
+    let mushroom_ent = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::dungeon::modular_kit::MushroomCap,
+            Transform::from_xyz(0.0, 0.0, 0.0),
+            deep_alchemy::alchemy::Flammable::with_duration(3.5)
+                .with_center_offset(Vec3::new(2.3, 0.10, 2.2)),
+        ))
+        .id();
+
+    let puddle_mesh = app.world_mut().resource_mut::<Assets<Mesh>>().add(Sphere::new(1.0));
+    let puddle_mat = app.world_mut().resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial::default());
+
+    app.world_mut().spawn((
+        Transform::from_xyz(2.0, 0.0, 2.0),
+        Mesh3d(puddle_mesh),
+        MeshMaterial3d(puddle_mat),
+        deep_alchemy::alchemy::PotionPuddle {
+            color: Color::srgb(0.95, 0.12, 0.16),
+            elapsed: 0.1,
+            max_lifetime: 50.0,
+            radius: 1.5,
+            effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                kind: deep_alchemy::alchemy::AlchemicalEffectKind::ThermalHeat,
+                duration: 5.0,
+                elapsed: 0.0,
+                magnitude: 25.0,
+            }],
+            is_wall: false,
+        },
+    ));
+
+    app.update();
+
+    let grass = app.world().get::<deep_alchemy::alchemy::Flammable>(grass_ent).unwrap();
+    assert!(grass.is_burning, "Thermal puddle must ignite nearby tall grass");
+
+    let mushroom = app.world().get::<deep_alchemy::alchemy::Flammable>(mushroom_ent).unwrap();
+    assert!(mushroom.is_burning, "Thermal puddle must ignite nearby mushroom");
+}
+
+#[test]
+fn test_unit_fire_potion_ignites_imported_dandelions() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::transform::TransformPlugin,
+        bevy::asset::AssetPlugin::default(),
+        bevy::scene::ScenePlugin::default(),
+        avian3d::prelude::PhysicsPlugins::default(),
+    ));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(25)));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.insert_resource(deep_alchemy::player::camera::CameraShake::default());
+    app.add_systems(
+        Update,
+        (
+            deep_alchemy::dungeon::modular_kit::mark_imported_flammable_props,
+            deep_alchemy::alchemy::update_potion_projectiles,
+        )
+            .chain(),
+    );
+
+    let dandelion_ent = app
+        .world_mut()
+        .spawn((
+            Name::new("Dandelion_3"),
+            Transform::from_xyz(0.0, 0.0, 0.0),
+        ))
+        .id();
+
+    app.update();
+
+    let dandelion_flam = app.world().get::<deep_alchemy::alchemy::Flammable>(dandelion_ent);
+    assert!(dandelion_flam.is_some(), "Imported dandelion must have Flammable component");
+
+    app.world_mut()
+        .get_mut::<deep_alchemy::alchemy::Flammable>(dandelion_ent)
+        .unwrap()
+        .center_offset = Some(Vec3::new(-4.00, 0.54, -3.50));
+
+    app.world_mut().spawn((
+        Transform::from_xyz(-3.95, 0.55, -3.48),
+        deep_alchemy::alchemy::PotionProjectile {
+            velocity: Vec3::ZERO,
+            effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                kind: deep_alchemy::alchemy::AlchemicalEffectKind::ThermalHeat,
+                duration: 5.0,
+                magnitude: 25.0,
+                elapsed: 0.0,
+            }],
+            lifetime: 8.0,
+            color: Color::srgb(0.95, 0.12, 0.16),
+            slot: 2,
+            hitstop_timer: 0.001,
+            entered_water: false,
+        },
+    ));
+
+    app.update();
+    app.update();
+
+    let dandelion_after = app.world().get::<deep_alchemy::alchemy::Flammable>(dandelion_ent).unwrap();
+    assert!(dandelion_after.is_burning, "Fire potion impact must ignite dandelion at its world center");
+}
+
+#[test]
+fn test_unit_flammable_combustion_and_heat_haze_concurrent_despawn_safety() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::transform::TransformPlugin,
+        bevy::asset::AssetPlugin::default(),
+    ));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(50)));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+
+    app.add_systems(
+        Update,
+        (
+            deep_alchemy::alchemy::update_flammable_combustion,
+            deep_alchemy::render::heat_haze::sync_heat_sources_system,
+        ),
+    );
+
+    let parent_ent = app
+        .world_mut()
+        .spawn((
+            Transform::from_xyz(0.0, 0.0, 0.0),
+            GlobalTransform::from_xyz(0.0, 0.0, 0.0),
+            deep_alchemy::alchemy::Flammable {
+                burn_duration: 0.1,
+                elapsed: 0.09,
+                is_burning: true,
+                fire_light: None,
+                fire_emitter: None,
+                initial_scale: None,
+                initial_translation: None,
+                center_offset: Some(Vec3::new(1.0, 1.0, 1.0)),
+            },
+        ))
+        .id();
+
+    let child_ent = app
+        .world_mut()
+        .spawn((
+            Transform::from_xyz(0.0, 1.0, 0.0),
+            GlobalTransform::from_xyz(0.0, 1.0, 0.0),
+            deep_alchemy::alchemy::Flammable {
+                burn_duration: 0.1,
+                elapsed: 0.09,
+                is_burning: true,
+                fire_light: None,
+                fire_emitter: None,
+                initial_scale: None,
+                initial_translation: None,
+                center_offset: Some(Vec3::new(1.0, 1.5, 1.0)),
+            },
+        ))
+        .set_parent(parent_ent)
+        .id();
+
+    app.update();
+    app.update();
+    app.update();
+
+    assert!(app.world().get_entity(parent_ent).is_err() || app.world().get_entity(parent_ent).unwrap().get::<deep_alchemy::alchemy::Flammable>().is_none());
+    assert!(app.world().get_entity(child_ent).is_err());
+}
+
+#[test]
 fn test_unit_menu_start_button_click_does_not_fire_potion_and_pauses_game() {
     let mut app = App::new();
     app.add_plugins((
@@ -2032,6 +2331,8 @@ fn test_unit_heat_haze_thermal_sources_sync_and_projection() {
                 fire_light: None,
                 fire_emitter: None,
                 initial_scale: None,
+                initial_translation: None,
+                center_offset: None,
             },
         ))
         .id();
@@ -2197,6 +2498,8 @@ fn test_unit_frost_potion_extinguishes_burning_flammable_and_spawns_steam() {
                 fire_light: Some(light_child),
                 fire_emitter: Some(emitter_child),
                 initial_scale: Some(Vec3::ONE),
+                initial_translation: None,
+                center_offset: None,
             },
         ))
         .id();

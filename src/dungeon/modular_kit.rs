@@ -10,7 +10,8 @@ use crate::{
 };
 use avian3d::prelude::*;
 use bevy::prelude::*;
-use bevy::render::mesh::{Indices, PrimitiveTopology};
+use bevy::render::mesh::{Indices, MeshAabb, PrimitiveTopology};
+use bevy::render::primitives::Aabb;
 use bevy::render::render_asset::RenderAssetUsages;
 
 #[derive(Component)]
@@ -90,8 +91,9 @@ impl Plugin for DungeonPlugin {
             (
                 animate_waterfall_mesh,
                 mark_imported_tall_grass,
-                keep_tall_grass_clear_of_obstacles,
                 attach_mushroom_spore_emitters,
+                mark_imported_flammable_props,
+                keep_tall_grass_clear_of_obstacles,
                 update_grass_bending,
                 update_water_ripples,
                 update_bioluminescent_mushrooms,
@@ -102,11 +104,18 @@ impl Plugin for DungeonPlugin {
 
 pub fn mark_imported_tall_grass(
     mut commands: Commands,
-    named_entities: Query<(Entity, &Name, Option<&Transform>), Added<Name>>,
+    named_entities: Query<(Entity, &Name, Option<&Transform>, Option<&Mesh3d>), Added<Name>>,
+    meshes: Option<Res<Assets<Mesh>>>,
 ) {
-    for (entity, name, tf_opt) in &named_entities {
-        if name.as_str().contains("TallGrass") {
+    for (entity, name, tf_opt, mesh_opt) in &named_entities {
+        let name_str = name.as_str();
+        if name_str.contains("TallGrass") && !name_str.contains("Mound") {
             let base_rot = tf_opt.map(|t| t.rotation).unwrap_or(Quat::IDENTITY);
+            let center_offset = mesh_opt
+                .and_then(|h| meshes.as_ref().and_then(|m| m.get(&h.0)))
+                .and_then(|m| m.compute_aabb())
+                .map(|a| Vec3::from(a.center))
+                .unwrap_or(Vec3::ZERO);
             commands.entity(entity).insert((
                 TallGrassClump,
                 GrassBending {
@@ -114,6 +123,7 @@ pub fn mark_imported_tall_grass(
                     current_bend: Vec2::ZERO,
                     bend_velocity: Vec2::ZERO,
                 },
+                crate::alchemy::Flammable::with_duration(2.5).with_center_offset(center_offset),
             ));
         }
     }
@@ -122,14 +132,15 @@ pub fn mark_imported_tall_grass(
 pub fn attach_mushroom_spore_emitters(
     mut commands: Commands,
     mushroom_caps: Query<
-        (Entity, Option<&Name>),
+        (Entity, Option<&Name>, Option<&Mesh3d>),
         (
             Or<(With<MushroomCap>, With<Name>)>,
             Without<MushroomSporeAttached>,
         ),
     >,
+    meshes: Option<Res<Assets<Mesh>>>,
 ) {
-    for (entity, name_opt) in &mushroom_caps {
+    for (entity, name_opt, mesh_opt) in &mushroom_caps {
         let is_target = if let Some(name) = name_opt {
             let s = name.as_str();
             (s.contains("Cap") && (s.contains("Shroom") || s.contains("Mushroom")))
@@ -139,9 +150,17 @@ pub fn attach_mushroom_spore_emitters(
         };
 
         if is_target {
+            let center_offset = mesh_opt
+                .and_then(|h| meshes.as_ref().and_then(|m| m.get(&h.0)))
+                .and_then(|m| m.compute_aabb())
+                .map(|a| Vec3::from(a.center))
+                .unwrap_or(Vec3::ZERO);
+
             commands
                 .entity(entity)
                 .insert((
+                    Visibility::default(),
+                    InheritedVisibility::default(),
                     MushroomCap,
                     MushroomSporeAttached,
                     BioluminescentMushroom {
@@ -150,10 +169,11 @@ pub fn attach_mushroom_spore_emitters(
                         phase: 0.0,
                         surge_timer: 0.0,
                     },
+                    crate::alchemy::Flammable::with_duration(3.5).with_center_offset(center_offset),
                 ))
                 .with_children(|parent| {
                     parent.spawn((
-                        Transform::from_xyz(0.0, -0.06, 0.0),
+                        Transform::from_xyz(center_offset.x, center_offset.y - 0.06, center_offset.z),
                         ParticleEmitter {
                             spawn_timer: 0.0,
                             spawn_rate: 0.22,
@@ -165,8 +185,61 @@ pub fn attach_mushroom_spore_emitters(
     }
 }
 
+pub fn mark_imported_flammable_props(
+    mut commands: Commands,
+    named_entities: Query<
+        (Entity, &Name, Option<&Mesh3d>),
+        (
+            Added<Name>,
+            Without<crate::alchemy::Flammable>,
+            Without<TallGrassClump>,
+            Without<MushroomCap>,
+        ),
+    >,
+    meshes: Option<Res<Assets<Mesh>>>,
+) {
+    for (entity, name, mesh_opt) in &named_entities {
+        let s = name.as_str();
+        let (duration, is_flammable) = if (s.contains("Stem") && (s.contains("Shroom") || s.contains("Mushroom")))
+            || (s.contains("Shroom") || s.contains("Mushroom"))
+        {
+            (3.5, true)
+        } else if s.contains("Fern") {
+            (2.2, true)
+        } else if s.contains("Vine") {
+            (2.8, true)
+        } else if s.contains("Wall_Cyan_Spore") {
+            (1.8, true)
+        } else if s.contains("Dandelion") {
+            (2.0, true)
+        } else {
+            (0.0, false)
+        };
+
+        if is_flammable {
+            let center_offset = mesh_opt
+                .and_then(|h| meshes.as_ref().and_then(|m| m.get(&h.0)))
+                .and_then(|m| m.compute_aabb())
+                .map(|a| Vec3::from(a.center))
+                .unwrap_or(Vec3::ZERO);
+
+            commands.entity(entity).insert(
+                crate::alchemy::Flammable::with_duration(duration).with_center_offset(center_offset),
+            );
+        }
+    }
+}
+
 pub fn keep_tall_grass_clear_of_obstacles(
-    mut grass_query: Query<(&mut Transform, &GlobalTransform), With<TallGrassClump>>,
+    mut grass_query: Query<
+        (
+            &mut Transform,
+            &GlobalTransform,
+            Option<&crate::alchemy::Flammable>,
+            Option<&Aabb>,
+        ),
+        With<TallGrassClump>,
+    >,
     obstacles: Query<
         (&GlobalTransform, &ObstacleShape),
         (With<CavernObstacle>, Without<TallGrassClump>),
@@ -175,8 +248,12 @@ pub fn keep_tall_grass_clear_of_obstacles(
     const GRASS_RADIUS: f32 = 0.34;
     const CLEARANCE: f32 = 0.16;
 
-    for (mut grass_transform, grass_global) in &mut grass_query {
-        let grass_pos = grass_global.translation();
+    for (mut grass_transform, grass_global, flam_opt, aabb_opt) in &mut grass_query {
+        let grass_pos = flam_opt
+            .and_then(|f| f.center_offset)
+            .or_else(|| aabb_opt.map(|a| Vec3::from(a.center)))
+            .map(|off| grass_global.transform_point(off))
+            .unwrap_or_else(|| grass_global.translation());
         let mut corrected = Vec2::new(grass_pos.x, grass_pos.z);
 
         for _ in 0..6 {
@@ -260,7 +337,16 @@ pub fn keep_tall_grass_clear_of_obstacles(
 pub fn update_grass_bending(
     time: Res<Time>,
     player_query: Query<&GlobalTransform, (With<crate::player::camera::Player>, Without<TallGrassClump>)>,
-    mut grass_query: Query<(&mut Transform, &GlobalTransform, &mut GrassBending), With<TallGrassClump>>,
+    mut grass_query: Query<
+        (
+            &mut Transform,
+            &GlobalTransform,
+            &mut GrassBending,
+            Option<&crate::alchemy::Flammable>,
+            Option<&Aabb>,
+        ),
+        With<TallGrassClump>,
+    >,
 ) {
     let dt = time.delta_secs();
     if dt <= 0.0 || dt > 0.1 {
@@ -277,8 +363,12 @@ pub fn update_grass_bending(
     const SPRING_K: f32 = 42.0;
     const DAMPING_C: f32 = 8.5;
 
-    for (mut tf, gt, mut bending) in grass_query.iter_mut() {
-        let grass_pos = gt.translation();
+    for (mut tf, gt, mut bending, flam_opt, aabb_opt) in grass_query.iter_mut() {
+        let grass_pos = flam_opt
+            .and_then(|f| f.center_offset)
+            .or_else(|| aabb_opt.map(|a| Vec3::from(a.center)))
+            .map(|off| gt.transform_point(off))
+            .unwrap_or_else(|| gt.translation());
         let grass_p = Vec2::new(grass_pos.x, grass_pos.z);
         let delta = grass_p - player_p;
         let dist = delta.length();

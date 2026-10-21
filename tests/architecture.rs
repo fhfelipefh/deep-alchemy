@@ -719,28 +719,19 @@ fn test_architecture_concept_art_fidelity_and_faceted_rocks_pipeline() {
         "Render module must register CelShadedMossMaterial"
     );
 
+    let rock_blend_path = Path::new("assets/models/source_blend/faceted_rocks_kit.blend");
+    assert!(
+        rock_blend_path.exists(),
+        "assets/models/source_blend/faceted_rocks_kit.blend must exist for Blender editing"
+    );
+    let blend_bytes = fs::read(rock_blend_path).expect("Failed to read faceted_rocks_kit.blend");
+    let is_blend = &blend_bytes[0..7] == b"BLENDER" || &blend_bytes[0..4] == &[0x28, 0xb5, 0x2f, 0xfd];
+    assert!(is_blend, "faceted_rocks_kit.blend must be valid Blender binary");
+
     let rock_gen_script = Path::new("scripts/generate_faceted_rocks.py");
     assert!(
-        rock_gen_script.exists(),
-        "scripts/generate_faceted_rocks.py must exist"
-    );
-    let gen_code =
-        fs::read_to_string(rock_gen_script).expect("Failed to read generate_faceted_rocks.py");
-    assert!(
-        gen_code.contains("generate_angular_rock"),
-        "Rock generator must define generate_angular_rock"
-    );
-    assert!(
-        gen_code.contains("generate_rock_cluster"),
-        "Rock generator must define generate_rock_cluster"
-    );
-    assert!(
-        gen_code.contains("generate_transition_boulders"),
-        "Rock generator must define generate_transition_boulders"
-    );
-    assert!(
-        gen_code.contains("poly.normal.z > 0.60"),
-        "Rock generator must assign top moss when normal.z > 0.60"
+        !rock_gen_script.exists(),
+        "scripts/generate_faceted_rocks.py must be discarded; rocks are edited in Blender"
     );
 
     let rock_glb_path = Path::new("assets/models/faceted_rocks_kit.glb");
@@ -1208,4 +1199,317 @@ fn test_architecture_tonemapping_lut_and_texture_dimension_safety() {
         "Planar reflection image must have TEXTURE_BINDING usage"
     );
 }
+
+#[test]
+fn test_architecture_no_runtime_asset_generation_or_process_spawn() {
+    fn collect_rs_files(dir: &Path, files: &mut Vec<std::path::PathBuf>) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    collect_rs_files(&path, files);
+                } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    files.push(path);
+                }
+            }
+        }
+    }
+
+    let mut src_files = Vec::new();
+    collect_rs_files(Path::new("src"), &mut src_files);
+
+    let forbidden_patterns = [
+        "std::process::Command",
+        "tokio::process::Command",
+        "Command::new",
+        "bpy.ops",
+        "python scripts/",
+        "python3 scripts/",
+        "blender.exe",
+    ];
+
+    let mut violations = Vec::new();
+
+    for file_path in src_files {
+        let content = fs::read_to_string(&file_path)
+            .unwrap_or_else(|_| panic!("Failed to read file: {:?}", file_path));
+
+        let prod_content = if let Some(idx) = content.find("#[cfg(test)]") {
+            &content[..idx]
+        } else {
+            &content[..]
+        };
+
+        for pattern in &forbidden_patterns {
+            if prod_content.contains(pattern) {
+                violations.push(format!(
+                    "{}: Contains forbidden runtime process or asset generation trigger '{}'",
+                    file_path.display(),
+                    pattern
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Runtime asset generation or process spawning detected in production code!\n\
+        All assets must be statically exported to disk and editable by developers.\n\
+        No scripts may be executed on-demand in runtime.\n\
+        Violations:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn test_architecture_all_assets_exported_and_developer_editable() {
+    let ui_pngs = [
+        "assets/textures/ui/flask_blue.png",
+        "assets/textures/ui/flask_green.png",
+        "assets/textures/ui/flask_red.png",
+        "assets/textures/ui/flask_white.png",
+        "assets/textures/ui/flask_yellow.png",
+        "assets/textures/ui/heart_empty.png",
+        "assets/textures/ui/heart_full.png",
+        "assets/textures/ui/slot_normal.png",
+        "assets/textures/ui/slot_gold_active.png",
+        "assets/icons/app_icon.png",
+    ];
+
+    let png_magic = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+    for path_str in &ui_pngs {
+        let path = Path::new(path_str);
+        assert!(path.exists(), "Exported UI PNG asset must exist: {}", path_str);
+        let bytes = fs::read(path).expect("Failed to read PNG");
+        assert!(bytes.len() > 100, "PNG file is suspiciously small: {}", path_str);
+        assert_eq!(&bytes[0..8], &png_magic, "Invalid PNG magic: {}", path_str);
+        let decoded = image::load_from_memory(&bytes);
+        assert!(decoded.is_ok(), "Image decoder failed for exported asset: {}", path_str);
+    }
+
+    let ui_svgs = [
+        "assets/textures/ui/flask_blue.svg",
+        "assets/textures/ui/flask_green.svg",
+        "assets/textures/ui/flask_red.svg",
+        "assets/textures/ui/flask_white.svg",
+        "assets/textures/ui/flask_yellow.svg",
+        "assets/textures/ui/heart_empty.svg",
+        "assets/textures/ui/heart_full.svg",
+        "assets/textures/ui/slot_normal.svg",
+        "assets/textures/ui/slot_gold_active.svg",
+        "assets/icons/app_icon.svg",
+    ];
+
+    for path_str in &ui_svgs {
+        let path = Path::new(path_str);
+        assert!(path.exists(), "Exported vector SVG source must exist: {}", path_str);
+        let content = fs::read_to_string(path).expect("Failed to read SVG");
+        assert!(content.contains("<svg"), "SVG must contain <svg tag: {}", path_str);
+        assert!(content.contains("</svg>"), "SVG must contain </svg> closing tag: {}", path_str);
+        assert!(content.contains("viewBox="), "SVG must define viewBox for vector scaling: {}", path_str);
+    }
+
+    let source_blends = [
+        "assets/models/source_blend/player.blend",
+        "assets/models/source_blend/cavern_kit.blend",
+        "assets/models/source_blend/alchemy_props.blend",
+        "assets/models/source_blend/dungeon_kit.blend",
+        "assets/models/source_blend/faceted_rocks_kit.blend",
+    ];
+
+    for path_str in &source_blends {
+        let path = Path::new(path_str);
+        assert!(path.exists(), "Source Blender model must exist: {}", path_str);
+        let bytes = fs::read(path).expect("Failed to read blend file");
+        let is_blender = &bytes[0..7] == b"BLENDER" || &bytes[0..4] == &[0x28, 0xb5, 0x2f, 0xfd];
+        assert!(is_blender, "Invalid Blender file header: {}", path_str);
+    }
+
+    let all_models = [
+        "assets/models/player.glb",
+        "assets/models/cavern_kit.glb",
+        "assets/models/alchemy_props.glb",
+        "assets/models/dungeon_kit.glb",
+        "assets/models/env_cave_wall.glb",
+        "assets/models/faceted_rocks_kit.glb",
+        "assets/models/macro_alchemical_shrine.glb",
+        "assets/models/macro_crystal_cluster.glb",
+        "assets/models/prop_faceted_rock.glb",
+        "assets/models/prop_mushroom_cyan.glb",
+        "assets/models/prop_wooden_bench.glb",
+        "assets/models/tile_corridor_corner.glb",
+        "assets/models/tile_corridor_straight.glb",
+        "assets/models/tile_solid_pillar.glb",
+    ];
+
+    let gltf_magic: u32 = 0x46546C67;
+    for path_str in &all_models {
+        let path = Path::new(path_str);
+        assert!(path.exists(), "Exported GLB model must exist: {}", path_str);
+        let bytes = fs::read(path).expect("Failed to read GLB");
+        assert!(bytes.len() > 1000, "GLB model is suspiciously small: {}", path_str);
+        let magic = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        assert_eq!(magic, gltf_magic, "Invalid GLB magic: {}", path_str);
+    }
+
+    let shaders = [
+        "assets/shaders/cel_shaded_world_moss.wgsl",
+        "assets/shaders/heat_haze.wgsl",
+        "assets/shaders/outline_post_process.wgsl",
+        "assets/shaders/potion_fluid.wgsl",
+        "assets/shaders/water_material.wgsl",
+    ];
+
+    for path_str in &shaders {
+        let path = Path::new(path_str);
+        assert!(path.exists(), "Shader file must exist: {}", path_str);
+        let content = fs::read_to_string(path).expect("Failed to read shader");
+        assert!(content.contains("@fragment"), "Shader must contain @fragment: {}", path_str);
+    }
+
+    let scene_spec_path = Path::new("assets/data/scene_spec.json");
+    assert!(scene_spec_path.exists(), "scene_spec.json must exist");
+    let scene_spec_str = fs::read_to_string(scene_spec_path).expect("Failed to read scene_spec.json");
+    assert!(scene_spec_str.contains("starting_waterfall_grotto"));
+    assert!(scene_spec_str.contains("palette"));
+    assert!(scene_spec_str.contains("depth_layers"));
+}
+
+#[test]
+fn test_architecture_developer_asset_modification_resilience() {
+    let test_resolutions = [(16, 16), (32, 32), (64, 64), (96, 96), (128, 128), (256, 256), (120, 60)];
+    for (w, h) in test_resolutions {
+        let mut custom_img = image::RgbaImage::new(w, h);
+        for pixel in custom_img.pixels_mut() {
+            *pixel = image::Rgba([180, 220, 50, 255]);
+        }
+        let mut encoded = Vec::new();
+        let enc_res = custom_img.write_to(&mut std::io::Cursor::new(&mut encoded), image::ImageFormat::Png);
+        assert!(enc_res.is_ok(), "Encoding simulated altered developer PNG must succeed");
+
+        let decoded = image::load_from_memory(&encoded);
+        assert!(decoded.is_ok(), "Decoding altered developer PNG at {}x{} must succeed", w, h);
+        let rgba = decoded.unwrap().to_rgba8();
+        assert_eq!(rgba.dimensions(), (w, h));
+
+        let icon_res = winit::window::Icon::from_rgba(rgba.into_raw(), w, h);
+        assert!(icon_res.is_ok(), "Window icon initialization with altered dimensions must not panic");
+    }
+
+    let modified_ron = r#"(
+        ingredients: [
+            (
+                id: "ing_custom_test",
+                name: "Custom Developer Root",
+                description: "Edited by developer",
+                weight: 0.3,
+                value: 99,
+                primary_aspect: Swiftness,
+                secondary_aspect: Luminescence,
+            ),
+        ],
+        potions: [
+            (
+                id: "pot_custom_test",
+                name: "Developer Custom Elixir",
+                liquid_color: (0.5, 0.8, 0.2, 0.9),
+                effects: [
+                    (kind: Swiftness, duration: 60.0, magnitude: 2.0),
+                ],
+            ),
+        ]
+    )"#;
+
+    let parsed: Result<RonDatabase, _> = ron::from_str(modified_ron);
+    assert!(parsed.is_ok(), "Altered RON database with new developer ingredients must parse cleanly");
+    let db = parsed.unwrap();
+    assert_eq!(db.ingredients[0].name, "Custom Developer Root");
+    assert_eq!(db.potions[0].effects[0].duration, 60.0);
+}
+
+#[test]
+fn test_architecture_scene_asset_registry_complete_disk_coverage() {
+    use deep_alchemy::dungeon::asset_loader::SceneAssetRegistry;
+
+    let registry = SceneAssetRegistry::default();
+    assert!(!registry.assets.is_empty(), "SceneAssetRegistry must not be empty");
+
+    for (key, path_with_anchor) in &registry.assets {
+        let clean_path = if let Some(idx) = path_with_anchor.find('#') {
+            &path_with_anchor[..idx]
+        } else {
+            path_with_anchor.as_str()
+        };
+
+        let disk_path = format!("assets/{}", clean_path);
+        let path = Path::new(&disk_path);
+        assert!(
+            path.exists(),
+            "Scene asset key '{}' references '{}', but file '{}' does not exist on disk",
+            key,
+            path_with_anchor,
+            disk_path
+        );
+
+        let bytes = fs::read(path).unwrap_or_else(|_| panic!("Failed to read {}", disk_path));
+        let magic = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        assert_eq!(
+            magic, 0x46546C67,
+            "Scene asset key '{}' file '{}' is not a valid GLB binary",
+            key, disk_path
+        );
+    }
+}
+
+#[test]
+fn test_architecture_hud_references_valid_disk_assets() {
+    let hud_code = fs::read_to_string("src/ui/hud.rs").expect("Failed to read hud.rs");
+    let mut asset_paths = Vec::new();
+    let mut cursor = &hud_code[..];
+    while let Some(idx) = cursor.find("asset_server.load(") {
+        cursor = &cursor[idx + 18..];
+        if let Some(end_idx) = cursor.find(')') {
+            let expr = cursor[..end_idx].trim();
+            if expr.starts_with('"') && expr.ends_with('"') && expr.len() >= 2 {
+                let path = &expr[1..expr.len() - 1];
+                asset_paths.push(path.to_string());
+            }
+            cursor = &cursor[end_idx..];
+        }
+    }
+
+    assert!(!asset_paths.is_empty(), "HUD must reference assets via asset_server.load");
+    for path_str in asset_paths {
+        let full_path = format!("assets/{}", path_str);
+        assert!(
+            Path::new(&full_path).exists(),
+            "HUD references '{}', but '{}' does not exist on disk",
+            path_str,
+            full_path
+        );
+    }
+}
+
+#[test]
+fn test_architecture_no_single_use_generator_scripts_in_repository() {
+    let discarded_scripts = [
+        "scripts/build_dungeon_kit.py",
+        "scripts/build_grotto_scene.py",
+        "scripts/generate_alchemy_props.py",
+        "scripts/generate_player.py",
+        "scripts/generate_ui_icons.py",
+        "scripts/export_ui_svgs.py",
+        "scripts/generate_faceted_rocks.py",
+    ];
+
+    for script in &discarded_scripts {
+        assert!(
+            !Path::new(script).exists(),
+            "Single-use script '{}' must be discarded after fulfilling its purpose",
+            script
+        );
+    }
+}
+
+
 

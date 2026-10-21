@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="80" height="80">
+  <defs>
+    <linearGradient id="active_gold_border" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffe678"/>
+      <stop offset="50%" stop-color="#ffd73c"/>
+      <stop offset="100%" stop-color="#d49114"/>
+    </linearGradient>
+    <linearGradient id="active_bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#242c38"/>
+      <stop offset="100%" stop-color="#121720"/>
+    </linearGradient>
+    <filter id="gold_glow">
+      <feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#ffd73c" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+  <g id="slot_gold_active" filter="url(#gold_glow)">
+    <rect x="4" y="4" width="72" height="72" rx="10" fill="#0a0e12" stroke="#0a0e12" stroke-width="3"/>
+    <rect x="6" y="6" width="68" height="68" rx="8" fill="url(#active_bg)"/>
+    <rect x="5" y="5" width="70" height="70" rx="9" fill="none" stroke="url(#active_gold_border)" stroke-width="2.5"/>
+    <rect x="9" y="9" width="62" height="62" rx="6" fill="none" stroke="#e6a519" stroke-width="1.5" opacity="0.85"/>
+    <rect x="7" y="7" width="4" height="4" fill="#fff5b4" stroke="#0a0e12" stroke-width="0.8"/>
+    <rect x="69" y="7" width="4" height="4" fill="#fff5b4" stroke="#0a0e12" stroke-width="0.8"/>
+    <rect x="7" y="69" width="4" height="4" fill="#fff5b4" stroke="#0a0e12" stroke-width="0.8"/>
+    <rect x="69" y="69" width="4" height="4" fill="#fff5b4" stroke="#0a0e12" stroke-width="0.8"/>
+  </g>
+</svg>

@@ -306,11 +306,15 @@ pub fn sync_heat_sources_system(
         } else {
             (1.8, 0.003)
         };
-        commands.entity(entity).insert(HeatHazeSource {
-            radius,
-            intensity,
-            speed: 1.0,
-            is_active: true,
+        commands.queue(move |world: &mut World| {
+            if let Ok(mut ent) = world.get_entity_mut(entity) {
+                ent.insert(HeatHazeSource {
+                    radius,
+                    intensity,
+                    speed: 1.0,
+                    is_active: true,
+                });
+            }
         });
     }
     for (entity, puddle) in puddles.iter() {
@@ -319,11 +323,15 @@ pub fn sync_heat_sources_system(
             .iter()
             .any(|e| e.kind == crate::alchemy::AlchemicalEffectKind::ThermalHeat);
         if is_thermal {
-            commands.entity(entity).insert(HeatHazeSource {
-                radius: 2.2,
-                intensity: 0.004,
-                speed: 1.0,
-                is_active: true,
+            commands.queue(move |world: &mut World| {
+                if let Ok(mut ent) = world.get_entity_mut(entity) {
+                    ent.insert(HeatHazeSource {
+                        radius: 2.2,
+                        intensity: 0.004,
+                        speed: 1.0,
+                        is_active: true,
+                    });
+                }
             });
         }
     }
@@ -334,21 +342,29 @@ pub fn sync_heat_sources_system(
                 .iter()
                 .any(|e| e.kind == crate::alchemy::AlchemicalEffectKind::ThermalHeat);
         if is_fire {
-            commands.entity(entity).insert(HeatHazeSource {
-                radius: 1.4,
-                intensity: 0.005,
-                speed: 1.2,
-                is_active: true,
+            commands.queue(move |world: &mut World| {
+                if let Ok(mut ent) = world.get_entity_mut(entity) {
+                    ent.insert(HeatHazeSource {
+                        radius: 1.4,
+                        intensity: 0.005,
+                        speed: 1.2,
+                        is_active: true,
+                    });
+                }
             });
         }
     }
     for (entity, flammable) in flammables.iter() {
         if flammable.is_burning {
-            commands.entity(entity).insert(HeatHazeSource {
-                radius: 2.0,
-                intensity: 0.004,
-                speed: 1.0,
-                is_active: true,
+            commands.queue(move |world: &mut World| {
+                if let Ok(mut ent) = world.get_entity_mut(entity) {
+                    ent.insert(HeatHazeSource {
+                        radius: 2.0,
+                        intensity: 0.004,
+                        speed: 1.0,
+                        is_active: true,
+                    });
+                }
             });
         }
     }

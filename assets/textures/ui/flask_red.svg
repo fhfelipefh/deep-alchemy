@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
+  <defs>
+    <linearGradient id="ruby_liquid" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ff475d"/>
+      <stop offset="40%" stop-color="#eb1e32"/>
+      <stop offset="85%" stop-color="#9e0c1b"/>
+      <stop offset="100%" stop-color="#5e050f"/>
+    </linearGradient>
+    <linearGradient id="gold_cap" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#d49e24"/>
+      <stop offset="50%" stop-color="#ffd55a"/>
+      <stop offset="100%" stop-color="#9e6e10"/>
+    </linearGradient>
+    <filter id="flask_glow_red">
+      <feDropShadow dx="0" dy="3" stdDeviation="2" flood-color="#140608" flood-opacity="0.8"/>
+    </filter>
+  </defs>
+  <g id="flask_red_conical" filter="url(#flask_glow_red)">
+    <polygon points="16,80 80,80 57,36 57,22 39,22 39,36" fill="#0e1018" stroke="#0e1018" stroke-width="5" stroke-linejoin="round"/>
+    <polygon points="38,22 58,22 60,11 36,11" fill="#0e1018" stroke="#0e1018" stroke-width="3"/>
+    <polygon points="20,77 76,77 55,37 55,24 41,24 41,37" fill="#231216"/>
+    <polygon points="23,75 73,75 63,52 33,52" fill="url(#ruby_liquid)"/>
+    <polygon points="23,75 73,75 68,66 28,66" fill="#700612" opacity="0.6"/>
+    <line x1="33" y1="52" x2="63" y2="52" stroke="#ff8c9b" stroke-width="3" stroke-linecap="round"/>
+    <polygon points="26,73 34,73 47,38 43,38" fill="#ffffff" opacity="0.75"/>
+    <line x1="28" y1="75" x2="68" y2="75" stroke="#ffffff" stroke-width="1.5" opacity="0.4"/>
+    <rect x="37" y="21" width="22" height="6" rx="1.5" fill="url(#gold_cap)" stroke="#0e1018" stroke-width="2"/>
+    <polygon points="41,21 55,21 57,11 39,11" fill="#b41928" stroke="#0e1018" stroke-width="1.8"/>
+    <ellipse cx="48" cy="11" rx="8" ry="3.5" fill="url(#gold_cap)" stroke="#0e1018" stroke-width="1.8"/>
+    <circle cx="48" cy="8" r="3.2" fill="#eb1e32" stroke="#0e1018" stroke-width="1"/>
+  </g>
+</svg>

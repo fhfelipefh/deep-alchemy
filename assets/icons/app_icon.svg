@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <radialGradient id="cavern_bg" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#0a1a24"/>
+      <stop offset="60%" stop-color="#050d13"/>
+      <stop offset="100%" stop-color="#020508"/>
+    </radialGradient>
+    <linearGradient id="icon_emerald_glow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#5dfcad"/>
+      <stop offset="40%" stop-color="#1de372"/>
+      <stop offset="85%" stop-color="#0e8c3f"/>
+      <stop offset="100%" stop-color="#05451d"/>
+    </linearGradient>
+    <linearGradient id="icon_gold_filigree" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff294"/>
+      <stop offset="50%" stop-color="#f0bc2e"/>
+      <stop offset="100%" stop-color="#996e0d"/>
+    </linearGradient>
+    <filter id="alchemy_glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#cavern_bg)" stroke="#1a2a38" stroke-width="4"/>
+  <rect x="14" y="14" width="228" height="228" rx="46" fill="none" stroke="url(#icon_gold_filigree)" stroke-width="2.5" opacity="0.75"/>
+  <g id="alchemical_core" filter="url(#alchemy_glow)">
+    <circle cx="128" cy="152" r="66" fill="#05080c" stroke="#05080c" stroke-width="10"/>
+    <rect x="106" y="68" width="44" height="42" rx="4" fill="#05080c" stroke="#05080c" stroke-width="10"/>
+    <path d="M 98,54 L 158,54 L 152,72 L 104,72 Z" fill="#05080c" stroke="#05080c" stroke-width="10"/>
+    <circle cx="128" cy="152" r="60" fill="#111c1e"/>
+    <rect x="110" y="70" width="36" height="38" fill="#142426"/>
+    <path d="M 72,148 C 72,179 97,206 128,206 C 159,206 184,179 184,148 C 168,154 144,146 128,148 C 112,150 88,144 72,148 Z" fill="url(#icon_emerald_glow)"/>
+    <ellipse cx="128" cy="148" rx="54" ry="8" fill="#9effc2" opacity="0.9"/>
+    <circle cx="146" cy="168" r="7" fill="#d1ffe2" stroke="#05080c" stroke-width="2"/>
+    <circle cx="112" cy="180" r="5" fill="#d1ffe2" stroke="#05080c" stroke-width="1.8"/>
+    <circle cx="132" cy="188" r="3.5" fill="#ffffff"/>
+    <path d="M 82,118 C 74,134 75,166 87,184" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" opacity="0.88"/>
+    <ellipse cx="102" cy="112" rx="7" ry="4" transform="rotate(-40 102 112)" fill="#ffffff" opacity="0.95"/>
+    <rect x="104" y="66" width="48" height="12" rx="3" fill="url(#icon_gold_filigree)" stroke="#05080c" stroke-width="3"/>
+    <polygon points="110,66 146,66 150,42 106,42" fill="#c4874b" stroke="#05080c" stroke-width="4"/>
+    <ellipse cx="128" cy="42" rx="22" ry="7" fill="url(#icon_gold_filigree)" stroke="#05080c" stroke-width="3"/>
+    <polygon points="128,24 135,36 128,42 121,36" fill="#5dfcad" stroke="#05080c" stroke-width="2"/>
+  </g>
+</svg>

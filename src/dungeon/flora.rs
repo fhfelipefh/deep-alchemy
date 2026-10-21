@@ -122,6 +122,7 @@ pub fn spawn_dandelion(
             Visibility::default(),
             InheritedVisibility::default(),
             ViewVisibility::default(),
+            crate::alchemy::Flammable::with_duration(2.0),
         ))
         .with_children(|plant| {
 

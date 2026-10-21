@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="80" height="80">
+  <defs>
+    <linearGradient id="slot_bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#18202a"/>
+      <stop offset="100%" stop-color="#0f141b"/>
+    </linearGradient>
+  </defs>
+  <g id="slot_normal">
+    <rect x="4" y="4" width="72" height="72" rx="10" fill="#0a0e12" stroke="#0a0e12" stroke-width="3"/>
+    <rect x="6" y="6" width="68" height="68" rx="8" fill="url(#slot_bg)" stroke="#464e58" stroke-width="1.5"/>
+    <rect x="9" y="9" width="62" height="62" rx="6" fill="none" stroke="#2a333f" stroke-width="1"/>
+  </g>
+</svg>

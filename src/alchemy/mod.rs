@@ -8,6 +8,7 @@ use crate::{
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
+use bevy::render::primitives::Aabb;
 use bevy::render::render_asset::RenderAssetUsages;
 use serde::{Deserialize, Serialize};
 
@@ -152,6 +153,8 @@ pub struct Flammable {
     pub fire_light: Option<Entity>,
     pub fire_emitter: Option<Entity>,
     pub initial_scale: Option<Vec3>,
+    pub initial_translation: Option<Vec3>,
+    pub center_offset: Option<Vec3>,
 }
 
 impl Flammable {
@@ -163,11 +166,18 @@ impl Flammable {
             fire_light: None,
             fire_emitter: None,
             initial_scale: None,
+            initial_translation: None,
+            center_offset: None,
         }
     }
 
     pub fn with_duration(burn_duration: f32) -> Self {
         Self::new(burn_duration)
+    }
+
+    pub fn with_center_offset(mut self, offset: Vec3) -> Self {
+        self.center_offset = Some(offset);
+        self
     }
 
     pub fn ignite(&mut self) {
@@ -183,6 +193,29 @@ impl Flammable {
         if let Some(emitter) = self.fire_emitter.take() {
             commands.entity(emitter).despawn();
         }
+    }
+
+    pub fn compute_world_center(
+        &self,
+        transform: &Transform,
+        global_transform: Option<&GlobalTransform>,
+        aabb: Option<&Aabb>,
+    ) -> Vec3 {
+        let offset = self
+            .center_offset
+            .or_else(|| aabb.map(|a| Vec3::from(a.center)))
+            .unwrap_or(Vec3::ZERO);
+        if let Some(gt) = global_transform {
+            gt.transform_point(offset)
+        } else {
+            transform.transform_point(offset)
+        }
+    }
+}
+
+impl Default for Flammable {
+    fn default() -> Self {
+        Self::new(3.0)
     }
 }
 
@@ -710,38 +743,68 @@ fn apply_splash_effects(
 }
 
 fn ignite_nearby_flammables(
-    flammables: &mut Query<(Entity, &Transform, &mut Flammable), (Without<PotionProjectile>, Without<PotionPuddle>, Without<Player>)>,
+    flammables: &mut Query<
+        (
+            Entity,
+            &Transform,
+            Option<&GlobalTransform>,
+            Option<&Aabb>,
+            &mut Flammable,
+        ),
+        (
+            Without<PotionProjectile>,
+            Without<PotionPuddle>,
+            Without<Player>,
+        ),
+    >,
     impact_point: Vec3,
     radius: f32,
 ) {
-    for (_f_entity, f_tf, mut flammable) in flammables.iter_mut() {
-        if f_tf.translation.length_squared() > 0.01 && f_tf.translation.distance(impact_point) <= radius {
+    for (_f_entity, f_tf, f_gt, f_aabb, mut flammable) in flammables.iter_mut() {
+        let center = flammable.compute_world_center(f_tf, f_gt, f_aabb);
+        if center.distance(impact_point) <= radius {
             flammable.ignite();
         }
     }
 }
 
 fn extinguish_nearby_flammables(
-    flammables: &mut Query<(Entity, &Transform, &mut Flammable), (Without<PotionProjectile>, Without<PotionPuddle>, Without<Player>)>,
+    flammables: &mut Query<
+        (
+            Entity,
+            &Transform,
+            Option<&GlobalTransform>,
+            Option<&Aabb>,
+            &mut Flammable,
+        ),
+        (
+            Without<PotionProjectile>,
+            Without<PotionPuddle>,
+            Without<Player>,
+        ),
+    >,
     commands: &mut Commands,
     impact_point: Vec3,
     radius: f32,
 ) {
-    for (_f_entity, f_tf, mut flammable) in flammables.iter_mut() {
-        if flammable.is_burning && f_tf.translation.length_squared() > 0.01 && f_tf.translation.distance(impact_point) <= radius {
-            flammable.extinguish(commands);
-            commands.spawn((
-                Transform::from_translation(f_tf.translation + Vec3::new(0.0, 0.35, 0.0)),
-                crate::render::particles::ParticleEmitter {
-                    spawn_timer: 0.0,
-                    spawn_rate: 0.02,
-                    particle_type: crate::render::particles::ParticleType::Steam,
-                },
-                AlchemyTransientEmitter {
-                    elapsed: 0.0,
-                    max_lifetime: 1.2,
-                },
-            ));
+    for (_f_entity, f_tf, f_gt, f_aabb, mut flammable) in flammables.iter_mut() {
+        if flammable.is_burning {
+            let center = flammable.compute_world_center(f_tf, f_gt, f_aabb);
+            if center.distance(impact_point) <= radius {
+                flammable.extinguish(commands);
+                commands.spawn((
+                    Transform::from_translation(center + Vec3::new(0.0, 0.35, 0.0)),
+                    crate::render::particles::ParticleEmitter {
+                        spawn_timer: 0.0,
+                        spawn_rate: 0.02,
+                        particle_type: crate::render::particles::ParticleType::Steam,
+                    },
+                    AlchemyTransientEmitter {
+                        elapsed: 0.0,
+                        max_lifetime: 1.2,
+                    },
+                ));
+            }
         }
     }
 }
@@ -1060,7 +1123,20 @@ pub fn update_potion_projectiles(
     mut projectiles: Query<(Entity, &mut Transform, &mut PotionProjectile), Without<Player>>,
     mut player_query: Query<(Entity, &Transform, &mut LocomotionState, &mut EffectReceiverComponent), (With<Player>, Without<PotionProjectile>)>,
     mut receivers: Query<(Entity, &Transform, &mut EffectReceiverComponent), (Without<PotionProjectile>, Without<PotionPuddle>, Without<Player>)>,
-    mut flammables: Query<(Entity, &Transform, &mut Flammable), (Without<PotionProjectile>, Without<PotionPuddle>, Without<Player>)>,
+    mut flammables: Query<
+        (
+            Entity,
+            &Transform,
+            Option<&GlobalTransform>,
+            Option<&Aabb>,
+            &mut Flammable,
+        ),
+        (
+            Without<PotionProjectile>,
+            Without<PotionPuddle>,
+            Without<Player>,
+        ),
+    >,
     mut dynamic_props: Query<(Entity, &Transform, &RigidBody, Option<&mut LinearVelocity>, Option<&mut AngularVelocity>), (Without<PotionProjectile>, Without<Player>)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -1361,7 +1437,15 @@ pub fn update_potion_puddles(
         &MeshMaterial3d<StandardMaterial>,
     ), Without<PotionPuddle>>,
     mut receivers: Query<(&Transform, &mut EffectReceiverComponent), (Without<PotionPuddle>, Without<PotionContactZone>)>,
-    mut flammables: Query<(&Transform, &mut Flammable), (Without<PotionPuddle>, Without<PotionContactZone>)>,
+    mut flammables: Query<
+        (
+            &Transform,
+            Option<&GlobalTransform>,
+            Option<&Aabb>,
+            &mut Flammable,
+        ),
+        (Without<PotionPuddle>, Without<PotionContactZone>),
+    >,
     mut commands: Commands,
 ) {
     let dt = time.delta_secs();
@@ -1431,8 +1515,9 @@ pub fn update_potion_puddles(
 
         let has_thermal = puddle.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat);
         if has_thermal {
-            for (f_tf, mut flammable) in flammables.iter_mut() {
-                if f_tf.translation.length_squared() > 0.01 && f_tf.translation.distance(transform.translation) <= puddle.radius * 1.25 {
+            for (f_tf, f_gt, f_aabb, mut flammable) in flammables.iter_mut() {
+                let center = flammable.compute_world_center(f_tf, f_gt, f_aabb);
+                if center.distance(transform.translation) <= puddle.radius * 1.25 {
                     flammable.ignite();
                 }
             }
@@ -1485,6 +1570,15 @@ pub fn update_potion_puddles(
                     if r_tf.translation.distance(mid) <= contact_r * 1.25 {
                         for effect in &cz.effects {
                             receiver.apply_effect(effect.kind, effect.duration, effect.magnitude);
+                        }
+                    }
+                }
+
+                if cz.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat) {
+                    for (f_tf, f_gt, f_aabb, mut flammable) in flammables.iter_mut() {
+                        let center = flammable.compute_world_center(f_tf, f_gt, f_aabb);
+                        if center.distance(mid) <= contact_r * 1.25 {
+                            flammable.ignite();
                         }
                     }
                 }
@@ -1753,6 +1847,8 @@ pub fn update_flammable_combustion(
     mut flammables: Query<(
         Entity,
         &mut Transform,
+        Option<&GlobalTransform>,
+        Option<&Aabb>,
         &mut Flammable,
         Option<&Name>,
     )>,
@@ -1766,14 +1862,15 @@ pub fn update_flammable_combustion(
 
     let burning_sources: Vec<Vec3> = flammables
         .iter()
-        .filter(|(_, tf, f, _)| f.is_burning && f.elapsed >= 0.25 && tf.translation.length_squared() > 0.01)
-        .map(|(_, tf, _, _)| tf.translation)
+        .filter(|(_, _, _, _, f, _)| f.is_burning && f.elapsed >= 0.25)
+        .map(|(_, tf, gt, aabb, f, _)| f.compute_world_center(tf, gt, aabb))
         .collect();
 
-    for (entity, mut transform, mut flammable, name) in flammables.iter_mut() {
-        if !flammable.is_burning && transform.translation.length_squared() > 0.01 {
+    for (entity, mut transform, gt, aabb, mut flammable, name) in flammables.iter_mut() {
+        let center = flammable.compute_world_center(&transform, gt, aabb);
+        if !flammable.is_burning {
             for source_pos in &burning_sources {
-                if transform.translation.distance(*source_pos) <= 0.95 {
+                if center.distance(*source_pos) <= 1.25 {
                     flammable.ignite();
                     break;
                 }
@@ -1789,10 +1886,23 @@ pub fn update_flammable_combustion(
         }
         let base_scale = flammable.initial_scale.unwrap_or(transform.scale);
 
+        if flammable.initial_translation.is_none() {
+            flammable.initial_translation = Some(transform.translation);
+        }
+        let base_trans = flammable.initial_translation.unwrap_or(transform.translation);
+
+        let local_offset = flammable
+            .center_offset
+            .or_else(|| aabb.map(|a| Vec3::from(a.center)))
+            .unwrap_or(Vec3::ZERO);
+
         if flammable.fire_light.is_none() {
             let mut fire_l_ent = None;
             let mut fire_e_ent = None;
-            commands.entity(entity).with_children(|parent| {
+            commands.entity(entity).insert((
+                Visibility::default(),
+                InheritedVisibility::default(),
+            )).with_children(|parent| {
                 let l = parent
                     .spawn((
                         PointLight {
@@ -1802,7 +1912,7 @@ pub fn update_flammable_combustion(
                             shadows_enabled: false,
                             ..default()
                         },
-                        Transform::from_xyz(0.0, 0.35, 0.0),
+                        Transform::from_xyz(local_offset.x, local_offset.y + 0.35, local_offset.z),
                     ))
                     .id();
                 fire_l_ent = Some(l);
@@ -1814,7 +1924,7 @@ pub fn update_flammable_combustion(
                             spawn_rate: 0.045,
                             particle_type: crate::render::particles::ParticleType::FireFlame,
                         },
-                        Transform::from_xyz(0.0, 0.25, 0.0),
+                        Transform::from_xyz(local_offset.x, local_offset.y + 0.25, local_offset.z),
                     ))
                     .id();
                 fire_e_ent = Some(e);
@@ -1842,14 +1952,18 @@ pub fn update_flammable_combustion(
             let scale_y = (1.0 - collapse_t * 0.94).max(0.03);
             let scale_xz = (1.0 - collapse_t * 0.85).max(0.06);
             transform.scale = base_scale * Vec3::new(scale_xz, scale_y, scale_xz);
-            transform.translation.y -= 0.05 * dt;
+            if local_offset != Vec3::ZERO {
+                transform.translation = base_trans + local_offset * (Vec3::ONE - Vec3::new(scale_xz, scale_y, scale_xz));
+            } else {
+                transform.translation.y = base_trans.y - (collapse_t * 0.05);
+            }
         }
 
         if flammable.elapsed >= flammable.burn_duration {
             flammable.is_burning = false;
             flammable.elapsed = -999.0;
 
-            let ash_pos = transform.translation + Vec3::new(0.0, 0.20, 0.0);
+            let ash_pos = center + Vec3::new(0.0, 0.20, 0.0);
             commands.spawn((
                 Transform::from_translation(ash_pos),
                 crate::render::particles::ParticleEmitter {
@@ -1866,16 +1980,20 @@ pub fn update_flammable_combustion(
             if let Some(n) = name {
                 if n.as_str().contains("Bench") {
                     for obstacle_ent in &bench_obstacles {
-                        if let Some(mut obs_cmd) = commands.get_entity(obstacle_ent) {
-                            obs_cmd.despawn();
-                        }
+                        commands.queue(move |world: &mut World| {
+                            if let Ok(obs_mut) = world.get_entity_mut(obstacle_ent) {
+                                obs_mut.despawn();
+                            }
+                        });
                     }
                 }
             }
 
-            if let Some(ent_cmd) = commands.get_entity(entity) {
-                ent_cmd.despawn_recursive();
-            }
+            commands.queue(move |world: &mut World| {
+                if let Ok(ent_cmd) = world.get_entity_mut(entity) {
+                    ent_cmd.despawn_recursive();
+                }
+            });
         }
     }
 }
@@ -1895,7 +2013,11 @@ pub fn cleanup_alchemy_memory_limits(
         let mut puddles: Vec<(Entity, f32)> = query_puddles.iter().map(|(e, p)| (e, p.elapsed)).collect();
         puddles.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         for (e, _) in puddles.into_iter().take(puddle_count - MAX_PUDDLES) {
-            commands.entity(e).despawn();
+            commands.queue(move |world: &mut World| {
+                if let Ok(ent) = world.get_entity_mut(e) {
+                    ent.despawn();
+                }
+            });
         }
     }
 
@@ -1905,7 +2027,11 @@ pub fn cleanup_alchemy_memory_limits(
         let mut shards: Vec<(Entity, f32)> = query_shards.iter().map(|(e, s)| (e, s.lifetime)).collect();
         shards.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         for (e, _) in shards.into_iter().take(shard_count - MAX_SHARDS) {
-            commands.entity(e).despawn();
+            commands.queue(move |world: &mut World| {
+                if let Ok(ent) = world.get_entity_mut(e) {
+                    ent.despawn();
+                }
+            });
         }
     }
 
@@ -1915,7 +2041,11 @@ pub fn cleanup_alchemy_memory_limits(
         let mut sheets: Vec<(Entity, f32)> = query_ice.iter().map(|(e, s)| (e, s.elapsed)).collect();
         sheets.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         for (e, _) in sheets.into_iter().take(ice_count - MAX_ICE_SHEETS) {
-            commands.entity(e).despawn();
+            commands.queue(move |world: &mut World| {
+                if let Ok(ent) = world.get_entity_mut(e) {
+                    ent.despawn();
+                }
+            });
         }
     }
 
@@ -1925,7 +2055,11 @@ pub fn cleanup_alchemy_memory_limits(
         let mut prints: Vec<(Entity, f32)> = query_footprints.iter().map(|(e, f)| (e, f.lifetime)).collect();
         prints.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         for (e, _) in prints.into_iter().take(footprint_count - MAX_FOOTPRINTS) {
-            commands.entity(e).despawn();
+            commands.queue(move |world: &mut World| {
+                if let Ok(ent) = world.get_entity_mut(e) {
+                    ent.despawn();
+                }
+            });
         }
     }
 
@@ -1935,7 +2069,11 @@ pub fn cleanup_alchemy_memory_limits(
         let mut projs: Vec<(Entity, f32)> = query_projectiles.iter().map(|(e, p)| (e, p.lifetime)).collect();
         projs.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         for (e, _) in projs.into_iter().take(proj_count - MAX_PROJECTILES) {
-            commands.entity(e).despawn();
+            commands.queue(move |world: &mut World| {
+                if let Ok(ent) = world.get_entity_mut(e) {
+                    ent.despawn();
+                }
+            });
         }
     }
 
@@ -1945,7 +2083,11 @@ pub fn cleanup_alchemy_memory_limits(
         let mut emitters: Vec<(Entity, f32)> = query_emitters.iter().map(|(e, em)| (e, em.elapsed)).collect();
         emitters.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         for (e, _) in emitters.into_iter().take(emitter_count - MAX_TRANSIENT_EMITTERS) {
-            commands.entity(e).despawn();
+            commands.queue(move |world: &mut World| {
+                if let Ok(ent) = world.get_entity_mut(e) {
+                    ent.despawn();
+                }
+            });
         }
     }
 }
