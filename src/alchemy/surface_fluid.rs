@@ -217,36 +217,79 @@ pub fn update_surface_fluid_patches(
     time: Res<Time>,
     spatial_query: SpatialQuery,
     receivers: Query<&SurfaceFluidReceiver>,
-    mut patches: Query<(Entity, &mut SurfaceFluidPatch, &mut Transform, &MeshMaterial3d<SurfaceFluidMaterial>)>,
+    mut patches: Query<(Entity, &mut SurfaceFluidPatch, &mut Transform, &MeshMaterial3d<SurfaceFluidMaterial>, Option<&mut Mesh3d>)>,
     mut materials: ResMut<Assets<SurfaceFluidMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut commands: Commands,
 ) {
     let dt = time.delta_secs();
     let filter = SpatialQueryFilter::default();
-    for (entity, mut patch, mut transform, material) in patches.iter_mut() {
+    for (entity, mut patch, mut transform, material, mut mesh_handle) in patches.iter_mut() {
         patch.age += dt;
         if patch.age >= patch.max_age || patch.volume <= 0.000_1 {
             commands.entity(entity).despawn();
             continue;
         }
+        let was_wall = patch.normal.y.abs() < 0.65;
+        let prev_pos = transform.translation;
         let released = simulate_surface_flow(&mut patch, dt);
         let downhill = tangential_gravity(patch.normal).normalize_or_zero();
         transform.translation += downhill * patch.flow.length() * dt;
-        let probe_origin = transform.translation + patch.normal * 0.10;
-        let hit = spatial_query.cast_ray(probe_origin, Dir3::new(-patch.normal).unwrap_or(Dir3::NEG_Y), 0.25, true, &filter)
-            .or_else(|| spatial_query.cast_ray(transform.translation + Vec3::Y * 0.08, Dir3::NEG_Y, 0.60, true, &filter));
-        if let Some(hit) = hit {
-            transform.translation = if hit.normal.dot(patch.normal) > 0.35 {
-                probe_origin - patch.normal * hit.distance
-            } else {
-                transform.translation + Vec3::Y * 0.08 - Vec3::Y * hit.distance
-            };
-            patch.host = Some(hit.entity);
-            patch.surface_adhesion = receivers.get(hit.entity).map(|receiver| receiver.adhesion).unwrap_or(1.0);
-            patch.normal = hit.normal.normalize_or_zero();
+
+        let mut surface_hit: Option<(Vec3, Vec3, Entity)> = None;
+
+        if was_wall {
+            let floor_probe_origin = transform.translation + patch.normal * 0.04 + Vec3::Y * 0.08;
+            if let Some(hit) = spatial_query.cast_ray(floor_probe_origin, Dir3::NEG_Y, 0.25, true, &filter) {
+                if hit.distance > 0.001 && hit.normal.y > 0.65 {
+                    let contact = floor_probe_origin + Dir3::NEG_Y.as_vec3() * hit.distance;
+                    if contact.y >= transform.translation.y - 0.05 {
+                        surface_hit = Some((contact, hit.normal.normalize_or_zero(), hit.entity));
+                    }
+                }
+            }
+        }
+
+        if surface_hit.is_none() {
+            let probe_dir = Dir3::new(-patch.normal).unwrap_or(Dir3::NEG_Y);
+            let probe_origin = transform.translation + patch.normal * 0.08;
+            if let Some(hit) = spatial_query.cast_ray(probe_origin, probe_dir, 0.28, true, &filter) {
+                if hit.distance > 0.001 && hit.normal.length_squared() > 0.25 {
+                    let contact = probe_origin + probe_dir.as_vec3() * hit.distance;
+                    surface_hit = Some((contact, hit.normal.normalize_or_zero(), hit.entity));
+                }
+            }
+        }
+
+        if surface_hit.is_none() {
+            let outward = if was_wall { patch.normal } else { Vec3::ZERO };
+            let downward_origin = transform.translation + outward * 0.04 + Vec3::Y * 0.10;
+            if let Some(hit) = spatial_query.cast_ray(downward_origin, Dir3::NEG_Y, 0.35, true, &filter) {
+                if hit.distance > 0.001 && hit.normal.length_squared() > 0.25 {
+                    let contact = downward_origin + Dir3::NEG_Y.as_vec3() * hit.distance;
+                    surface_hit = Some((contact, hit.normal.normalize_or_zero(), hit.entity));
+                }
+            }
+        }
+
+        if let Some((contact, normal, hit_entity)) = surface_hit {
+            transform.translation = contact + normal * 0.012;
+            patch.host = Some(hit_entity);
+            patch.surface_adhesion = receivers.get(hit_entity).map(|receiver| receiver.adhesion).unwrap_or(1.0);
+            patch.normal = normal;
             (patch.tangent, patch.bitangent) = surface_basis(patch.normal);
             transform.rotation = Quat::from_rotation_arc(Vec3::Y, patch.normal);
+
+            if was_wall && normal.y >= 0.65 {
+                patch.flow = Vec2::ZERO;
+                if let Some(ref mut handle) = mesh_handle {
+                    handle.0 = meshes.add(super::create_irregular_puddle_mesh(patch.radius, 32));
+                }
+            }
+        }
+
+        if patch.normal.y > 0.65 && transform.translation.y > prev_pos.y + 0.02 {
+            transform.translation.y = prev_pos.y;
         }
         let detachment = (0.028 + patch.profile.surface_tension * 0.045) * patch.profile.adhesion;
         if released > detachment {
@@ -378,5 +421,57 @@ mod tests {
         let released = simulate_surface_flow(&mut patch, 1.0 / 20.0);
         assert!(released > 0.0);
         assert!((patch.volume + released - 1.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn test_patch_flowing_down_wall_does_not_rise_to_infinity() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::transform::TransformPlugin,
+            bevy::asset::AssetPlugin::default(),
+            bevy::scene::ScenePlugin::default(),
+            avian3d::prelude::PhysicsPlugins::default(),
+        ));
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_millis(16),
+        ));
+        app.init_resource::<Assets<Mesh>>();
+        app.init_resource::<Assets<SurfaceFluidMaterial>>();
+        app.add_systems(Update, update_surface_fluid_patches);
+
+        app.world_mut().spawn((
+            Transform::from_xyz(0.0, -5.0, 0.0),
+            RigidBody::Static,
+            Collider::cuboid(40.0, 10.0, 40.0),
+        ));
+
+        app.world_mut().spawn((
+            Transform::from_xyz(0.0, 5.0, -10.0),
+            RigidBody::Static,
+            Collider::cuboid(40.0, 10.0, 20.0),
+        ));
+
+        let mut meshes = app.world_mut().resource_mut::<Assets<Mesh>>();
+        let mesh = meshes.add(crate::alchemy::create_wall_splatter_mesh(0.5, 16));
+        let mut mats = app.world_mut().resource_mut::<Assets<SurfaceFluidMaterial>>();
+        let mat = mats.add(SurfaceFluidMaterial::default());
+
+        let patch_entity = app.world_mut().spawn((
+            patch(Vec3::Z),
+            Mesh3d(mesh),
+            MeshMaterial3d(mat),
+            Transform::from_xyz(0.0, 2.0, 0.02),
+        )).id();
+
+        for _ in 0..80 {
+            app.update();
+        }
+
+        let tf = app.world().get::<Transform>(patch_entity).unwrap();
+        let p = app.world().get::<SurfaceFluidPatch>(patch_entity).unwrap();
+        assert!(p.normal.y > 0.9);
+        assert!(tf.translation.y < 0.05 && tf.translation.y >= 0.0);
+        assert!(p.flow.length() < 0.001);
     }
 }
