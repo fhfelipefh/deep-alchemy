@@ -12,6 +12,9 @@ use bevy::render::primitives::Aabb;
 use bevy::render::render_asset::RenderAssetUsages;
 use serde::{Deserialize, Serialize};
 
+pub mod surface_fluid;
+pub mod ice_simulation;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Component)]
 pub enum AlchemicalEffectKind {
     ThermalHeat,
@@ -78,6 +81,12 @@ pub struct PotionProjectile {
     pub entered_water: bool,
 }
 
+#[derive(Component, Debug, Clone, Copy)]
+pub struct PotionSurfaceImpact {
+    pub host: Entity,
+    pub normal: Vec3,
+}
+
 #[derive(Component, Debug)]
 pub struct TrajectoryAimIndicator;
 
@@ -98,16 +107,6 @@ pub struct PotionContactZone {
     pub color: Color,
     pub effects: Vec<ActiveEffect>,
     pub radius: f32,
-}
-
-#[derive(Component, Debug, Clone)]
-pub struct FrozenIceSheet {
-    pub center: Vec2,
-    pub radius: f32,
-    pub top_y: f32,
-    pub height: f32,
-    pub elapsed: f32,
-    pub max_lifetime: f32,
 }
 
 #[derive(Component, Debug, Clone)]
@@ -283,6 +282,8 @@ pub struct AlchemyPlugin;
 impl Plugin for AlchemyPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PotionCooldowns>()
+            .init_resource::<surface_fluid::PotionFluidProfiles>()
+            .init_resource::<ice_simulation::LakeFreezeSimulation>()
             .add_systems(
                 Update,
                 (
@@ -303,7 +304,11 @@ impl Plugin for AlchemyPlugin {
                         .run_if(resource_exists::<Assets<StandardMaterial>>),
                     update_potion_puddles.run_if(resource_exists::<Assets<StandardMaterial>>),
                     update_glass_shards.run_if(resource_exists::<Assets<StandardMaterial>>),
-                    update_frozen_water_sheets,
+                    surface_fluid::update_surface_fluid_patches.run_if(resource_exists::<SpatialQueryPipeline>),
+                    surface_fluid::capture_surface_fluid_droplets.run_if(resource_exists::<SpatialQueryPipeline>),
+                    surface_fluid::merge_surface_fluid_patches,
+                    ice_simulation::update_lake_freeze_simulation
+                        .run_if(resource_exists::<Assets<StandardMaterial>>),
                     update_ice_footprints,
                     update_flammable_combustion,
                 ),
@@ -971,26 +976,12 @@ fn spawn_alchemical_puddle(
     impact_normal: Vec3,
     color: Color,
     effects: Vec<ActiveEffect>,
-    is_wall: bool,
+    _is_wall: bool,
     is_rtx: bool,
 ) {
-    let (puddle_mesh_handle, puddle_rot, puddle_pos) = if is_wall {
-        let grav = Vec3::NEG_Y;
-        let down_proj = (grav - impact_normal * grav.dot(impact_normal)).normalize_or_zero();
-        let down = if down_proj.length_squared() > 0.01 {
-            down_proj
-        } else {
-            Vec3::NEG_Y
-        };
-        let right = down.cross(impact_normal).normalize();
-        let rot = Quat::from_mat3(&Mat3::from_cols(right, impact_normal, -down));
-        let mesh = meshes.add(create_wall_splatter_mesh(1.10, 32));
-        (mesh, rot, impact_point + impact_normal * 0.038)
-    } else {
-        let rot = Quat::from_rotation_arc(Vec3::Y, impact_normal);
-        let mesh = meshes.add(create_irregular_puddle_mesh(1.15, 32));
-        (mesh, rot, impact_point + impact_normal * 0.055)
-    };
+    let rot = Quat::from_rotation_arc(Vec3::Y, impact_normal);
+    let mesh = meshes.add(create_conforming_puddle_mesh(1.15, 32, impact_point));
+    let puddle_pos = impact_point + impact_normal * 0.045;
 
     let puddle_mat = materials.add(StandardMaterial {
         base_color: color.with_alpha(0.88),
@@ -1012,12 +1003,12 @@ fn spawn_alchemical_puddle(
             max_lifetime: 75.0,
             radius: 1.15,
             effects,
-            is_wall,
+            is_wall: false,
         },
-        Mesh3d(puddle_mesh_handle),
+        Mesh3d(mesh),
         MeshMaterial3d(puddle_mat),
         Transform::from_translation(puddle_pos)
-            .with_rotation(puddle_rot)
+            .with_rotation(rot)
             .with_scale(Vec3::new(0.15, 1.0, 0.15)),
         PointLight {
             color,
@@ -1029,98 +1020,30 @@ fn spawn_alchemical_puddle(
     ));
 }
 
-fn process_underwater_freeze_block(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
+fn process_underwater_freeze_seed(
+    simulation: &mut ice_simulation::LakeFreezeSimulation,
     player_query: &mut Query<(Entity, &Transform, &mut LocomotionState, &mut EffectReceiverComponent), (With<Player>, Without<PotionProjectile>)>,
     freeze_center: Vec2,
-    floor_y: f32,
+    intensity: f32,
 ) {
-    let freeze_radius = 2.65;
-    let water_surface_y = 0.18;
-    let water_depth = (water_surface_y - floor_y).max(0.0);
-    const MAX_FREEZE_REACH: f32 = 1.45;
-
-    let (block_height, block_center_y, top_y) = if water_depth <= MAX_FREEZE_REACH {
-        let h = (water_depth + 0.06).max(0.25);
-        (h, floor_y + h * 0.5, floor_y + h)
-    } else {
-        let h = MAX_FREEZE_REACH;
-        (h, floor_y + h * 0.5, floor_y + h)
-    };
-
-    for (_p_entity, p_tf, mut p_loco, mut p_recv) in player_query.iter_mut() {
-        let p_pos = p_tf.translation;
-        let p_in_water = crate::dungeon::modular_kit::is_in_lake_water(p_pos - Vec3::new(0.0, 1.2, 0.0));
-        let dist = (Vec2::new(p_pos.x, p_pos.z) - freeze_center).length();
-        let vertical_reach = (p_pos.y - 1.2) <= top_y + 0.40;
-        if p_in_water && dist <= freeze_radius + 0.65 && vertical_reach {
-            p_loco.is_frozen = true;
-            p_loco.freeze_timer = 3.5;
-            p_recv.apply_effect(AlchemicalEffectKind::Frost, 8.0, 25.0);
+    simulation.add_freeze_seed(freeze_center, intensity.clamp(0.4, 1.5));
+    for (_entity, transform, mut locomotion, mut receiver) in player_query.iter_mut() {
+        let position = transform.translation;
+        let distance = Vec2::new(position.x, position.z).distance(freeze_center);
+        if crate::dungeon::modular_kit::is_in_lake_water(position - Vec3::new(0.0, 1.2, 0.0)) && distance < 1.45 {
+            locomotion.is_frozen = true;
+            locomotion.freeze_timer = 2.0;
+            receiver.apply_effect(AlchemicalEffectKind::Frost, 4.0, 18.0);
         }
-    }
-
-    let ice_mesh = meshes.add(create_irregular_ice_block_mesh(freeze_radius, block_height, 28));
-    let ice_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.78, 0.94, 1.0, 0.88),
-        perceptual_roughness: 0.10,
-        metallic: 0.05,
-        reflectance: 0.85,
-        emissive: LinearRgba::new(0.18, 0.52, 0.90, 0.40),
-        cull_mode: None,
-        double_sided: true,
-        alpha_mode: AlphaMode::Blend,
-        depth_bias: 500.0,
-        ..default()
-    });
-
-    commands.spawn((
-        Name::new("Frozen_Water_Ice_Block"),
-        FrozenIceSheet {
-            center: freeze_center,
-            radius: freeze_radius,
-            top_y,
-            height: block_height,
-            elapsed: 0.0,
-            max_lifetime: 35.0,
-        },
-        crate::dungeon::modular_kit::CavernObstacle,
-        crate::dungeon::modular_kit::ObstacleShape::Cylinder {
-            radius: freeze_radius,
-            height: block_height,
-        },
-        RigidBody::Static,
-        Collider::cylinder(freeze_radius, block_height),
-        Mesh3d(ice_mesh),
-        MeshMaterial3d(ice_mat),
-        Transform::from_xyz(freeze_center.x, block_center_y, freeze_center.y),
-    ));
-
-    for i in 0..10 {
-        let angle = i as f32 * (std::f32::consts::TAU / 10.0);
-        let r = freeze_radius * 0.55;
-        commands.spawn((
-            Transform::from_xyz(freeze_center.x + angle.cos() * r, top_y + 0.05, freeze_center.y + angle.sin() * r),
-            crate::render::particles::ParticleEmitter {
-                spawn_timer: 0.0,
-                spawn_rate: 0.05,
-                particle_type: crate::render::particles::ParticleType::Steam,
-            },
-            AlchemyTransientEmitter {
-                elapsed: 0.0,
-                max_lifetime: 3.0,
-            },
-        ));
     }
 }
 
 pub fn update_potion_projectiles(
     time: Res<Time>,
     settings: Option<Res<GameSettings>>,
+    fluid_profiles: Option<Res<surface_fluid::PotionFluidProfiles>>,
     spatial_query: SpatialQuery,
-    mut projectiles: Query<(Entity, &mut Transform, &mut PotionProjectile), Without<Player>>,
+    mut projectiles: Query<(Entity, &mut Transform, &mut PotionProjectile, Option<&PotionSurfaceImpact>), Without<Player>>,
     mut player_query: Query<(Entity, &Transform, &mut LocomotionState, &mut EffectReceiverComponent), (With<Player>, Without<PotionProjectile>)>,
     mut receivers: Query<(Entity, &Transform, &mut EffectReceiverComponent), (Without<PotionProjectile>, Without<PotionPuddle>, Without<Player>)>,
     mut flammables: Query<
@@ -1140,6 +1063,8 @@ pub fn update_potion_projectiles(
     mut dynamic_props: Query<(Entity, &Transform, &RigidBody, Option<&mut LinearVelocity>, Option<&mut AngularVelocity>), (Without<PotionProjectile>, Without<Player>)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut fluid_materials: Option<ResMut<Assets<crate::render::surface_fluid_material::SurfaceFluidMaterial>>>,
+    mut freeze_simulation: Option<ResMut<ice_simulation::LakeFreezeSimulation>>,
     mut commands: Commands,
     mut shake: Option<ResMut<CameraShake>>,
 ) {
@@ -1147,19 +1072,22 @@ pub fn update_potion_projectiles(
     let gravity = Vec3::new(0.0, -9.8, 0.0);
     let mut excluded: Vec<Entity> = player_query.iter().map(|(e, _, _, _)| e).collect();
 
-    for (entity, _, _) in projectiles.iter() {
+    for (entity, _, _, _) in projectiles.iter() {
         excluded.push(entity);
     }
     let filter = SpatialQueryFilter::default().with_excluded_entities(excluded.clone());
 
-    for (entity, mut transform, mut projectile) in &mut projectiles {
+    for (entity, mut transform, mut projectile, impact_surface) in &mut projectiles {
         if projectile.hitstop_timer > 0.0 {
             projectile.hitstop_timer -= dt;
             if projectile.hitstop_timer > 0.0 {
                 continue;
             }
             let impact_point = transform.translation;
-            let impact_normal = (transform.rotation * Vec3::Y).normalize();
+            let impact_normal = impact_surface
+                .map(|impact| impact.normal)
+                .unwrap_or_else(|| (transform.rotation * Vec3::Y).normalize());
+            let impact_host = impact_surface.map(|impact| impact.host);
 
             apply_splash_effects(&mut receivers, &mut player_query, impact_point, &projectile.effects, entity, 2.8);
             apply_radial_kinetic_impulse(&mut dynamic_props, &mut player_query, &mut commands, impact_point, 14.0, 3.8);
@@ -1176,20 +1104,25 @@ pub fn update_potion_projectiles(
 
             let is_wall = impact_normal.y.abs() < 0.65;
             let is_rtx = settings.as_ref().map(|s| s.rtx_enabled).unwrap_or(false);
+            let profile = fluid_profiles
+                .as_ref()
+                .map(|profiles| profiles.for_slot(projectile.slot))
+                .unwrap_or_else(|| surface_fluid::PotionFluidProfiles::default().for_slot(projectile.slot));
 
-            spawn_alchemical_puddle(
-                &mut commands,
-                &mut meshes,
-                &mut materials,
-                impact_point,
-                impact_normal,
-                projectile.color,
-                projectile.effects.clone(),
-                is_wall,
-                is_rtx,
-            );
-
-            commands.entity(entity).despawn();
+            if let Some(ref mut surface_materials) = fluid_materials {
+                surface_fluid::spawn_surface_fluid_patch(
+                    &mut commands,
+                    &mut meshes,
+                    surface_materials,
+                    impact_point,
+                    impact_normal,
+                    impact_host,
+                    profile,
+                    projectile.color,
+                    projectile.effects.clone(),
+                    profile.initial_volume,
+                );
+            }
 
             let floor_y = if is_wall {
                 let down_ray = spatial_query.cast_ray(
@@ -1199,10 +1132,27 @@ pub fn update_potion_projectiles(
                     true,
                     &filter,
                 );
-                down_ray.map(|h| (impact_point.y - h.distance) + 0.048).unwrap_or(0.048)
+                let fy = down_ray.map(|h| (impact_point.y - h.distance) + 0.048).unwrap_or(0.048);
+                fy
             } else {
                 impact_point.y + 0.052
             };
+
+            if !is_wall {
+                spawn_alchemical_puddle(
+                    &mut commands,
+                    &mut meshes,
+                    &mut materials,
+                    impact_point,
+                    impact_normal,
+                    projectile.color,
+                    projectile.effects.clone(),
+                    false,
+                    is_rtx,
+                );
+            }
+
+            commands.entity(entity).despawn();
 
             spawn_glass_shards_burst(
                 &mut commands,
@@ -1308,14 +1258,20 @@ pub fn update_potion_projectiles(
 
                 if is_frost {
                     extinguish_nearby_flammables(&mut flammables, &mut commands, impact_point, 2.8);
-                    process_underwater_freeze_block(
-                        &mut commands,
-                        &mut meshes,
-                        &mut materials,
-                        &mut player_query,
-                        Vec2::new(current_pos.x, current_pos.z),
-                        floor_y,
-                    );
+                    if let Some(simulation) = freeze_simulation.as_deref_mut() {
+                        let intensity = projectile
+                            .effects
+                            .iter()
+                            .find(|effect| effect.kind == AlchemicalEffectKind::Frost)
+                            .map(|effect| effect.magnitude / 10.0)
+                            .unwrap_or(1.0);
+                        process_underwater_freeze_seed(
+                            simulation,
+                            &mut player_query,
+                            Vec2::new(current_pos.x, current_pos.z),
+                            intensity,
+                        );
+                    }
                     commands.entity(entity).despawn();
                     continue;
                 }
@@ -1383,6 +1339,10 @@ pub fn update_potion_projectiles(
                 transform.translation = impact_point;
                 transform.rotation = Quat::from_rotation_arc(Vec3::Y, impact_normal);
                 projectile.velocity = Vec3::ZERO;
+                commands.entity(entity).insert(PotionSurfaceImpact {
+                    host: hit.entity,
+                    normal: impact_normal,
+                });
 
                 let flash_mesh = meshes.add(Sphere::new(0.20).mesh().uv(8, 6));
                 let flash_mat = materials.add(StandardMaterial {
@@ -1768,61 +1728,6 @@ pub fn update_glass_shards(
     }
 }
 
-pub fn update_frozen_water_sheets(
-    time: Res<Time>,
-    mut commands: Commands,
-    mut query: Query<(Entity, &mut Transform, &mut FrozenIceSheet)>,
-) {
-    let dt = time.delta_secs();
-    for (entity, mut tf, mut sheet) in query.iter_mut() {
-        sheet.elapsed += dt;
-        if sheet.elapsed >= sheet.max_lifetime {
-            commands.spawn((
-                Transform::from_xyz(sheet.center.x, sheet.top_y, sheet.center.y),
-                crate::render::particles::ParticleEmitter {
-                    spawn_timer: 0.0,
-                    spawn_rate: 0.05,
-                    particle_type: crate::render::particles::ParticleType::Steam,
-                },
-                AlchemyTransientEmitter {
-                    elapsed: 0.0,
-                    max_lifetime: 1.8,
-                },
-            ));
-            commands.spawn((
-                Transform::from_xyz(sheet.center.x, sheet.top_y, sheet.center.y),
-                crate::render::particles::ParticleEmitter {
-                    spawn_timer: 0.0,
-                    spawn_rate: 0.06,
-                    particle_type: crate::render::particles::ParticleType::WaterSplash,
-                },
-                AlchemyTransientEmitter {
-                    elapsed: 0.0,
-                    max_lifetime: 1.8,
-                },
-            ));
-            commands.entity(entity).despawn();
-        } else if sheet.elapsed >= sheet.max_lifetime - 4.0 {
-            let melt_ratio = (sheet.max_lifetime - sheet.elapsed) / 4.0;
-            tf.scale = Vec3::new(melt_ratio.max(0.2), 1.0, melt_ratio.max(0.2));
-            if crate::render::particles::fastrand::f32() < 0.15 {
-                commands.spawn((
-                    Transform::from_xyz(sheet.center.x, sheet.top_y, sheet.center.y),
-                    crate::render::particles::ParticleEmitter {
-                        spawn_timer: 0.0,
-                        spawn_rate: 0.08,
-                        particle_type: crate::render::particles::ParticleType::Steam,
-                    },
-                    AlchemyTransientEmitter {
-                        elapsed: 0.0,
-                        max_lifetime: 1.2,
-                    },
-                ));
-            }
-        }
-    }
-}
-
 pub fn update_ice_footprints(
     time: Res<Time>,
     mut commands: Commands,
@@ -2002,7 +1907,6 @@ pub fn cleanup_alchemy_memory_limits(
     mut commands: Commands,
     query_puddles: Query<(Entity, &PotionPuddle)>,
     query_shards: Query<(Entity, &GlassShardParticle)>,
-    query_ice: Query<(Entity, &FrozenIceSheet)>,
     query_footprints: Query<(Entity, &IceFootprint)>,
     query_projectiles: Query<(Entity, &PotionProjectile)>,
     query_emitters: Query<(Entity, &AlchemyTransientEmitter)>,
@@ -2027,20 +1931,6 @@ pub fn cleanup_alchemy_memory_limits(
         let mut shards: Vec<(Entity, f32)> = query_shards.iter().map(|(e, s)| (e, s.lifetime)).collect();
         shards.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         for (e, _) in shards.into_iter().take(shard_count - MAX_SHARDS) {
-            commands.queue(move |world: &mut World| {
-                if let Ok(ent) = world.get_entity_mut(e) {
-                    ent.despawn();
-                }
-            });
-        }
-    }
-
-    const MAX_ICE_SHEETS: usize = 8;
-    let ice_count = query_ice.iter().count();
-    if ice_count > MAX_ICE_SHEETS {
-        let mut sheets: Vec<(Entity, f32)> = query_ice.iter().map(|(e, s)| (e, s.elapsed)).collect();
-        sheets.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        for (e, _) in sheets.into_iter().take(ice_count - MAX_ICE_SHEETS) {
             commands.queue(move |world: &mut World| {
                 if let Ok(ent) = world.get_entity_mut(e) {
                     ent.despawn();
@@ -2769,12 +2659,17 @@ pub fn create_flat_circle_mesh(radius: f32, segments: usize) -> Mesh {
         .with_inserted_indices(Indices::U32(indices))
 }
 
-pub fn create_irregular_puddle_mesh(base_radius: f32, segments: usize) -> Mesh {
+pub fn create_conforming_puddle_mesh(
+    base_radius: f32,
+    segments: usize,
+    center_world: Vec3,
+) -> Mesh {
     let mut positions: Vec<[f32; 3]> = Vec::with_capacity(segments * 3 + 1);
     let mut normals: Vec<[f32; 3]> = Vec::with_capacity(segments * 3 + 1);
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(segments * 3 + 1);
     let mut indices: Vec<u32> = Vec::with_capacity(segments * 18);
 
+    let center_terr = crate::dungeon::modular_kit::get_grotto_terrain_height(center_world.x, center_world.z);
     positions.push([0.0, 0.028, 0.0]);
     normals.push([0.0, 1.0, 0.0]);
     uvs.push([0.5, 0.5]);
@@ -2788,7 +2683,9 @@ pub fn create_irregular_puddle_mesh(base_radius: f32, segments: usize) -> Mesh {
         let r_mid = base_radius * perturbation * 0.62;
         let x = r_mid * theta.cos();
         let z = r_mid * theta.sin();
-        positions.push([x, 0.022, z]);
+        let terr_h = crate::dungeon::modular_kit::get_grotto_terrain_height(center_world.x + x, center_world.z + z);
+        let dy = (terr_h - center_terr).clamp(-0.45, 0.45);
+        positions.push([x, 0.022 + dy * 0.75, z]);
         let norm = Vec3::new(theta.cos() * 0.12, 0.98, theta.sin() * 0.12).normalize();
         normals.push([norm.x, norm.y, norm.z]);
         uvs.push([0.5 + (x / (base_radius * 2.4)), 0.5 + (z / (base_radius * 2.4))]);
@@ -2803,7 +2700,9 @@ pub fn create_irregular_puddle_mesh(base_radius: f32, segments: usize) -> Mesh {
         let r_rim = base_radius * perturbation;
         let x = r_rim * theta.cos();
         let z = r_rim * theta.sin();
-        positions.push([x, 0.012, z]);
+        let terr_h = crate::dungeon::modular_kit::get_grotto_terrain_height(center_world.x + x, center_world.z + z);
+        let dy = (terr_h - center_terr).clamp(-0.45, 0.45);
+        positions.push([x, 0.012 + dy, z]);
         let norm = Vec3::new(theta.cos() * 0.25, 0.95, theta.sin() * 0.25).normalize();
         normals.push([norm.x, norm.y, norm.z]);
         uvs.push([0.5 + (x / (base_radius * 2.4)), 0.5 + (z / (base_radius * 2.4))]);
@@ -2818,7 +2717,9 @@ pub fn create_irregular_puddle_mesh(base_radius: f32, segments: usize) -> Mesh {
         let r_skirt = base_radius * perturbation * 1.02;
         let x = r_skirt * theta.cos();
         let z = r_skirt * theta.sin();
-        positions.push([x, -0.065, z]);
+        let terr_h = crate::dungeon::modular_kit::get_grotto_terrain_height(center_world.x + x, center_world.z + z);
+        let dy = (terr_h - center_terr).clamp(-0.45, 0.45);
+        positions.push([x, -0.065 + dy, z]);
         normals.push([theta.cos(), 0.0, theta.sin()]);
         uvs.push([0.5 + (x / (base_radius * 2.4)), 0.5 + (z / (base_radius * 2.4))]);
     }
@@ -2851,6 +2752,10 @@ pub fn create_irregular_puddle_mesh(base_radius: f32, segments: usize) -> Mesh {
         .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
         .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
         .with_inserted_indices(Indices::U32(indices))
+}
+
+pub fn create_irregular_puddle_mesh(base_radius: f32, segments: usize) -> Mesh {
+    create_conforming_puddle_mesh(base_radius, segments, Vec3::ZERO)
 }
 
 pub fn create_wall_splatter_mesh(base_radius: f32, segments: usize) -> Mesh {
@@ -3394,6 +3299,8 @@ mod tests {
         ));
         app.init_resource::<Assets<StandardMaterial>>();
         app.init_resource::<Assets<Mesh>>();
+        app.init_resource::<Assets<crate::render::surface_fluid_material::SurfaceFluidMaterial>>();
+        app.init_resource::<surface_fluid::PotionFluidProfiles>();
         app.add_systems(Update, update_potion_projectiles);
 
         let target_entity = app
@@ -3448,7 +3355,10 @@ mod tests {
 
         let mut puddle_query = app.world_mut().query::<&PotionPuddle>();
         let puddle_count = puddle_query.iter(app.world()).count();
-        assert_eq!(puddle_count, 1, "Exactly one alchemical puddle must be spawned at impact");
+        assert_eq!(puddle_count, 0, "Wall impacts must not create a disconnected alchemical puddle");
+
+        let mut film_query = app.world_mut().query::<&surface_fluid::SurfaceFluidPatch>();
+        assert_eq!(film_query.iter(app.world()).count(), 1, "Wall impacts must leave one attached surface film");
 
         let mut shards_query = app.world_mut().query::<&GlassShardParticle>();
         let shards_count = shards_query.iter(app.world()).count();
@@ -3990,6 +3900,87 @@ mod tests {
 
         let light_off = app.world().get::<PointLight>(puddle_entity).unwrap();
         assert_eq!(light_off.intensity, 0.0);
+    }
+
+    #[test]
+    fn test_potion_wall_impact_starts_a_connected_surface_film() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::transform::TransformPlugin,
+            bevy::asset::AssetPlugin::default(),
+            bevy::scene::ScenePlugin::default(),
+            avian3d::prelude::PhysicsPlugins::default(),
+        ));
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_millis(50),
+        ));
+        app.init_resource::<Assets<StandardMaterial>>();
+        app.init_resource::<Assets<Mesh>>();
+        app.init_resource::<Assets<crate::render::surface_fluid_material::SurfaceFluidMaterial>>();
+        app.init_resource::<surface_fluid::PotionFluidProfiles>();
+        app.add_systems(Update, update_potion_projectiles);
+
+        let _wall_entity = app
+            .world_mut()
+            .spawn((
+                Transform::from_xyz(0.0, 3.0, -4.0),
+                GlobalTransform::from_translation(Vec3::new(0.0, 3.0, -4.0)),
+                RigidBody::Static,
+                Collider::cuboid(10.0, 10.0, 0.5),
+            ))
+            .id();
+
+        let _floor_entity = app
+            .world_mut()
+            .spawn((
+                Transform::from_xyz(0.0, -0.5, -4.0),
+                GlobalTransform::from_translation(Vec3::new(0.0, -0.5, -4.0)),
+                RigidBody::Static,
+                Collider::cuboid(20.0, 1.0, 20.0),
+            ))
+            .id();
+
+        app.update();
+
+        let proj_entity = app
+            .world_mut()
+            .spawn((
+                Transform::from_xyz(0.0, 4.5, -3.2),
+                GlobalTransform::from_translation(Vec3::new(0.0, 4.5, -3.2)),
+                PotionProjectile {
+                    velocity: Vec3::new(0.0, 0.0, -30.0),
+                    effects: vec![ActiveEffect {
+                        kind: AlchemicalEffectKind::Swiftness,
+                        duration: 5.0,
+                        elapsed: 0.0,
+                        magnitude: 20.0,
+                    }],
+                    lifetime: 5.0,
+                    color: Color::srgb(0.2, 0.9, 0.5),
+                    slot: 1,
+                    hitstop_timer: 0.0,
+                    entered_water: false,
+                },
+            ))
+            .id();
+
+        app.update();
+        if app.world().get_entity(proj_entity).is_ok() {
+            app.update();
+        }
+
+        assert!(app.world().get_entity(proj_entity).is_err());
+
+        let mut film_query = app.world_mut().query::<&surface_fluid::SurfaceFluidPatch>();
+        let films: Vec<&surface_fluid::SurfaceFluidPatch> = film_query.iter(app.world()).collect();
+        assert_eq!(films.len(), 1);
+        assert!(films[0].normal.y.abs() < 0.65);
+        assert!(films[0].volume > 0.0);
+
+        let mut puddle_query = app.world_mut().query::<&PotionPuddle>();
+        assert_eq!(puddle_query.iter(app.world()).count(), 0, "Wall impacts must not create a disconnected ground puddle");
+
     }
 }
 

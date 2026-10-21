@@ -4,6 +4,11 @@ use bevy::{
     prelude::*,
     window::{CursorGrabMode, MonitorSelection, PrimaryWindow, WindowMode},
 };
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+
+pub const MIN_FOV_DEGREES: f32 = 65.0;
+pub const MAX_FOV_DEGREES: f32 = 100.0;
 
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum GameState {
@@ -35,7 +40,7 @@ impl Default for MenuNavigation {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum RtxQuality {
     #[default]
     Off,
@@ -68,7 +73,7 @@ impl RtxQuality {
     }
 }
 
-#[derive(Resource, Debug, Clone)]
+#[derive(Resource, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GameSettings {
     pub fullscreen: bool,
     pub mouse_sensitivity: f32,
@@ -90,6 +95,25 @@ impl Default for GameSettings {
             rtx_enabled: false,
             show_fps: false,
         }
+    }
+}
+
+impl GameSettings {
+    fn sanitize(&mut self) {
+        self.mouse_sensitivity = self.mouse_sensitivity.clamp(0.0006, 0.0080);
+        self.fov_degrees = self.fov_degrees.clamp(MIN_FOV_DEGREES, MAX_FOV_DEGREES);
+        self.master_volume = self.master_volume.clamp(0.0, 1.0);
+        self.rtx_enabled = self.rtx_quality.is_enabled();
+    }
+}
+
+#[derive(Resource, Debug, Clone)]
+pub struct GameSettingsPath(pub PathBuf);
+
+impl Default for GameSettingsPath {
+    fn default() -> Self {
+        let base = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        Self(base.join(".deep_alchemy").join("settings.ron"))
     }
 }
 
@@ -133,6 +157,9 @@ pub struct VolumeValueText;
 pub struct LargeMenuButton;
 
 #[derive(Component)]
+pub struct StepperButton;
+
+#[derive(Component)]
 pub struct MenuSpore {
     pub speed: f32,
     pub sway_phase: f32,
@@ -168,6 +195,10 @@ pub const COLOR_BTN_PRESSED: Color = Color::srgba(0.08, 0.45, 0.62, 0.85);
 pub const COLOR_BTN_BORDER_NORMAL: Color = Color::srgba(0.18, 0.35, 0.48, 0.85);
 pub const COLOR_BTN_BORDER_HOVER: Color = Color::srgba(0.28, 0.96, 1.00, 1.00);
 pub const COLOR_BTN_BORDER_PRESSED: Color = Color::srgba(0.48, 1.00, 1.00, 1.00);
+pub const COLOR_STEPPER_NORMAL: Color = Color::srgba(0.06, 0.12, 0.21, 0.94);
+pub const COLOR_STEPPER_HOVER: Color = Color::srgba(0.08, 0.30, 0.40, 0.98);
+pub const COLOR_STEPPER_PRESSED: Color = Color::srgba(0.10, 0.50, 0.62, 1.00);
+pub const COLOR_STEPPER_BORDER: Color = Color::srgba(0.30, 0.57, 0.70, 0.92);
 
 pub const COLOR_BG_PANEL: Color = Color::srgba(0.02, 0.04, 0.08, 0.60);
 pub const COLOR_BORDER_GOLD: Color = Color::srgba(0.28, 0.96, 1.00, 0.90);
@@ -185,7 +216,8 @@ impl Plugin for MenuPlugin {
         app.init_state::<GameState>()
             .init_resource::<MenuNavigation>()
             .init_resource::<GameSettings>()
-            .add_systems(Startup, (setup_menu_ui, setup_window_icon))
+            .init_resource::<GameSettingsPath>()
+            .add_systems(Startup, (load_game_settings, setup_menu_ui, setup_window_icon).chain())
             .add_systems(
                 Update,
                 (
@@ -197,11 +229,40 @@ impl Plugin for MenuPlugin {
                     apply_camera_fov,
                     apply_window_settings,
                     apply_rtx_settings,
+                    save_game_settings,
                     apply_default_font_to_unassigned_texts,
                 ),
             )
             .add_systems(OnEnter(GameState::MainMenu), on_enter_menu_state)
             .add_systems(OnEnter(GameState::InGame), on_enter_ingame_state);
+    }
+}
+
+pub fn load_game_settings(mut settings: ResMut<GameSettings>, path: Res<GameSettingsPath>) {
+    let Ok(contents) = std::fs::read_to_string(&path.0) else { return; };
+    match ron::from_str::<GameSettings>(&contents) {
+        Ok(mut loaded) => {
+            loaded.sanitize();
+            *settings = loaded;
+        }
+        Err(error) => warn!("Could not load user settings from {}: {error}", path.0.display()),
+    }
+}
+
+pub fn save_game_settings(settings: Res<GameSettings>, path: Res<GameSettingsPath>) {
+    if !settings.is_changed() { return; }
+    let Some(parent) = path.0.parent() else { return; };
+    if let Err(error) = std::fs::create_dir_all(parent) {
+        warn!("Could not create settings directory {}: {error}", parent.display());
+        return;
+    }
+    match ron::ser::to_string_pretty(&*settings, ron::ser::PrettyConfig::default()) {
+        Ok(contents) => {
+            if let Err(error) = std::fs::write(&path.0, contents) {
+                warn!("Could not save user settings to {}: {error}", path.0.display());
+            }
+        }
+        Err(error) => warn!("Could not serialize user settings: {error}"),
     }
 }
 
@@ -761,18 +822,19 @@ fn spawn_stepper_row<T: Component>(
                 controls
                     .spawn((
                         Button,
+                        StepperButton,
                         dec_action,
                         Node {
-                            width: Val::Px(34.0),
-                            height: Val::Px(32.0),
+                            width: Val::Px(38.0),
+                            height: Val::Px(34.0),
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
                             border: UiRect::all(Val::Px(1.0)),
                             ..default()
                         },
-                        BorderRadius::all(Val::Px(4.0)),
-                        BackgroundColor(COLOR_BTN_NORMAL),
-                        BorderColor(COLOR_BORDER_MUTED),
+                        BorderRadius::all(Val::Px(8.0)),
+                        BackgroundColor(COLOR_STEPPER_NORMAL),
+                        BorderColor(COLOR_STEPPER_BORDER),
                     ))
                     .with_children(|b| {
                         b.spawn((
@@ -818,18 +880,19 @@ fn spawn_stepper_row<T: Component>(
                 controls
                     .spawn((
                         Button,
+                        StepperButton,
                         inc_action,
                         Node {
-                            width: Val::Px(34.0),
-                            height: Val::Px(32.0),
+                            width: Val::Px(38.0),
+                            height: Val::Px(34.0),
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
                             border: UiRect::all(Val::Px(1.0)),
                             ..default()
                         },
-                        BorderRadius::all(Val::Px(4.0)),
-                        BackgroundColor(COLOR_BTN_NORMAL),
-                        BorderColor(COLOR_BORDER_MUTED),
+                        BorderRadius::all(Val::Px(8.0)),
+                        BackgroundColor(COLOR_STEPPER_NORMAL),
+                        BorderColor(COLOR_STEPPER_BORDER),
                     ))
                     .with_children(|b| {
                         b.spawn((
@@ -894,6 +957,7 @@ pub fn handle_menu_button_interactions(
             Option<&mut Node>,
             Option<&Children>,
             Has<LargeMenuButton>,
+            Has<StepperButton>,
         ),
         (Changed<Interaction>, With<Button>),
     >,
@@ -903,13 +967,13 @@ pub fn handle_menu_button_interactions(
     mut settings: ResMut<GameSettings>,
     mut exit_events: EventWriter<AppExit>,
 ) {
-    for (interaction, action, mut bg, mut border, mut node_opt, children_opt, is_large) in
+    for (interaction, action, mut bg, mut border, mut node_opt, children_opt, is_large, is_stepper) in
         interaction_query.iter_mut()
     {
         match *interaction {
             Interaction::Pressed => {
-                *bg = BackgroundColor(COLOR_BTN_PRESSED);
-                *border = BorderColor(COLOR_BTN_BORDER_PRESSED);
+                *bg = BackgroundColor(if is_stepper { COLOR_STEPPER_PRESSED } else { COLOR_BTN_PRESSED });
+                *border = BorderColor(if is_stepper { COLOR_STEPPER_BORDER } else { COLOR_BTN_BORDER_PRESSED });
                 if is_large {
                     if let Some(ref mut node) = node_opt {
                         node.width = Val::Px(356.0);
@@ -945,7 +1009,7 @@ pub fn handle_menu_button_interactions(
                             (settings.mouse_sensitivity + delta).clamp(0.0006, 0.0080);
                     }
                     MenuButtonAction::AdjustFov(delta) => {
-                        settings.fov_degrees = (settings.fov_degrees + delta).clamp(55.0, 115.0);
+                        settings.fov_degrees = (settings.fov_degrees + delta).clamp(MIN_FOV_DEGREES, MAX_FOV_DEGREES);
                     }
                     MenuButtonAction::AdjustVolume(delta) => {
                         settings.master_volume = (settings.master_volume + delta).clamp(0.0, 1.0);
@@ -956,13 +1020,14 @@ pub fn handle_menu_button_interactions(
                 }
             }
             Interaction::Hovered => {
-                *bg = BackgroundColor(COLOR_BTN_HOVER);
-                *border = BorderColor(COLOR_BTN_BORDER_HOVER);
+                *bg = BackgroundColor(if is_stepper { COLOR_STEPPER_HOVER } else { COLOR_BTN_HOVER });
+                *border = BorderColor(if is_stepper { COLOR_STEPPER_BORDER } else { COLOR_BTN_BORDER_HOVER });
                 if is_large {
                     if let Some(ref mut node) = node_opt {
                         node.width = Val::Px(376.0);
                     }
                 }
+                if is_large {
                 if let Some(children) = children_opt {
                     for child in children.iter() {
                         if let Ok(mut text) = text_query.get_mut(*child) {
@@ -973,15 +1038,17 @@ pub fn handle_menu_button_interactions(
                         }
                     }
                 }
+                }
             }
             Interaction::None => {
-                *bg = BackgroundColor(COLOR_BTN_NORMAL);
-                *border = BorderColor(COLOR_BTN_BORDER_NORMAL);
+                *bg = BackgroundColor(if is_stepper { COLOR_STEPPER_NORMAL } else { COLOR_BTN_NORMAL });
+                *border = BorderColor(if is_stepper { COLOR_STEPPER_BORDER } else { COLOR_BTN_BORDER_NORMAL });
                 if is_large {
                     if let Some(ref mut node) = node_opt {
                         node.width = Val::Px(360.0);
                     }
                 }
+                if is_large {
                 if let Some(children) = children_opt {
                     for child in children.iter() {
                         if let Ok(mut text) = text_query.get_mut(*child) {
@@ -991,6 +1058,7 @@ pub fn handle_menu_button_interactions(
                             text.0 = raw.to_string();
                         }
                     }
+                }
                 }
             }
         }
@@ -1393,8 +1461,11 @@ mod tests {
         settings.mouse_sensitivity = (settings.mouse_sensitivity + 0.1).clamp(0.0006, 0.0080);
         assert_eq!(settings.mouse_sensitivity, 0.0080);
 
-        settings.fov_degrees = (settings.fov_degrees - 100.0).clamp(55.0, 115.0);
-        assert_eq!(settings.fov_degrees, 55.0);
+        settings.fov_degrees = (settings.fov_degrees - 100.0).clamp(MIN_FOV_DEGREES, MAX_FOV_DEGREES);
+        assert_eq!(settings.fov_degrees, MIN_FOV_DEGREES);
+
+        settings.fov_degrees = (settings.fov_degrees + 100.0).clamp(MIN_FOV_DEGREES, MAX_FOV_DEGREES);
+        assert_eq!(settings.fov_degrees, MAX_FOV_DEGREES);
 
         settings.master_volume = (settings.master_volume + 0.5).clamp(0.0, 1.0);
         assert_eq!(settings.master_volume, 1.0);
@@ -1405,6 +1476,46 @@ mod tests {
         let nav = MenuNavigation::default();
         assert_eq!(nav.current_view, MenuView::Main);
         assert_eq!(nav.has_started, false);
+    }
+
+    #[test]
+    fn test_game_settings_are_saved_and_loaded_with_safe_limits() {
+        let settings_dir = std::env::temp_dir().join(format!(
+            "deep_alchemy_settings_test_{}",
+            std::process::id()
+        ));
+        let settings_path = settings_dir.join("settings.ron");
+
+        let mut writer = App::new();
+        writer.insert_resource(GameSettings {
+            fullscreen: true,
+            mouse_sensitivity: 0.0040,
+            fov_degrees: 92.0,
+            master_volume: 0.35,
+            rtx_quality: RtxQuality::Medium,
+            rtx_enabled: true,
+            show_fps: true,
+        });
+        writer.insert_resource(GameSettingsPath(settings_path.clone()));
+        writer.add_systems(Update, save_game_settings);
+        writer.update();
+
+        let mut reader = App::new();
+        reader.init_resource::<GameSettings>();
+        reader.insert_resource(GameSettingsPath(settings_path.clone()));
+        reader.add_systems(Update, load_game_settings);
+        reader.update();
+
+        let loaded = reader.world().resource::<GameSettings>();
+        assert_eq!(loaded.fov_degrees, 92.0);
+        assert!(loaded.fullscreen);
+        assert!(loaded.show_fps);
+        assert_eq!(loaded.rtx_quality, RtxQuality::Medium);
+        assert!(loaded.rtx_enabled);
+        assert!((loaded.mouse_sensitivity - 0.0040).abs() < 1e-5);
+        assert!((loaded.master_volume - 0.35).abs() < 1e-5);
+
+        std::fs::remove_dir_all(settings_dir).unwrap();
     }
 
     #[test]

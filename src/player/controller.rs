@@ -291,20 +291,15 @@ pub fn player_look(
 
 fn detect_player_surfaces<'a>(
     translation: Vec3,
-    ice_sheets_iter: impl Iterator<Item = (&'a Transform, &'a crate::alchemy::FrozenIceSheet)>,
+    ice_cells_iter: impl Iterator<Item = (&'a Transform, &'a crate::alchemy::ice_simulation::IceSimulationCell)>,
     has_lake: bool,
 ) -> (bool, bool) {
-    let p_xz = Vec2::new(translation.x, translation.z);
     let mut on_ice = false;
-    for (ice_tf, ice_sheet) in ice_sheets_iter {
-        let d = (p_xz - ice_sheet.center).length();
-        let current_radius = ice_sheet.radius * ice_tf.scale.x;
-        if d <= current_radius + 0.35 {
-            let ice_surface_y = ice_sheet.top_y + 1.2;
-            if (translation.y - ice_surface_y).abs() <= 0.65 {
-                on_ice = true;
-                break;
-            }
+    for (ice_tf, ice_cell) in ice_cells_iter {
+        let distance = Vec2::new(translation.x - ice_tf.translation.x, translation.z - ice_tf.translation.z);
+        if ice_cell.solid && distance.x.abs() <= 0.42 && distance.y.abs() <= 0.42 && (translation.y - (ice_tf.translation.y + 1.2)).abs() <= 0.65 {
+            on_ice = true;
+            break;
         }
     }
     let in_lake = has_lake && crate::dungeon::modular_kit::is_in_lake_water(translation - Vec3::new(0.0, 0.40, 0.0));
@@ -763,8 +758,8 @@ pub fn player_movement(
         (&Transform, Option<&ObstacleShape>),
         (With<CavernObstacle>, Without<Player>),
     >,
-    ice_sheets_query: Query<
-        (&Transform, &crate::alchemy::FrozenIceSheet),
+    ice_cells_query: Query<
+        (&Transform, &crate::alchemy::ice_simulation::IceSimulationCell),
         Without<Player>,
     >,
     lake_query: Query<
@@ -807,7 +802,7 @@ pub fn player_movement(
 
         let (on_ice, is_in_water) = detect_player_surfaces(
             tf.translation,
-            ice_sheets_query.iter(),
+            ice_cells_query.iter(),
             has_lake,
         );
         locomotion.is_on_ice = on_ice;
@@ -1050,6 +1045,7 @@ pub fn player_camera_effects(
     player_query: Query<&LocomotionState, (With<Player>, Without<PlayerCamera>)>,
     mut camera_query: Query<(&mut Transform, &mut Projection), With<PlayerCamera>>,
     mut shake_opt: Option<ResMut<CameraShake>>,
+    settings: Option<Res<GameSettings>>,
 ) {
     let dt = time.delta_secs();
     let Ok(locomotion) = player_query.get_single() else {
@@ -1079,7 +1075,11 @@ pub fn player_camera_effects(
 
     for (mut cam_tf, mut projection) in camera_query.iter_mut() {
         if let Projection::Perspective(ref mut persp) = *projection {
-            let base_fov: f32 = 75.0_f32.to_radians();
+            let base_fov = settings
+                .as_ref()
+                .map(|settings| settings.fov_degrees)
+                .unwrap_or(75.0)
+                .to_radians();
             let target_fov = if locomotion.is_sprinting {
                 base_fov + 7.0_f32.to_radians()
             } else {
@@ -1567,6 +1567,9 @@ mod tests {
     fn test_locomotion_camera_fov_kick_and_head_bob() {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
+        let mut settings = GameSettings::default();
+        settings.fov_degrees = 90.0;
+        app.insert_resource(settings);
         app.add_systems(Update, player_camera_effects);
 
         let mut locomotion = LocomotionState::default();
@@ -1581,7 +1584,7 @@ mod tests {
                 PlayerCamera,
                 Transform::from_xyz(0.0, 0.55, 0.0),
                 Projection::Perspective(PerspectiveProjection {
-                    fov: 75.0_f32.to_radians(),
+                    fov: 90.0_f32.to_radians(),
                     ..default()
                 }),
             ))
@@ -1597,7 +1600,7 @@ mod tests {
         let proj = app.world().get::<Projection>(camera).unwrap();
         if let Projection::Perspective(persp) = proj {
             assert!(
-                persp.fov > 75.0_f32.to_radians(),
+                persp.fov > 90.0_f32.to_radians(),
                 "Sprinting must trigger camera FOV kick (+5 to +8 deg)"
             );
         } else {

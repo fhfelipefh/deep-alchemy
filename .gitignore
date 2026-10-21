@@ -12,6 +12,7 @@ Thumbs.db
 
 /target
 debug_output/
+.deep_alchemy/
 .mcp.json
 __pycache__/
 *.pyc

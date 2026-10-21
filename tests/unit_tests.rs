@@ -2279,7 +2279,15 @@ fn test_unit_frost_potion_water_sinking_and_ice_puzzle_mechanics() {
     ));
     app.init_resource::<Assets<StandardMaterial>>();
     app.init_resource::<Assets<Mesh>>();
-    app.add_systems(Update, deep_alchemy::alchemy::update_potion_projectiles);
+    app.init_resource::<deep_alchemy::alchemy::ice_simulation::LakeFreezeSimulation>();
+    app.add_systems(
+        Update,
+        (
+            deep_alchemy::alchemy::update_potion_projectiles,
+            deep_alchemy::alchemy::ice_simulation::update_lake_freeze_simulation,
+        )
+            .chain(),
+    );
 
     let shallow_pos = Vec3::new(4.8, 0.15, -8.5);
     let shallow_bed_y = deep_alchemy::dungeon::modular_kit::get_grotto_terrain_height(shallow_pos.x, shallow_pos.z);
@@ -2316,11 +2324,10 @@ fn test_unit_frost_potion_water_sinking_and_ice_puzzle_mechanics() {
         "Shallow water projectile must burst upon reaching lake bed"
     );
 
-    let mut ice_q = app.world_mut().query::<(&Transform, &deep_alchemy::alchemy::FrozenIceSheet)>();
-    let shallow_ice = ice_q.iter(app.world()).find(|(_, s)| (s.center - Vec2::new(shallow_pos.x, shallow_pos.z)).length() < 0.2);
-    assert!(shallow_ice.is_some(), "Shallow freeze must spawn FrozenIceSheet");
-    let (_, s_sheet) = shallow_ice.unwrap();
-    assert!(s_sheet.top_y >= 0.18, "Shallow water ice block must reach surface");
+    let freeze = app.world().resource::<deep_alchemy::alchemy::ice_simulation::LakeFreezeSimulation>();
+    let shallow_index = freeze.index_at(Vec2::new(shallow_pos.x, shallow_pos.z)).unwrap();
+    assert!(freeze.freeze[shallow_index] > 0.0, "Shallow water must start freezing progressively");
+    assert!(freeze.freeze.iter().any(|value| *value == 0.0), "Freeze must remain localized rather than replacing the entire lake");
 
     let deep_pos = Vec3::new(0.0, 0.15, -8.5);
     let deep_bed_y = deep_alchemy::dungeon::modular_kit::get_grotto_terrain_height(deep_pos.x, deep_pos.z);
@@ -2357,11 +2364,17 @@ fn test_unit_frost_potion_water_sinking_and_ice_puzzle_mechanics() {
         "Deep water projectile must burst upon reaching lake bed"
     );
 
-    let mut deep_ice_q = app.world_mut().query::<(&Transform, &deep_alchemy::alchemy::FrozenIceSheet)>();
-    let deep_ice = deep_ice_q.iter(app.world()).find(|(_, s)| (s.center - Vec2::new(deep_pos.x, deep_pos.z)).length() < 0.2);
-    assert!(deep_ice.is_some(), "Deep freeze must spawn FrozenIceSheet on bed");
-    let (_, d_sheet) = deep_ice.unwrap();
-    assert!(d_sheet.top_y <= -1.80, "Deep water ice block must remain submerged");
+    let freeze = app.world().resource::<deep_alchemy::alchemy::ice_simulation::LakeFreezeSimulation>();
+    let deep_front = freeze
+        .freeze
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| deep_alchemy::alchemy::ice_simulation::LakeFreezeSimulation::cell_position(*index).distance(Vec2::new(deep_pos.x, deep_pos.z)) < 1.5)
+        .map(|(_, freeze)| *freeze)
+        .fold(0.0_f32, f32::max);
+    assert!(deep_front > 0.08, "Deep water freeze must retain its local nucleation front: {deep_front}");
+    let solid_cells = freeze.freeze.iter().filter(|value| **value >= 0.72).count();
+    assert!(solid_cells > 0, "A sufficiently sustained freeze must eventually create physical support cells");
 }
 
 #[test]

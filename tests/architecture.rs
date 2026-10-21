@@ -1045,7 +1045,7 @@ fn test_architecture_full_game_app_schedule_integrity_and_disjoint_queries_gate(
         deep_alchemy::alchemy::update_potion_projectiles,
         deep_alchemy::alchemy::update_potion_puddles,
         deep_alchemy::alchemy::update_glass_shards,
-        deep_alchemy::alchemy::update_frozen_water_sheets,
+        deep_alchemy::alchemy::ice_simulation::update_lake_freeze_simulation,
         deep_alchemy::alchemy::update_ice_footprints,
     ));
     schedule.add_systems((

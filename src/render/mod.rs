@@ -4,6 +4,7 @@ pub mod outline;
 pub mod particles;
 pub mod planar_reflection;
 pub mod potion_fluid_material;
+pub mod surface_fluid_material;
 pub mod water_material;
 
 use bevy::prelude::*;
@@ -13,6 +14,7 @@ use outline::OutlinePostProcessPlugin;
 use particles::{spawn_particles, update_particles};
 use planar_reflection::PlanarReflectionPlugin;
 use potion_fluid_material::{update_potion_sloshing, PotionFluidMaterial};
+use surface_fluid_material::SurfaceFluidMaterial;
 use water_material::{update_water_time, WaterMaterial};
 
 pub struct RenderPipelinePlugin;
@@ -23,6 +25,7 @@ impl Plugin for RenderPipelinePlugin {
             MaterialPlugin::<WaterMaterial>::default(),
             MaterialPlugin::<CelShadedMossMaterial>::default(),
             MaterialPlugin::<PotionFluidMaterial>::default(),
+            MaterialPlugin::<SurfaceFluidMaterial>::default(),
             HeatHazePlugin,
             OutlinePostProcessPlugin,
             PlanarReflectionPlugin,
