@@ -985,6 +985,63 @@ fn spawn_alchemical_puddle(
     _is_wall: bool,
     is_rtx: bool,
 ) {
+    let is_frost = effects.iter().any(|e| e.kind == AlchemicalEffectKind::Frost);
+    let in_water = crate::dungeon::modular_kit::is_in_lake_water(impact_point);
+
+    if is_frost {
+        let (mesh_handle, radius, thickness, y_pos, collider_r) = if in_water {
+            let r = 1.65;
+            let th = 0.22;
+            let mesh = meshes.add(create_irregular_ice_block_mesh(r, th, 24));
+            (mesh, r, th, crate::alchemy::ice_simulation::ICE_SURFACE_Y + th * 0.5, 1.60)
+        } else {
+            let r = 1.15;
+            let th = 0.08;
+            let mesh = meshes.add(create_irregular_ice_block_mesh(r, th, 24));
+            (mesh, r, th, impact_point.y + impact_normal.y * 0.04 + th * 0.5, 1.10)
+        };
+
+        let ice_mat = materials.add(StandardMaterial {
+            base_color: Color::srgba(0.68, 0.88, 0.98, 0.88),
+            emissive: LinearRgba::new(0.08, 0.22, 0.40, 0.35),
+            perceptual_roughness: 0.15,
+            metallic: 0.05,
+            reflectance: 0.88,
+            cull_mode: None,
+            double_sided: true,
+            alpha_mode: AlphaMode::Blend,
+            depth_bias: 500.0,
+            ..default()
+        });
+
+        let spawn_pos = Vec3::new(impact_point.x, y_pos, impact_point.z);
+
+        commands.spawn((
+            Name::new("Solid_Ice_Platform"),
+            PotionPuddle {
+                color,
+                elapsed: 0.0,
+                max_lifetime: 75.0,
+                radius,
+                effects,
+                is_wall: false,
+            },
+            Mesh3d(mesh_handle),
+            MeshMaterial3d(ice_mat),
+            Transform::from_translation(spawn_pos),
+            RigidBody::Static,
+            Collider::cylinder(collider_r, thickness),
+            PointLight {
+                color: Color::srgb(0.60, 0.85, 1.0),
+                intensity: if is_rtx { 2400.0 } else { 0.0 },
+                range: 4.2,
+                shadows_enabled: false,
+                ..default()
+            },
+        ));
+        return;
+    }
+
     let rot = Quat::from_rotation_arc(Vec3::Y, impact_normal);
     let mesh = meshes.add(create_conforming_puddle_mesh(1.15, 32, impact_point));
     let puddle_pos = impact_point + impact_normal * 0.045;
@@ -1101,6 +1158,22 @@ pub fn update_potion_projectiles(
             let is_frost = projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::Frost);
             if is_frost {
                 extinguish_nearby_flammables(&mut flammables, &mut commands, impact_point, 2.8);
+                if crate::dungeon::modular_kit::is_in_lake_water(impact_point) {
+                    if let Some(simulation) = freeze_simulation.as_deref_mut() {
+                        let intensity = projectile
+                            .effects
+                            .iter()
+                            .find(|effect| effect.kind == AlchemicalEffectKind::Frost)
+                            .map(|effect| effect.magnitude / 10.0)
+                            .unwrap_or(1.5);
+                        process_underwater_freeze_seed(
+                            simulation,
+                            &mut player_query,
+                            Vec2::new(impact_point.x, impact_point.z),
+                            intensity,
+                        );
+                    }
+                }
             }
 
             let is_fire_impact = projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat) || projectile.slot == 2;
@@ -1490,23 +1563,39 @@ pub fn update_potion_puddles(
             (0.88 * (1.0 - progress), 1.0 - progress)
         };
 
+        let is_frost_puddle = puddle.effects.iter().any(|e| e.kind == AlchemicalEffectKind::Frost);
         if let Some(mat) = materials.get_mut(&mat_handle.0) {
-            mat.base_color = puddle.color.with_alpha(alpha);
-            mat.emissive = puddle.color.to_linear() * (0.32 * fade_factor);
-            mat.perceptual_roughness = 0.85;
-            mat.metallic = 0.0;
-            mat.reflectance = 0.12;
+            if is_frost_puddle {
+                mat.base_color = Color::srgba(0.68, 0.88, 0.98, alpha);
+                mat.emissive = LinearRgba::new(0.08, 0.22, 0.40, 0.35 * fade_factor);
+                mat.perceptual_roughness = 0.15;
+                mat.metallic = 0.05;
+                mat.reflectance = 0.88;
+            } else {
+                mat.base_color = puddle.color.with_alpha(alpha);
+                mat.emissive = puddle.color.to_linear() * (0.32 * fade_factor);
+                mat.perceptual_roughness = 0.85;
+                mat.metallic = 0.0;
+                mat.reflectance = 0.12;
+            }
         }
 
         if let Some(ref mut light) = point_light {
             light.intensity = if is_rtx { 2400.0 * fade_factor } else { 0.0 };
-            light.color = puddle.color;
+            light.color = if is_frost_puddle { Color::srgb(0.60, 0.85, 1.0) } else { puddle.color };
             light.range = 3.8;
             light.shadows_enabled = false;
         }
 
         let spread_duration = 0.38;
-        let scale_spread = if puddle.elapsed < spread_duration {
+        let scale_spread = if is_frost_puddle {
+            if puddle.elapsed > fade_start {
+                let progress = (puddle.elapsed - fade_start) / fade_duration;
+                1.0 - progress * 0.12
+            } else {
+                1.0
+            }
+        } else if puddle.elapsed < spread_duration {
             let t = (puddle.elapsed / spread_duration).clamp(0.0, 1.0);
             (0.15 + 0.85 * (1.0 - (1.0 - t).powi(3))) * puddle.radius
         } else if puddle.elapsed > fade_start {
@@ -1515,7 +1604,11 @@ pub fn update_potion_puddles(
         } else {
             puddle.radius
         };
-        transform.scale = Vec3::new(scale_spread, 1.0, scale_spread);
+        transform.scale = if is_frost_puddle {
+            Vec3::splat(scale_spread)
+        } else {
+            Vec3::new(scale_spread, 1.0, scale_spread)
+        };
 
         active_puddles.push((
             entity,
@@ -2739,7 +2832,12 @@ pub fn create_conforming_puddle_mesh(
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(segments * 3 + 1);
     let mut indices: Vec<u32> = Vec::with_capacity(segments * 18);
 
-    let center_terr = crate::dungeon::modular_kit::get_grotto_terrain_height(center_world.x, center_world.z);
+    let in_water = crate::dungeon::modular_kit::is_in_lake_water(center_world);
+    let center_terr = if in_water {
+        0.18
+    } else {
+        crate::dungeon::modular_kit::get_grotto_terrain_height(center_world.x, center_world.z)
+    };
     positions.push([0.0, 0.028, 0.0]);
     normals.push([0.0, 1.0, 0.0]);
     uvs.push([0.5, 0.5]);
@@ -2747,14 +2845,18 @@ pub fn create_conforming_puddle_mesh(
     for i in 0..segments {
         let theta = (i as f32 / segments as f32) * std::f32::consts::TAU;
         let perturbation = 1.0
-            + 0.22 * (theta * 3.0).sin()
-            + 0.15 * (theta * 5.0 + 0.8).cos()
-            + 0.09 * (theta * 7.0).sin();
+            + 0.06 * (theta * 3.0).sin()
+            + 0.04 * (theta * 5.0 + 0.8).cos()
+            + 0.02 * (theta * 7.0).sin();
         let r_mid = base_radius * perturbation * 0.62;
         let x = r_mid * theta.cos();
         let z = r_mid * theta.sin();
-        let terr_h = crate::dungeon::modular_kit::get_grotto_terrain_height(center_world.x + x, center_world.z + z);
-        let dy = (terr_h - center_terr).clamp(-0.45, 0.45);
+        let dy = if in_water {
+            0.0
+        } else {
+            let terr_h = crate::dungeon::modular_kit::get_grotto_terrain_height(center_world.x + x, center_world.z + z);
+            (terr_h - center_terr).clamp(-0.06, 0.06)
+        };
         positions.push([x, 0.022 + dy * 0.75, z]);
         let norm = Vec3::new(theta.cos() * 0.12, 0.98, theta.sin() * 0.12).normalize();
         normals.push([norm.x, norm.y, norm.z]);
@@ -2764,14 +2866,18 @@ pub fn create_conforming_puddle_mesh(
     for i in 0..segments {
         let theta = (i as f32 / segments as f32) * std::f32::consts::TAU;
         let perturbation = 1.0
-            + 0.22 * (theta * 3.0).sin()
-            + 0.15 * (theta * 5.0 + 0.8).cos()
-            + 0.09 * (theta * 7.0).sin();
+            + 0.06 * (theta * 3.0).sin()
+            + 0.04 * (theta * 5.0 + 0.8).cos()
+            + 0.02 * (theta * 7.0).sin();
         let r_rim = base_radius * perturbation;
         let x = r_rim * theta.cos();
         let z = r_rim * theta.sin();
-        let terr_h = crate::dungeon::modular_kit::get_grotto_terrain_height(center_world.x + x, center_world.z + z);
-        let dy = (terr_h - center_terr).clamp(-0.45, 0.45);
+        let dy = if in_water {
+            0.0
+        } else {
+            let terr_h = crate::dungeon::modular_kit::get_grotto_terrain_height(center_world.x + x, center_world.z + z);
+            (terr_h - center_terr).clamp(-0.06, 0.06)
+        };
         positions.push([x, 0.012 + dy, z]);
         let norm = Vec3::new(theta.cos() * 0.25, 0.95, theta.sin() * 0.25).normalize();
         normals.push([norm.x, norm.y, norm.z]);
@@ -2781,14 +2887,18 @@ pub fn create_conforming_puddle_mesh(
     for i in 0..segments {
         let theta = (i as f32 / segments as f32) * std::f32::consts::TAU;
         let perturbation = 1.0
-            + 0.22 * (theta * 3.0).sin()
-            + 0.15 * (theta * 5.0 + 0.8).cos()
-            + 0.09 * (theta * 7.0).sin();
+            + 0.06 * (theta * 3.0).sin()
+            + 0.04 * (theta * 5.0 + 0.8).cos()
+            + 0.02 * (theta * 7.0).sin();
         let r_skirt = base_radius * perturbation * 1.02;
         let x = r_skirt * theta.cos();
         let z = r_skirt * theta.sin();
-        let terr_h = crate::dungeon::modular_kit::get_grotto_terrain_height(center_world.x + x, center_world.z + z);
-        let dy = (terr_h - center_terr).clamp(-0.45, 0.45);
+        let dy = if in_water {
+            0.0
+        } else {
+            let terr_h = crate::dungeon::modular_kit::get_grotto_terrain_height(center_world.x + x, center_world.z + z);
+            (terr_h - center_terr).clamp(-0.06, 0.06)
+        };
         positions.push([x, -0.065 + dy, z]);
         normals.push([theta.cos(), 0.0, theta.sin()]);
         uvs.push([0.5 + (x / (base_radius * 2.4)), 0.5 + (z / (base_radius * 2.4))]);

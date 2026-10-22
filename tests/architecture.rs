@@ -555,14 +555,14 @@ fn test_architecture_gate4_screenshot_and_validator_script_integrity() {
         "main.rs must save to debug_output/frame_check.png"
     );
 
-    let validator_path = Path::new("scripts/validate_frame.py");
+    let validator_path = Path::new("src/tools/validator.rs");
     assert!(
         validator_path.exists(),
-        "scripts/validate_frame.py must exist"
+        "src/tools/validator.rs must exist"
     );
 
     let validator_code =
-        fs::read_to_string(validator_path).expect("Failed to read validate_frame.py");
+        fs::read_to_string(validator_path).expect("Failed to read validator.rs");
     assert!(
         validator_code.contains("Sobel"),
         "Validator must implement Sobel edge detection"
@@ -677,15 +677,15 @@ fn test_architecture_concept_art_fidelity_and_faceted_rocks_pipeline() {
         "Skill must define Definition of Done"
     );
 
-    let blueprint_script = Path::new("scripts/visual_diff_blueprint.py");
+    let blueprint_script = Path::new("src/tools/blueprint.rs");
     assert!(
         blueprint_script.exists(),
-        "scripts/visual_diff_blueprint.py must exist"
+        "src/tools/blueprint.rs must exist"
     );
     let script_code =
-        fs::read_to_string(blueprint_script).expect("Failed to read visual_diff_blueprint.py");
+        fs::read_to_string(blueprint_script).expect("Failed to read blueprint.rs");
     assert!(
-        script_code.contains("analyze_image_regions"),
+        script_code.contains("generate_blueprint_report"),
         "Script must analyze depth layers"
     );
     assert!(
@@ -766,13 +766,13 @@ fn test_architecture_zero_vision_loop_and_telemetry_pipeline() {
         "Spec must define central corridor"
     );
 
-    let squeezer_path = Path::new("scripts/vision_squeezer.py");
+    let squeezer_path = Path::new("src/tools/vision_squeezer.rs");
     assert!(
         squeezer_path.exists(),
-        "scripts/vision_squeezer.py must exist"
+        "src/tools/vision_squeezer.rs must exist"
     );
     let squeezer_code =
-        fs::read_to_string(squeezer_path).expect("Failed to read vision_squeezer.py");
+        fs::read_to_string(squeezer_path).expect("Failed to read vision_squeezer.rs");
     assert!(
         squeezer_code.contains("squeeze_screenshot"),
         "Squeezer must define squeeze_screenshot"
@@ -836,7 +836,9 @@ fn test_architecture_zero_comments_policy() {
     collect_files(Path::new("scripts"), &mut code_files);
     collect_files(Path::new("assets/shaders"), &mut code_files);
     collect_files(Path::new("assets/data"), &mut code_files);
-    collect_files(Path::new("agent-harness"), &mut code_files);
+    if Path::new("agent-harness").exists() {
+        collect_files(Path::new("agent-harness"), &mut code_files);
+    }
 
     let mut violations = Vec::new();
 
@@ -1500,6 +1502,9 @@ fn test_architecture_no_single_use_generator_scripts_in_repository() {
         "scripts/generate_ui_icons.py",
         "scripts/export_ui_svgs.py",
         "scripts/generate_faceted_rocks.py",
+        "scripts/validate_frame.py",
+        "scripts/vision_squeezer.py",
+        "scripts/visual_diff_blueprint.py",
     ];
 
     for script in &discarded_scripts {
@@ -1509,6 +1514,53 @@ fn test_architecture_no_single_use_generator_scripts_in_repository() {
             script
         );
     }
+}
+
+#[test]
+fn test_architecture_pure_rust_tools_and_binaries_pipeline() {
+    let tool_files = [
+        "src/tools/mod.rs",
+        "src/tools/validator.rs",
+        "src/tools/vision_squeezer.rs",
+        "src/tools/blueprint.rs",
+        "src/tools/cli_backend.rs",
+    ];
+
+    for file in &tool_files {
+        assert!(Path::new(file).exists(), "Pure Rust tool file '{}' must exist", file);
+    }
+
+    let binary_files = [
+        "src/bin/validate_frame.rs",
+        "src/bin/vision_squeezer.rs",
+        "src/bin/visual_diff_blueprint.rs",
+        "src/bin/deep_alchemy_cli.rs",
+    ];
+
+    for bin in &binary_files {
+        assert!(Path::new(bin).exists(), "Pure Rust binary entrypoint '{}' must exist", bin);
+    }
+
+    let validator_code = fs::read_to_string("src/tools/validator.rs").unwrap();
+    assert!(validator_code.contains("analyze_frame"));
+    assert!(validator_code.contains("gray_percentage"));
+    assert!(validator_code.contains("vibrant_percentage"));
+    assert!(validator_code.contains("edge_percentage"));
+
+    let squeezer_code = fs::read_to_string("src/tools/vision_squeezer.rs").unwrap();
+    assert!(squeezer_code.contains("estimate_vision_tokens"));
+    assert!(squeezer_code.contains("squeeze_screenshot"));
+    assert!(squeezer_code.contains("generate_roi_crops"));
+
+    let blueprint_code = fs::read_to_string("src/tools/blueprint.rs").unwrap();
+    assert!(blueprint_code.contains("generate_blueprint_report"));
+    assert!(blueprint_code.contains("rgb_to_hsv"));
+    assert!(blueprint_code.contains("compute_sobel_density"));
+
+    let cli_code = fs::read_to_string("src/tools/cli_backend.rs").unwrap();
+    assert!(cli_code.contains("get_system_status"));
+    assert!(cli_code.contains("load_ron_database"));
+    assert!(cli_code.contains("brew"));
 }
 
 

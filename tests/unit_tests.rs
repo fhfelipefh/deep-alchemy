@@ -2751,3 +2751,162 @@ fn test_unit_held_potion_switching_slots_rebuilds_visuals() {
     let p3 = app.world().get::<deep_alchemy::player::camera::FirstPersonHeldPotion>(held_entity).unwrap();
     assert_eq!(p3.current_slot, 3);
 }
+
+#[test]
+fn test_unit_rust_vision_squeezer_tokens_and_dimensions() {
+    use deep_alchemy::tools::vision_squeezer::estimate_vision_tokens;
+
+    let (tiles, tokens) = estimate_vision_tokens(1280, 720, 512);
+    assert_eq!(tiles, 6);
+    assert_eq!(tokens, 6 * 258 + 85);
+
+    let (tiles_small, tokens_small) = estimate_vision_tokens(512, 512, 512);
+    assert_eq!(tiles_small, 1);
+    assert_eq!(tokens_small, 258 + 85);
+}
+
+#[test]
+fn test_unit_rust_frame_validator_color_and_edges() {
+    use deep_alchemy::tools::validator::analyze_frame;
+    use std::path::Path;
+
+    let temp_dir = std::env::temp_dir();
+    let test_img_path = temp_dir.join("test_validator_pass.png");
+
+    let mut img = image::RgbImage::new(100, 100);
+    for y in 0..100 {
+        for x in 0..100 {
+            if x % 4 == 0 {
+                img.put_pixel(x, y, image::Rgb([0, 255, 200]));
+            } else {
+                img.put_pixel(x, y, image::Rgb([10, 20, 40]));
+            }
+        }
+    }
+    img.save_with_format(&test_img_path, image::ImageFormat::Png).unwrap();
+
+    let report = analyze_frame(Path::new(&test_img_path)).expect("Validation must execute");
+    assert!(report.vibrant_percentage > 10.0);
+    assert!(report.edge_percentage > 0.80);
+    assert!(report.passed);
+
+    let _ = std::fs::remove_file(test_img_path);
+}
+
+#[test]
+fn test_unit_rust_blueprint_color_and_hsv() {
+    use deep_alchemy::tools::blueprint::{rgb_to_hex, rgb_to_hsv};
+
+    assert_eq!(rgb_to_hex(255, 0, 128), "#ff0080");
+    assert_eq!(rgb_to_hex(0, 255, 0), "#00ff00");
+
+    let (h, s, v) = rgb_to_hsv(0, 255, 255);
+    assert!((h - 180.0).abs() < 1.0);
+    assert!((s - 1.0).abs() < 0.01);
+    assert!((v - 1.0).abs() < 0.01);
+}
+
+#[test]
+fn test_unit_rust_cli_backend_status_and_brewing() {
+    use deep_alchemy::tools::cli_backend::{brew, get_player_stats, get_system_status, load_ron_database};
+
+    let status = get_system_status();
+    assert!(status.recipes_ron);
+
+    let db = load_ron_database().expect("RON database must load");
+    assert!(!db.ingredients.is_empty());
+    assert!(!db.potions.is_empty());
+
+    let brew_res = brew(&["ing_cyan_spore".to_string()]);
+    assert!(brew_res.success);
+    assert_eq!(brew_res.applied_effects.len(), 2);
+
+    let player = get_player_stats();
+    assert_eq!(player.health, 100.0);
+    assert_eq!(player.active_slot, 1);
+}
+
+#[test]
+fn test_unit_frost_potion_lake_water_ice_platform_and_flat_conforming_mesh() {
+    let water_center = Vec3::new(0.0, 0.18, -8.5);
+    assert!(deep_alchemy::dungeon::modular_kit::is_in_lake_water(water_center));
+
+    let puddle_mesh = deep_alchemy::alchemy::create_conforming_puddle_mesh(1.15, 32, water_center);
+    if let Some(bevy::render::mesh::VertexAttributeValues::Float32x3(positions)) =
+        puddle_mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+    {
+        for p in positions {
+            assert!(
+                p[1] >= -0.08 && p[1] <= 0.045,
+                "In-water conforming puddle mesh must remain flat and not spike along lake bed funnel: y={}",
+                p[1]
+            );
+        }
+    } else {
+        panic!("Position attribute not found on conforming puddle mesh");
+    }
+
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::transform::TransformPlugin,
+        bevy::asset::AssetPlugin::default(),
+        bevy::scene::ScenePlugin::default(),
+        avian3d::prelude::PhysicsPlugins::default(),
+    ));
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(50),
+    ));
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<deep_alchemy::alchemy::ice_simulation::LakeFreezeSimulation>();
+    app.add_systems(Update, deep_alchemy::alchemy::update_potion_projectiles);
+
+    let proj_entity = app
+        .world_mut()
+        .spawn((
+            Transform::from_translation(water_center),
+            deep_alchemy::alchemy::PotionProjectile {
+                velocity: Vec3::ZERO,
+                effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                    kind: deep_alchemy::alchemy::AlchemicalEffectKind::Frost,
+                    duration: 5.0,
+                    magnitude: 20.0,
+                    elapsed: 0.0,
+                }],
+                lifetime: 5.0,
+                color: Color::srgb(0.12, 0.42, 0.95),
+                slot: 4,
+                hitstop_timer: 0.01,
+                entered_water: false,
+            },
+            deep_alchemy::alchemy::PotionSurfaceImpact {
+                host: Entity::PLACEHOLDER,
+                normal: Vec3::Y,
+            },
+        ))
+        .id();
+
+    app.update();
+    app.update();
+
+    assert!(app.world().get_entity(proj_entity).is_err());
+
+    let mut ice_query = app
+        .world_mut()
+        .query::<(
+            &Name,
+            &Transform,
+            &avian3d::prelude::RigidBody,
+            &avian3d::prelude::Collider,
+            &deep_alchemy::alchemy::PotionPuddle,
+        )>();
+
+    let ice_floes: Vec<_> = ice_query.iter(app.world()).collect();
+    assert_eq!(ice_floes.len(), 1, "Must spawn exactly one solid ice floe platform in water");
+    let (name, tf, rb, _, puddle) = ice_floes[0];
+    assert_eq!(name.as_str(), "Solid_Ice_Platform");
+    assert_eq!(*rb, avian3d::prelude::RigidBody::Static);
+    assert!(puddle.radius >= 1.6);
+    assert!((tf.translation.y - (deep_alchemy::alchemy::ice_simulation::ICE_SURFACE_Y + 0.11)).abs() < 0.02);
+}

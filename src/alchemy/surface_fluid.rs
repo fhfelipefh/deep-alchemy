@@ -180,6 +180,9 @@ pub fn spawn_surface_fluid_patch(
     for cell in &mut thickness {
         *cell *= volume / sum;
     }
+    if crate::dungeon::modular_kit::is_in_lake_water(position) && effects.iter().any(|e| e.kind == super::AlchemicalEffectKind::Frost) {
+        return;
+    }
     let radius = (volume.sqrt() * 0.52).clamp(0.16, 1.35);
     let material = materials.add(SurfaceFluidMaterial {
         color: color.to_linear().with_alpha(profile.transparency),

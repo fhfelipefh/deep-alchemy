@@ -72,6 +72,23 @@ fn main() {
     }
 
     app.run();
+
+    if args.iter().any(|arg| arg == "--validate-frame") {
+        let frame_path = std::path::Path::new("debug_output/frame_check.png");
+        if frame_path.exists() {
+            match deep_alchemy::tools::validator::analyze_frame(frame_path) {
+                Ok(report) => {
+                    if !report.passed {
+                        std::process::exit(1);
+                    }
+                }
+                Err(err) => {
+                    eprintln!("Rust validator error: {}", err);
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
 }
 
 fn switch_to_ingame_for_test_room_screenshot(

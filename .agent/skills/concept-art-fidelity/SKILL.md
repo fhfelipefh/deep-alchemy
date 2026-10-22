@@ -73,7 +73,7 @@ Com os dados técnicos documentados no contexto, aplique as alterações nos scr
 
 Uma tarefa de arte de cenário só é dada como concluída após:
 1. `cargo run -- --screenshot-test` executado sem erros.
-2. `python scripts/validate_frame.py debug_output/frame_check.png` aprovado:
+2. `cargo run --bin validate_frame -- debug_output/frame_check.png` (ou `cargo run -- --validate-frame`) aprovado:
    - Densidade de bordas Sobel $\ge 0.80\%$
    - Pixels cinza monótono $\le 30.0\%$
    - Pixels bioluminescentes vibrantes $\ge 15.0\%$
