@@ -431,7 +431,45 @@ pub fn spawn_procedural_dungeon(
     let half_tile = config.tile_size * 0.5;
 
     for cell in &dungeon.dual_cells {
-        if cell.world_pos.x.abs() < 8.0 && cell.world_pos.z > -13.5 && cell.world_pos.z < 3.5 {
+        let is_exit_connector =
+            cell.world_pos.x.abs() < 1.0 && (cell.world_pos.z - 4.0).abs() < 1.0;
+        if is_exit_connector {
+            let handle = registry.load_scene(&asset_server, "tile_grotto_connector");
+            commands.spawn((
+                Name::new("DungeonTile_GrottoConnector"),
+                SceneRoot(handle),
+                Transform::from_translation(cell.world_pos),
+            ));
+            commands.spawn((
+                Name::new("Collider_Connector_Wall_Left"),
+                CavernObstacle,
+                ObstacleShape::Cuboid {
+                    half_extents: Vec3::new(0.25, 2.0, 2.0),
+                },
+                Transform::from_xyz(-2.2, 2.0, 6.0),
+                RigidBody::Static,
+                Collider::cuboid(0.5, 4.0, 4.0),
+            ));
+            commands.spawn((
+                Name::new("Collider_Connector_Wall_Right"),
+                CavernObstacle,
+                ObstacleShape::Cuboid {
+                    half_extents: Vec3::new(0.25, 2.0, 2.0),
+                },
+                Transform::from_xyz(2.2, 2.0, 6.0),
+                RigidBody::Static,
+                Collider::cuboid(0.5, 4.0, 4.0),
+            ));
+            commands.spawn((
+                Name::new("Collider_Connector_Floor"),
+                Transform::from_xyz(0.0, -0.2, 6.0),
+                RigidBody::Static,
+                Collider::cuboid(4.4, 0.4, 4.0),
+            ));
+            continue;
+        }
+
+        if cell.world_pos.x.abs() < 10.0 && cell.world_pos.z > -16.0 && cell.world_pos.z < 6.0 {
             continue;
         }
 
@@ -445,7 +483,7 @@ pub fn spawn_procedural_dungeon(
                     SceneRoot(handle),
                     Transform::from_translation(cell.world_pos).with_rotation(rot),
                     RigidBody::Static,
-                    Collider::half_space(Vec3::Y),
+                    Collider::cuboid(config.tile_size, 0.4, config.tile_size),
                 ));
 
                 if let Some(macro_type) = cell.macro_room {
@@ -499,7 +537,7 @@ pub fn spawn_procedural_dungeon(
                     SceneRoot(handle),
                     Transform::from_translation(cell.world_pos).with_rotation(rot),
                     RigidBody::Static,
-                    Collider::half_space(Vec3::Y),
+                    Collider::cuboid(config.tile_size, 0.4, config.tile_size),
                 ));
 
                 let wall_offset = rot * Vec3::new(0.0, 1.2, -half_tile + 0.35);
@@ -521,7 +559,7 @@ pub fn spawn_procedural_dungeon(
                     SceneRoot(handle),
                     Transform::from_translation(cell.world_pos).with_rotation(rot),
                     RigidBody::Static,
-                    Collider::half_space(Vec3::Y),
+                    Collider::cuboid(config.tile_size, 0.4, config.tile_size),
                 ));
 
                 let pillar_offset = rot * Vec3::new(-half_tile + 0.6, 1.4, -half_tile + 0.6);
@@ -561,7 +599,7 @@ pub fn spawn_procedural_dungeon(
                     SceneRoot(handle),
                     Transform::from_translation(cell.world_pos),
                     RigidBody::Static,
-                    Collider::half_space(Vec3::Y),
+                    Collider::cuboid(config.tile_size, 0.4, config.tile_size),
                 ));
             }
         }

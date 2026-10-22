@@ -274,7 +274,7 @@ mod tests {
         let mut mats = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
         let mat = mats.add(StandardMaterial::default());
 
-        let entity = app
+        let _entity = app
             .world_mut()
             .spawn((
                 Name::new("Progressive_Ice_Cell"),

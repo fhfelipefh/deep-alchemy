@@ -24,6 +24,7 @@ impl Default for SceneAssetRegistry {
         assets.insert("faceted_rocks_kit".to_string(), "models/faceted_rocks_kit.glb#Scene0".to_string());
         assets.insert("dungeon_kit".to_string(), "models/dungeon_kit.glb#Scene0".to_string());
         assets.insert("secret_white_test_room".to_string(), "models/secret_white_test_room.glb#Scene0".to_string());
+        assets.insert("tile_grotto_connector".to_string(), "models/tile_grotto_connector.glb#Scene0".to_string());
         Self { assets }
     }
 }

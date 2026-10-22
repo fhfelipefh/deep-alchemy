@@ -124,11 +124,19 @@ pub fn mark_imported_tall_grass(
         let name_str = name.as_str();
         if name_str.contains("TallGrass") && !name_str.contains("Mound") {
             let base_rot = tf_opt.map(|t| t.rotation).unwrap_or(Quat::IDENTITY);
+            let tf_pos = tf_opt.map(|t| t.translation).unwrap_or(Vec3::ZERO);
             let center_offset = mesh_opt
                 .and_then(|h| meshes.as_ref().and_then(|m| m.get(&h.0)))
                 .and_then(|m| m.compute_aabb())
                 .map(|a| Vec3::from(a.center))
                 .unwrap_or(Vec3::ZERO);
+            let world_center = tf_pos + center_offset;
+            if is_in_lake_water(world_center)
+                || (world_center.x * world_center.x + (world_center.z - (-8.5)) * (world_center.z - (-8.5))).sqrt() < 6.2
+            {
+                commands.entity(entity).despawn();
+                continue;
+            }
 
             let deformer_opt = mesh_opt
                 .and_then(|h| meshes.as_ref().and_then(|m| m.get(&h.0)))
@@ -1085,12 +1093,12 @@ pub fn setup_cavern_world(
         bevy::pbr::NotShadowCaster,
         bevy::pbr::NotShadowReceiver,
         LakeWaterPool,
-        Transform::from_xyz(0.0, 0.18, -8.5),
+        Transform::from_xyz(0.0, 0.08, -8.5),
     ));
 
     for x_off in [-3.6, -2.4, -1.2, 0.0, 1.2, 2.4, 3.6] {
         commands.spawn((
-            Transform::from_xyz(x_off, 0.22, -8.55),
+            Transform::from_xyz(x_off, 0.08, -8.55),
             ParticleEmitter {
                 spawn_timer: 0.0,
                 spawn_rate: 0.08,
@@ -1098,7 +1106,7 @@ pub fn setup_cavern_world(
             },
         ));
         commands.spawn((
-            Transform::from_xyz(x_off * 0.8, 0.28, -8.7),
+            Transform::from_xyz(x_off * 0.8, 0.14, -8.7),
             ParticleEmitter {
                 spawn_timer: 0.0,
                 spawn_rate: 0.10,
@@ -1247,7 +1255,7 @@ pub fn create_waterfall_mesh(u_segs: usize, v_segs: usize) -> (Mesh, WaterfallBa
     let mut indices = Vec::with_capacity(u_segs * v_segs * 12);
 
     let h_top = 17.5;
-    let h_bottom = 0.06;
+    let h_bottom = -0.45;
     let z_top = -10.8;
     let z_bottom = -8.5;
     let width_top = 4.2;
@@ -1366,7 +1374,7 @@ pub fn get_grotto_terrain_height(x: f32, z: f32) -> f32 {
 
     if dist_lake < lake_radius {
         let u = dist_lake / lake_radius;
-        let funnel_depth = (1.0 - u).max(0.0).powf(1.75) * 3.10 + (1.0 - u) * 0.35;
+        let funnel_depth = (1.0 - u).max(0.0).powf(1.75) * 3.15 + (1.0 - u) * 0.35;
         0.04 - funnel_depth
     } else if dist_lake < lake_radius + 1.8 {
         let rim_blend = (dist_lake - lake_radius) / 1.8;
