@@ -78,7 +78,11 @@ pub struct DungeonPlugin;
 
 impl Plugin for DungeonPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<SceneAssetRegistry>()
+        let anim_config = crate::dungeon::vegetation_animation::load_vegetation_animations_from_disk(
+            "assets/data/vegetation_animations.ron",
+        );
+        app.insert_resource(anim_config)
+            .init_resource::<SceneAssetRegistry>()
             .add_systems(
                 Startup,
                 (
@@ -95,6 +99,7 @@ impl Plugin for DungeonPlugin {
                 mark_imported_flammable_props,
                 update_water_ripples,
                 update_bioluminescent_mushrooms,
+                crate::dungeon::vegetation_animation::update_vegetation_foliage_animation,
             ),
         );
     }
@@ -114,7 +119,22 @@ pub fn mark_imported_tall_grass(
                 .and_then(|m| m.compute_aabb())
                 .map(|a| Vec3::from(a.center))
                 .unwrap_or(Vec3::ZERO);
-            commands.entity(entity).insert((
+
+            let deformer_opt = mesh_opt
+                .and_then(|h| meshes.as_ref().and_then(|m| m.get(&h.0)))
+                .and_then(|m| {
+                    if let Some(bevy::render::mesh::VertexAttributeValues::Float32x3(pos)) =
+                        m.attribute(Mesh::ATTRIBUTE_POSITION)
+                    {
+                        let hash = (entity.index() as f32 * 0.6180339) % 6.28318;
+                        crate::dungeon::vegetation_animation::FoliageMeshDeformer::new(pos, hash)
+                    } else {
+                        None
+                    }
+                });
+
+            let mut ent_cmd = commands.entity(entity);
+            ent_cmd.insert((
                 TallGrassClump,
                 GrassBending {
                     base_rotation: base_rot,
@@ -123,6 +143,9 @@ pub fn mark_imported_tall_grass(
                 },
                 crate::alchemy::Flammable::with_duration(2.5).with_center_offset(center_offset),
             ));
+            if let Some(deformer) = deformer_opt {
+                ent_cmd.insert(deformer);
+            }
         }
     }
 }

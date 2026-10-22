@@ -4,6 +4,7 @@ pub mod generator;
 pub mod modular_kit;
 pub mod telemetry;
 pub mod test_room;
+pub mod vegetation_animation;
 
 pub use asset_loader::{spawn_scene_asset, spawn_scene_asset_with_collider, SceneAssetRegistry};
 pub use generator::{

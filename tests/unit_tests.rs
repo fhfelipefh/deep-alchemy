@@ -2978,3 +2978,77 @@ fn test_unit_player_stepping_on_melting_ice_does_not_crash() {
 
     assert!(app.world().get_entity(player_ent).is_ok());
 }
+
+#[test]
+fn test_unit_vegetation_foliage_animation_anchored_roots() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_plugins(bevy::transform::TransformPlugin);
+    app.add_plugins(bevy::asset::AssetPlugin::default());
+    app.init_resource::<Assets<Mesh>>();
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(20),
+    ));
+
+    let config = deep_alchemy::dungeon::vegetation_animation::load_vegetation_animations_from_disk(
+        "assets/data/vegetation_animations.ron",
+    );
+    app.insert_resource(config);
+    app.add_systems(
+        Update,
+        deep_alchemy::dungeon::vegetation_animation::update_vegetation_foliage_animation,
+    );
+
+    let initial_positions = vec![
+        [-1.0, 0.03, 2.0],
+        [-1.0, 0.15, 2.0],
+        [-1.0, 0.35, 2.0],
+        [-1.0, 0.60, 2.0],
+    ];
+
+    let mut mesh = Mesh::new(
+        bevy::render::mesh::PrimitiveTopology::TriangleList,
+        bevy::render::render_asset::RenderAssetUsages::default(),
+    );
+    mesh.insert_attribute(
+        Mesh::ATTRIBUTE_POSITION,
+        initial_positions.clone(),
+    );
+
+    let mesh_handle = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
+    let deformer = deep_alchemy::dungeon::vegetation_animation::FoliageMeshDeformer::new(
+        &initial_positions,
+        0.0,
+    )
+    .expect("FoliageMeshDeformer should be created");
+
+    let grass_ent = app
+        .world_mut()
+        .spawn((
+            Mesh3d(mesh_handle.clone()),
+            Transform::from_xyz(0.0, 0.0, 0.0),
+            GlobalTransform::from_translation(Vec3::ZERO),
+            deformer,
+        ))
+        .id();
+
+    for _ in 0..15 {
+        app.update();
+    }
+
+    let meshes = app.world().resource::<Assets<Mesh>>();
+    let updated_mesh = meshes.get(&mesh_handle).unwrap();
+    if let Some(bevy::render::mesh::VertexAttributeValues::Float32x3(positions)) =
+        updated_mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+    {
+        assert_eq!(positions[0][0], initial_positions[0][0]);
+        assert_eq!(positions[0][1], initial_positions[0][1]);
+        assert_eq!(positions[0][2], initial_positions[0][2]);
+
+        assert_ne!(positions[3][0], initial_positions[3][0]);
+    } else {
+        panic!("Position attribute not found");
+    }
+
+    assert!(app.world().get_entity(grass_ent).is_ok());
+}

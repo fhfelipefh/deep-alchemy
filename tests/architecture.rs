@@ -96,6 +96,35 @@ fn test_architecture_static_alchemy_recipes_ron_integrity() {
 }
 
 #[test]
+fn test_architecture_vegetation_animations_ron_integrity() {
+    let anim_path = Path::new("assets/data/vegetation_animations.ron");
+    assert!(
+        anim_path.exists(),
+        "assets/data/vegetation_animations.ron must exist"
+    );
+
+    let content = fs::read_to_string(anim_path).expect("Failed to read vegetation_animations.ron");
+    let database: deep_alchemy::dungeon::vegetation_animation::VegetationDatabase =
+        ron::from_str(&content).expect("Failed to parse vegetation animations RON database");
+
+    assert!(
+        !database.clumps.is_empty(),
+        "Vegetation database must contain animation profiles"
+    );
+
+    for profile in &database.clumps {
+        assert!(!profile.id.is_empty(), "Profile id must not be empty");
+        assert!(profile.wind_speed > 0.0, "Wind speed must be positive");
+        assert!(profile.wind_gust_frequency > 0.0, "Gust frequency must be positive");
+        assert!(profile.primary_sway_amplitude > 0.0, "Primary sway must be positive");
+        assert!(profile.player_push_radius > 0.0, "Push radius must be positive");
+        assert!(profile.player_push_strength > 0.0, "Push strength must be positive");
+        assert!(profile.spring_stiffness > 0.0, "Spring stiffness must be positive");
+        assert!(profile.spring_damping > 0.0, "Spring damping must be positive");
+    }
+}
+
+#[test]
 fn test_architecture_gltf_models_binary_integrity() {
     let models = [
         ("assets/models/player.glb", 30_000),
@@ -1059,6 +1088,7 @@ fn test_architecture_full_game_app_schedule_integrity_and_disjoint_queries_gate(
         deep_alchemy::dungeon::modular_kit::update_grass_bending,
         deep_alchemy::dungeon::modular_kit::update_water_ripples,
         deep_alchemy::dungeon::modular_kit::update_bioluminescent_mushrooms,
+        deep_alchemy::dungeon::vegetation_animation::update_vegetation_foliage_animation,
     ));
 
     let _ = schedule.initialize(app.world_mut());

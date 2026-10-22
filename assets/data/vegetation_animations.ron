@@ -1,0 +1,28 @@
+(
+    clumps: [
+        (
+            id: "ambient_grotto_breeze",
+            wind_speed: 1.85,
+            wind_gust_frequency: 0.75,
+            primary_sway_amplitude: 0.045,
+            secondary_sway_amplitude: 0.022,
+            player_push_radius: 0.70,
+            player_push_strength: 0.16,
+            spring_stiffness: 38.0,
+            spring_damping: 7.5,
+            wind_direction: (0.866, 0.5),
+        ),
+        (
+            id: "waterfall_mist_flutter",
+            wind_speed: 3.2,
+            wind_gust_frequency: 1.4,
+            primary_sway_amplitude: 0.075,
+            secondary_sway_amplitude: 0.038,
+            player_push_radius: 0.75,
+            player_push_strength: 0.22,
+            spring_stiffness: 44.0,
+            spring_damping: 8.0,
+            wind_direction: (0.35, 0.936),
+        ),
+    ],
+)
