@@ -71,6 +71,7 @@ pub struct FoliageMeshDeformer {
     pub phase_offset: f32,
     pub current_deflection: Vec2,
     pub deflection_velocity: Vec2,
+    pub last_applied_deflection: Vec2,
 }
 
 impl FoliageMeshDeformer {
@@ -98,6 +99,7 @@ impl FoliageMeshDeformer {
             phase_offset,
             current_deflection: Vec2::ZERO,
             deflection_velocity: Vec2::ZERO,
+            last_applied_deflection: Vec2::new(999.0, 999.0),
         })
     }
 }
@@ -118,10 +120,17 @@ pub fn update_vegetation_foliage_animation(
 
     let prof = &config.profile;
     let wind_dir = Vec2::new(prof.wind_direction.0, prof.wind_direction.1).normalize_or_zero();
+    let mut updated_meshes = std::collections::HashSet::new();
 
     for (_entity, mesh_handle, global_tf, mut deformer) in deformers.iter_mut() {
         let clump_world = global_tf.translation();
         let clump_p = Vec2::new(clump_world.x, clump_world.z);
+
+        if let Some(player_pos) = player_pos_opt {
+            if clump_world.distance(player_pos) > 16.0 {
+                continue;
+            }
+        }
 
         let gust = (elapsed * prof.wind_gust_frequency + deformer.phase_offset * 1.5).sin() * 0.4 + 0.6;
         let breeze_phase = elapsed * prof.wind_speed + deformer.phase_offset;
@@ -153,9 +162,20 @@ pub fn update_vegetation_foliage_animation(
             continue;
         }
 
+        let delta_sq = (deformer.current_deflection - deformer.last_applied_deflection).length_squared();
+        if delta_sq < 0.00002 {
+            continue;
+        }
+
+        if !updated_meshes.insert(mesh_handle.0.id()) {
+            continue;
+        }
+
         let Some(mesh) = meshes.get_mut(&mesh_handle.0) else {
             continue;
         };
+
+        deformer.last_applied_deflection = deformer.current_deflection;
 
         if let Some(bevy::render::mesh::VertexAttributeValues::Float32x3(positions)) =
             mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION)

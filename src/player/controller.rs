@@ -49,9 +49,13 @@ pub fn resolve_player_collision_sliding(
                     let center = Vec2::new(tf.translation.x, tf.translation.z);
                     let p = Vec2::new(resolved.x, resolved.z);
                     let diff = p - center;
-                    let dist = diff.length();
                     let min_dist = *radius + player_radius;
 
+                    if diff.x.abs() > min_dist + 0.05 || diff.y.abs() > min_dist + 0.05 {
+                        continue;
+                    }
+
+                    let dist = diff.length();
                     let can_step_onto = obs_top <= step_max_feet || (has_grotto_terrain && player_feet >= -1.2 && obs_top <= 0.45);
 
                     if dist < min_dist {
@@ -814,24 +818,6 @@ pub fn player_movement(
         .collect();
 
     for (tf, shape) in &ice_platform_shapes {
-        obstacle_list.push((tf, *shape));
-    }
-
-    let ice_cell_shapes: Vec<(Transform, ObstacleShape)> = ice_cells_query
-        .iter()
-        .filter(|(_, cell)| cell.solid)
-        .map(|(tf, _)| {
-            (
-                *tf,
-                ObstacleShape::Cylinder {
-                    radius: crate::alchemy::ice_simulation::ICE_CELL_SIZE * 0.65,
-                    height: 0.22,
-                },
-            )
-        })
-        .collect();
-
-    for (tf, shape) in &ice_cell_shapes {
         obstacle_list.push((tf, *shape));
     }
 

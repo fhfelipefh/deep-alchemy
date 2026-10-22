@@ -223,16 +223,25 @@ pub fn update_surface_fluid_patches(
     spatial_query: SpatialQuery,
     receivers: Query<&SurfaceFluidReceiver>,
     mut patches: Query<(Entity, &mut SurfaceFluidPatch, &mut Transform, &MeshMaterial3d<SurfaceFluidMaterial>, Option<&mut Mesh3d>)>,
+    droplets: Query<(), With<SurfaceFluidDroplet>>,
     mut materials: ResMut<Assets<SurfaceFluidMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut commands: Commands,
 ) {
     let dt = time.delta_secs();
     let filter = SpatialQueryFilter::default();
+    let current_droplets = droplets.iter().count();
+    let mut can_spawn_droplets = current_droplets < 12;
+    let mut despawned: std::collections::HashSet<Entity> = std::collections::HashSet::new();
+
     for (entity, mut patch, mut transform, material, _mesh_handle) in patches.iter_mut() {
         patch.age += dt;
         if patch.age >= patch.max_age || patch.volume <= 0.000_1 {
-            commands.entity(entity).despawn();
+            if despawned.insert(entity) {
+                if let Some(mut cmd) = commands.get_entity(entity) {
+                    cmd.despawn();
+                }
+            }
             continue;
         }
         let was_wall = patch.normal.y.abs() < 0.65;
@@ -290,19 +299,22 @@ pub fn update_surface_fluid_patches(
                         *cell *= scale;
                     }
                 }
-                let drop_offset = -Vec3::Y * (patch.radius * 0.70) + patch.normal * 0.03;
-                let drop_pos = transform.translation + drop_offset;
-                let drop_radius = (drop_volume * 0.12).cbrt().clamp(0.025, 0.08);
-                let drop_vel = Vec3::new(0.0, -1.8, 0.0) + patch.normal * 0.04;
-                commands.spawn((
-                    SurfaceFluidDroplet { profile: patch.profile, color: patch.color, effects: patch.effects.clone(), volume: drop_volume, age: 0.0 },
-                    RigidBody::Dynamic,
-                    Collider::sphere(drop_radius),
-                    LinearVelocity(drop_vel),
-                    Mesh3d(meshes.add(Sphere::new(drop_radius).mesh().uv(8, 6))),
-                    MeshMaterial3d(material.0.clone()),
-                    Transform::from_translation(drop_pos),
-                ));
+                if can_spawn_droplets {
+                    can_spawn_droplets = false;
+                    let drop_offset = -Vec3::Y * (patch.radius * 0.70) + patch.normal * 0.03;
+                    let drop_pos = transform.translation + drop_offset;
+                    let drop_radius = (drop_volume * 0.12).cbrt().clamp(0.025, 0.08);
+                    let drop_vel = Vec3::new(0.0, -1.8, 0.0) + patch.normal * 0.04;
+                    commands.spawn((
+                        SurfaceFluidDroplet { profile: patch.profile, color: patch.color, effects: patch.effects.clone(), volume: drop_volume, age: 0.0 },
+                        RigidBody::Dynamic,
+                        Collider::sphere(drop_radius),
+                        LinearVelocity(drop_vel),
+                        Mesh3d(meshes.add(Sphere::new(drop_radius).mesh().uv(8, 6))),
+                        MeshMaterial3d(material.0.clone()),
+                        Transform::from_translation(drop_pos),
+                    ));
+                }
             }
         } else {
             patch.accumulated_drip = 0.0;
@@ -324,13 +336,20 @@ pub fn merge_surface_fluid_patches(
         Query<(Entity, &mut SurfaceFluidPatch)>,
     )>,
 ) {
+    let mut despawned: std::collections::HashSet<Entity> = std::collections::HashSet::new();
     let candidates: Vec<(Entity, Vec3, Option<Entity>, f32, Vec3)> = patches
         .p0()
         .iter()
         .map(|(entity, transform, patch)| (entity, transform.translation, patch.host, patch.radius, patch.normal))
         .collect();
     for (index, (a_entity, a_position, a_host, a_radius, a_normal)) in candidates.iter().enumerate() {
+        if despawned.contains(a_entity) {
+            continue;
+        }
         for (b_entity, b_position, b_host, b_radius, b_normal) in candidates.iter().skip(index + 1) {
+            if despawned.contains(b_entity) {
+                continue;
+            }
             if a_host != b_host || a_normal.dot(*b_normal) < 0.75 || a_position.distance(*b_position) > (a_radius + b_radius) * 0.55 {
                 continue;
             }
@@ -345,7 +364,10 @@ pub fn merge_surface_fluid_patches(
                 a.volume = fluid_volume(&a.thickness);
                 a.radius = (a.radius * a.radius + b.radius * b.radius).sqrt().min(1.5);
                 b.volume = 0.0;
-                commands.entity(*b_entity).despawn();
+                despawned.insert(*b_entity);
+                if let Some(mut cmd) = commands.get_entity(*b_entity) {
+                    cmd.despawn();
+                }
             }
         }
     }
@@ -359,10 +381,15 @@ pub fn capture_surface_fluid_droplets(
     mut materials: ResMut<Assets<SurfaceFluidMaterial>>,
     mut commands: Commands,
 ) {
+    let mut despawned: std::collections::HashSet<Entity> = std::collections::HashSet::new();
     for (entity, mut droplet, transform, velocity) in droplets.iter_mut() {
         droplet.age += time.delta_secs();
-        if droplet.age > 8.0 {
-            commands.entity(entity).despawn();
+        if droplet.age > 4.0 {
+            if despawned.insert(entity) {
+                if let Some(mut cmd) = commands.get_entity(entity) {
+                    cmd.despawn();
+                }
+            }
             continue;
         }
         let speed = velocity.0.length();
@@ -371,9 +398,15 @@ pub fn capture_surface_fluid_droplets(
         }
         let filter = SpatialQueryFilter::default().with_excluded_entities([entity]);
         if let Some(hit) = spatial_query.cast_ray(transform.translation, Dir3::new(velocity.0).unwrap_or(Dir3::NEG_Y), speed * time.delta_secs() + 0.06, true, &filter) {
-            let point = transform.translation + velocity.0.normalize_or_zero() * hit.distance;
-            spawn_surface_fluid_patch(&mut commands, &mut meshes, &mut materials, point, hit.normal, Some(hit.entity), droplet.profile, droplet.color, droplet.effects.clone(), droplet.volume);
-            commands.entity(entity).despawn();
+            if droplet.volume >= 0.15 {
+                let point = transform.translation + velocity.0.normalize_or_zero() * hit.distance;
+                spawn_surface_fluid_patch(&mut commands, &mut meshes, &mut materials, point, hit.normal, Some(hit.entity), droplet.profile, droplet.color, droplet.effects.clone(), droplet.volume);
+            }
+            if despawned.insert(entity) {
+                if let Some(mut cmd) = commands.get_entity(entity) {
+                    cmd.despawn();
+                }
+            }
         }
     }
 }
