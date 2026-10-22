@@ -1018,6 +1018,7 @@ fn spawn_alchemical_puddle(
 
         commands.spawn((
             Name::new("Solid_Ice_Platform"),
+            crate::alchemy::ice_simulation::IcePlatform,
             PotionPuddle {
                 color,
                 elapsed: 0.0,

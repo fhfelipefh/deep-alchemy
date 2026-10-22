@@ -2910,3 +2910,68 @@ fn test_unit_frost_potion_lake_water_ice_platform_and_flat_conforming_mesh() {
     assert!(puddle.radius >= 1.6);
     assert!((tf.translation.y - (deep_alchemy::alchemy::ice_simulation::ICE_SURFACE_Y + 0.11)).abs() < 0.02);
 }
+
+#[test]
+fn test_unit_player_stepping_on_melting_ice_does_not_crash() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::transform::TransformPlugin,
+        bevy::asset::AssetPlugin::default(),
+        bevy::scene::ScenePlugin::default(),
+        avian3d::prelude::PhysicsPlugins::default(),
+        bevy::state::app::StatesPlugin,
+    ));
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(50),
+    ));
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<deep_alchemy::alchemy::ice_simulation::LakeFreezeSimulation>();
+    app.init_state::<deep_alchemy::ui::menu::GameState>();
+    app.add_systems(
+        Update,
+        (
+            deep_alchemy::alchemy::ice_simulation::update_lake_freeze_simulation,
+            deep_alchemy::player::controller::player_movement,
+        )
+            .chain(),
+    );
+
+    let seed_pos = Vec2::new(0.0, -8.5);
+    {
+        let mut sim = app.world_mut().resource_mut::<deep_alchemy::alchemy::ice_simulation::LakeFreezeSimulation>();
+        sim.add_freeze_seed(seed_pos, 2.0);
+    }
+
+    for _ in 0..10 {
+        app.update();
+    }
+
+    let player_ent = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            deep_alchemy::player::camera::PlayerState::Active,
+            deep_alchemy::player::camera::Stamina { current: 100.0, max: 100.0 },
+            deep_alchemy::player::camera::LocomotionState::default(),
+            Transform::from_xyz(0.0, 0.18 + 1.2, -8.5),
+        ))
+        .id();
+
+    {
+        let mut sim = app.world_mut().resource_mut::<deep_alchemy::alchemy::ice_simulation::LakeFreezeSimulation>();
+        for cold in &mut sim.cold {
+            *cold = 0.0;
+        }
+        for freeze in &mut sim.freeze {
+            *freeze = 0.01;
+        }
+    }
+
+    for _ in 0..10 {
+        app.update();
+    }
+
+    assert!(app.world().get_entity(player_ent).is_ok());
+}

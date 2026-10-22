@@ -35,6 +35,9 @@ pub struct IceSimulationCell {
     pub solid: bool,
 }
 
+#[derive(Component, Debug, Clone, Copy, Default)]
+pub struct IcePlatform;
+
 impl LakeFreezeSimulation {
     pub fn index_at(&self, world: Vec2) -> Option<usize> {
         let local = world - ICE_CENTER;
@@ -122,6 +125,13 @@ pub fn update_lake_freeze_simulation(
                 let distance = position.distance(Vec2::new(transform.translation.x, transform.translation.z));
                 heat += (1.0 - distance / (puddle.radius + 0.35)).max(0.0) * 1.3;
             }
+            if puddle.effects.iter().any(|effect| effect.kind == AlchemicalEffectKind::Frost) {
+                let distance = position.distance(Vec2::new(transform.translation.x, transform.translation.z));
+                if distance <= puddle.radius + 0.35 {
+                    let cold_feed = (1.0 - distance / (puddle.radius + 0.35)).powi(2) * 1.2;
+                    simulation.cold[index] = (simulation.cold[index] + cold_feed * dt).min(2.5);
+                }
+            }
         }
         for (transform, geyser) in geysers.iter() {
             if geyser.is_erupting {
@@ -174,6 +184,9 @@ pub fn update_lake_freeze_simulation(
         }
     }
     for (mut transform, mut cell, material) in tiles.iter_mut() {
+        let Some(entity) = simulation.tiles[cell.index] else {
+            continue;
+        };
         let freeze = simulation.freeze[cell.index];
         let thickness = (0.035 + freeze * 0.18).min(0.22);
         transform.translation.y = ICE_SURFACE_Y + thickness * 0.5;
@@ -183,7 +196,6 @@ pub fn update_lake_freeze_simulation(
             mat.emissive = LinearRgba::new(0.04, 0.20, 0.32, freeze * 0.18);
         }
         let solid = freeze >= SOLID_FREEZE;
-        let entity = simulation.tiles[cell.index].expect("ice cell entity must exist");
         if solid != cell.solid {
             cell.solid = solid;
             if solid {
@@ -229,5 +241,41 @@ mod tests {
         let right_edge = ICE_GRID_SIZE - 1;
         assert!(!neighbors(right_edge).any(|index| index == ICE_GRID_SIZE));
         assert!(neighbors(right_edge).any(|index| index == right_edge - 1));
+    }
+
+    #[test]
+    fn despawned_tile_does_not_panic_during_update() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(bevy::asset::AssetPlugin::default());
+        app.init_resource::<Assets<Mesh>>();
+        app.init_resource::<Assets<StandardMaterial>>();
+        app.init_resource::<LakeFreezeSimulation>();
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_millis(50),
+        ));
+        app.add_systems(Update, update_lake_freeze_simulation);
+
+        let mut mats = app.world_mut().resource_mut::<Assets<StandardMaterial>>();
+        let mat = mats.add(StandardMaterial::default());
+
+        let entity = app
+            .world_mut()
+            .spawn((
+                Name::new("Progressive_Ice_Cell"),
+                IceSimulationCell { index: 0, solid: true },
+                Transform::default(),
+                MeshMaterial3d(mat),
+            ))
+            .id();
+
+        {
+            let mut sim = app.world_mut().resource_mut::<LakeFreezeSimulation>();
+            sim.freeze[0] = 0.01;
+            sim.tiles[0] = None;
+        }
+
+        app.update();
+        app.update();
     }
 }

@@ -268,6 +268,7 @@ pub fn player_look(
 fn detect_player_surfaces<'a>(
     translation: Vec3,
     ice_cells_iter: impl Iterator<Item = (&'a Transform, &'a crate::alchemy::ice_simulation::IceSimulationCell)>,
+    ice_platforms_iter: impl Iterator<Item = (&'a Transform, &'a crate::alchemy::PotionPuddle)>,
     has_lake: bool,
 ) -> (bool, bool) {
     let mut on_ice = false;
@@ -276,6 +277,15 @@ fn detect_player_surfaces<'a>(
         if ice_cell.solid && distance.x.abs() <= 0.42 && distance.y.abs() <= 0.42 && (translation.y - (ice_tf.translation.y + 1.2)).abs() <= 0.65 {
             on_ice = true;
             break;
+        }
+    }
+    if !on_ice {
+        for (plat_tf, puddle) in ice_platforms_iter {
+            let distance = Vec2::new(translation.x - plat_tf.translation.x, translation.z - plat_tf.translation.z).length();
+            if distance <= puddle.radius && (translation.y - (plat_tf.translation.y + 1.2)).abs() <= 0.85 {
+                on_ice = true;
+                break;
+            }
         }
     }
     let in_lake = has_lake && crate::dungeon::modular_kit::is_in_lake_water(translation - Vec3::new(0.0, 0.40, 0.0));
@@ -747,6 +757,13 @@ pub fn player_movement(
         (&Transform, &crate::alchemy::ice_simulation::IceSimulationCell),
         Without<Player>,
     >,
+    ice_platforms_query: Query<
+        (&Transform, &crate::alchemy::PotionPuddle),
+        (
+            With<crate::alchemy::ice_simulation::IcePlatform>,
+            Without<Player>,
+        ),
+    >,
     lake_query: Query<
         (),
         (
@@ -788,6 +805,7 @@ pub fn player_movement(
         let (on_ice, is_in_water) = detect_player_surfaces(
             tf.translation,
             ice_cells_query.iter(),
+            ice_platforms_query.iter(),
             has_lake,
         );
         locomotion.is_on_ice = on_ice;
