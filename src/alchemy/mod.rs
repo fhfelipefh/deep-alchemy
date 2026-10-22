@@ -154,6 +154,9 @@ pub struct Flammable {
     pub initial_scale: Option<Vec3>,
     pub initial_translation: Option<Vec3>,
     pub center_offset: Option<Vec3>,
+    pub temperature: f32,
+    pub ignition_temperature: f32,
+    pub cooling_rate: f32,
 }
 
 impl Flammable {
@@ -167,6 +170,9 @@ impl Flammable {
             initial_scale: None,
             initial_translation: None,
             center_offset: None,
+            temperature: 0.0,
+            ignition_temperature: 15.0,
+            cooling_rate: 6.0,
         }
     }
 
@@ -179,13 +185,49 @@ impl Flammable {
         self
     }
 
+    pub fn with_ignition_temperature(mut self, threshold: f32) -> Self {
+        self.ignition_temperature = threshold;
+        self
+    }
+
+    pub fn with_cooling_rate(mut self, rate: f32) -> Self {
+        self.cooling_rate = rate;
+        self
+    }
+
+    pub fn with_temperature(mut self, temp: f32) -> Self {
+        self.temperature = temp;
+        self
+    }
+
+    pub fn apply_heat(&mut self, amount: f32) -> bool {
+        if self.is_burning {
+            return true;
+        }
+        self.temperature = (self.temperature + amount).max(0.0);
+        if self.temperature >= self.ignition_temperature {
+            self.ignite();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn cool_down(&mut self, dt: f32) {
+        if !self.is_burning && self.temperature > 0.0 {
+            self.temperature = (self.temperature - self.cooling_rate * dt).max(0.0);
+        }
+    }
+
     pub fn ignite(&mut self) {
+        self.temperature = self.temperature.max(self.ignition_temperature);
         self.is_burning = true;
     }
 
     pub fn extinguish(&mut self, commands: &mut Commands) {
         self.is_burning = false;
         self.elapsed = 0.0;
+        self.temperature = 0.0;
         if let Some(light) = self.fire_light.take() {
             commands.entity(light).despawn();
         }
@@ -770,11 +812,18 @@ fn ignite_nearby_flammables(
     >,
     impact_point: Vec3,
     radius: f32,
+    base_heat: f32,
 ) {
     for (_f_entity, f_tf, f_gt, f_aabb, mut flammable) in flammables.iter_mut() {
         let center = flammable.compute_world_center(f_tf, f_gt, f_aabb);
-        if center.distance(impact_point) <= radius {
-            flammable.ignite();
+        let dist = center.distance(impact_point);
+        if dist <= radius {
+            let falloff = if dist <= 0.4 {
+                1.0
+            } else {
+                (1.0 - ((dist - 0.4) / (radius - 0.4)) * 0.35).clamp(0.65, 1.0)
+            };
+            flammable.apply_heat(base_heat * falloff);
         }
     }
 }
@@ -799,9 +848,9 @@ fn extinguish_nearby_flammables(
     radius: f32,
 ) {
     for (_f_entity, f_tf, f_gt, f_aabb, mut flammable) in flammables.iter_mut() {
-        if flammable.is_burning {
-            let center = flammable.compute_world_center(f_tf, f_gt, f_aabb);
-            if center.distance(impact_point) <= radius {
+        let center = flammable.compute_world_center(f_tf, f_gt, f_aabb);
+        if center.distance(impact_point) <= radius {
+            if flammable.is_burning {
                 flammable.extinguish(commands);
                 commands.spawn((
                     Transform::from_translation(center + Vec3::new(0.0, 0.35, 0.0)),
@@ -815,6 +864,8 @@ fn extinguish_nearby_flammables(
                         max_lifetime: 1.2,
                     },
                 ));
+            } else if flammable.temperature > 0.0 {
+                flammable.temperature = 0.0;
             }
         }
     }
@@ -1179,7 +1230,13 @@ pub fn update_potion_projectiles(
 
             let is_fire_impact = projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat) || projectile.slot == 2;
             if is_fire_impact {
-                ignite_nearby_flammables(&mut flammables, impact_point, 2.8);
+                let heat_magnitude = projectile
+                    .effects
+                    .iter()
+                    .find(|e| e.kind == AlchemicalEffectKind::ThermalHeat)
+                    .map(|e| e.magnitude)
+                    .unwrap_or(25.0);
+                ignite_nearby_flammables(&mut flammables, impact_point, 2.8, heat_magnitude);
             }
 
             let is_wall = impact_normal.y.abs() < 0.65;
@@ -1358,7 +1415,13 @@ pub fn update_potion_projectiles(
 
                 let is_fire_impact = projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat) || projectile.slot == 2;
                 if is_fire_impact {
-                    ignite_nearby_flammables(&mut flammables, impact_point, 2.8);
+                    let heat_magnitude = projectile
+                        .effects
+                        .iter()
+                        .find(|e| e.kind == AlchemicalEffectKind::ThermalHeat)
+                        .map(|e| e.magnitude)
+                        .unwrap_or(25.0);
+                    ignite_nearby_flammables(&mut flammables, impact_point, 2.8, heat_magnitude);
                 }
 
                 let is_rtx = settings.as_ref().map(|s| s.rtx_enabled).unwrap_or(false);
@@ -1634,10 +1697,18 @@ pub fn update_potion_puddles(
 
         let has_thermal = puddle.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat);
         if has_thermal {
+            let heat_power = puddle
+                .effects
+                .iter()
+                .filter(|e| e.kind == AlchemicalEffectKind::ThermalHeat)
+                .map(|e| e.magnitude)
+                .fold(25.0, f32::max);
             for (f_tf, f_gt, f_aabb, mut flammable) in flammables.iter_mut() {
                 let center = flammable.compute_world_center(f_tf, f_gt, f_aabb);
-                if center.distance(transform.translation) <= puddle.radius * 1.25 {
-                    flammable.ignite();
+                let dist = center.distance(transform.translation);
+                if dist <= puddle.radius * 1.25 {
+                    let proximity = (1.0 - (dist / (puddle.radius * 1.25)).clamp(0.0, 1.0)).max(0.35);
+                    flammable.apply_heat(heat_power * 1.8 * proximity * dt);
                 }
             }
         }
@@ -1694,10 +1765,18 @@ pub fn update_potion_puddles(
                 }
 
                 if cz.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat) {
+                    let heat_power = cz
+                        .effects
+                        .iter()
+                        .filter(|e| e.kind == AlchemicalEffectKind::ThermalHeat)
+                        .map(|e| e.magnitude)
+                        .fold(25.0, f32::max);
                     for (f_tf, f_gt, f_aabb, mut flammable) in flammables.iter_mut() {
                         let center = flammable.compute_world_center(f_tf, f_gt, f_aabb);
-                        if center.distance(mid) <= contact_r * 1.25 {
-                            flammable.ignite();
+                        let dist = center.distance(mid);
+                        if dist <= contact_r * 1.25 {
+                            let proximity = (1.0 - (dist / (contact_r * 1.25)).clamp(0.0, 1.0)).max(0.35);
+                            flammable.apply_heat(heat_power * 1.8 * proximity * dt);
                         }
                     }
                 }
@@ -1942,11 +2021,18 @@ pub fn update_flammable_combustion(
     for (entity, mut transform, gt, aabb, mut flammable, name) in flammables.iter_mut() {
         let center = flammable.compute_world_center(&transform, gt, aabb);
         if !flammable.is_burning {
+            let mut heat_absorbed = 0.0;
             for source_pos in &burning_sources {
-                if center.distance(*source_pos) <= 1.25 {
-                    flammable.ignite();
-                    break;
+                let dist = center.distance(*source_pos);
+                if dist <= 1.25 {
+                    let proximity = (1.0 - dist / 1.25).clamp(0.2, 1.0);
+                    heat_absorbed += 30.0 * proximity * dt;
                 }
+            }
+            if heat_absorbed > 0.0 {
+                flammable.apply_heat(heat_absorbed);
+            } else {
+                flammable.cool_down(dt);
             }
         }
 

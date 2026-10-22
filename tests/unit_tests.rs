@@ -1477,7 +1477,9 @@ fn test_unit_fire_puddle_ignites_nearby_tall_grass_and_mushrooms() {
         },
     ));
 
-    app.update();
+    for _ in 0..20 {
+        app.update();
+    }
 
     let grass = app.world().get::<deep_alchemy::alchemy::Flammable>(grass_ent).unwrap();
     assert!(grass.is_burning, "Thermal puddle must ignite nearby tall grass");
@@ -1586,6 +1588,9 @@ fn test_unit_flammable_combustion_and_heat_haze_concurrent_despawn_safety() {
                 initial_scale: None,
                 initial_translation: None,
                 center_offset: Some(Vec3::new(1.0, 1.0, 1.0)),
+                temperature: 20.0,
+                ignition_temperature: 20.0,
+                cooling_rate: 6.0,
             },
         ))
         .id();
@@ -1604,6 +1609,9 @@ fn test_unit_flammable_combustion_and_heat_haze_concurrent_despawn_safety() {
                 initial_scale: None,
                 initial_translation: None,
                 center_offset: Some(Vec3::new(1.0, 1.5, 1.0)),
+                temperature: 20.0,
+                ignition_temperature: 20.0,
+                cooling_rate: 6.0,
             },
         ))
         .set_parent(parent_ent)
@@ -2460,6 +2468,9 @@ fn test_unit_heat_haze_thermal_sources_sync_and_projection() {
                 initial_scale: None,
                 initial_translation: None,
                 center_offset: None,
+                temperature: 20.0,
+                ignition_temperature: 20.0,
+                cooling_rate: 6.0,
             },
         ))
         .id();
@@ -2627,6 +2638,9 @@ fn test_unit_frost_potion_extinguishes_burning_flammable_and_spawns_steam() {
                 initial_scale: Some(Vec3::ONE),
                 initial_translation: None,
                 center_offset: None,
+                temperature: 20.0,
+                ignition_temperature: 20.0,
+                cooling_rate: 6.0,
             },
         ))
         .id();
@@ -3278,4 +3292,288 @@ fn test_unit_dandelion_and_mushroom_pivot_stability() {
         (computed_dandelion_pivot - d_pivot).length() < 0.001,
         "Dandelion root base must remain stationary on ground during sway"
     );
+}
+
+#[test]
+fn test_unit_flammable_resistance_bench_requires_multiple_potions() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::transform::TransformPlugin,
+        bevy::asset::AssetPlugin::default(),
+        bevy::scene::ScenePlugin::default(),
+        avian3d::prelude::PhysicsPlugins::default(),
+    ));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(50)));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.insert_resource(deep_alchemy::player::camera::CameraShake::default());
+    app.add_systems(Update, deep_alchemy::alchemy::update_potion_projectiles);
+
+    let bench_ent = app
+        .world_mut()
+        .spawn((
+            Name::new("Rustic_Mossy_Bench"),
+            Transform::from_xyz(2.0, 0.0, 2.0),
+            deep_alchemy::alchemy::Flammable::with_duration(4.5)
+                .with_ignition_temperature(50.0)
+                .with_cooling_rate(4.0),
+        ))
+        .id();
+
+    app.world_mut().spawn((
+        Transform::from_xyz(2.0, 0.1, 2.0),
+        deep_alchemy::alchemy::PotionProjectile {
+            velocity: Vec3::ZERO,
+            effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                kind: deep_alchemy::alchemy::AlchemicalEffectKind::ThermalHeat,
+                duration: 5.0,
+                magnitude: 25.0,
+                elapsed: 0.0,
+            }],
+            lifetime: 8.0,
+            color: Color::srgb(0.95, 0.12, 0.16),
+            slot: 2,
+            hitstop_timer: 0.001,
+            entered_water: false,
+        },
+    ));
+
+    app.update();
+    app.update();
+
+    let bench_after_first = app.world().get::<deep_alchemy::alchemy::Flammable>(bench_ent).unwrap();
+    assert!(!bench_after_first.is_burning, "Bench must not ignite after a single fire potion");
+    assert!(bench_after_first.temperature >= 20.0, "Bench must accumulate heat after first potion");
+    assert!(bench_after_first.temperature < bench_after_first.ignition_temperature);
+
+    app.world_mut().spawn((
+        Transform::from_xyz(2.0, 0.1, 2.0),
+        deep_alchemy::alchemy::PotionProjectile {
+            velocity: Vec3::ZERO,
+            effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                kind: deep_alchemy::alchemy::AlchemicalEffectKind::ThermalHeat,
+                duration: 5.0,
+                magnitude: 25.0,
+                elapsed: 0.0,
+            }],
+            lifetime: 8.0,
+            color: Color::srgb(0.95, 0.12, 0.16),
+            slot: 2,
+            hitstop_timer: 0.001,
+            entered_water: false,
+        },
+    ));
+
+    app.update();
+    app.update();
+
+    let bench_after_second = app.world().get::<deep_alchemy::alchemy::Flammable>(bench_ent).unwrap();
+    assert!(bench_after_second.is_burning, "Bench must ignite after second fire potion delivers enough heat");
+    assert!(bench_after_second.temperature >= bench_after_second.ignition_temperature);
+}
+
+#[test]
+fn test_unit_flammable_cooling_over_time_without_fire_source() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(500)));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.add_systems(Update, deep_alchemy::alchemy::update_flammable_combustion);
+
+    let prop_ent = app
+        .world_mut()
+        .spawn((
+            Name::new("WarmWoodenProp"),
+            Transform::from_xyz(0.0, 0.0, 0.0),
+            deep_alchemy::alchemy::Flammable::with_duration(4.0)
+                .with_ignition_temperature(50.0)
+                .with_cooling_rate(10.0)
+                .with_temperature(30.0),
+        ))
+        .id();
+
+    app.update();
+    app.update();
+
+    let prop_mid = app.world().get::<deep_alchemy::alchemy::Flammable>(prop_ent).unwrap();
+    assert!(!prop_mid.is_burning);
+    assert!(prop_mid.temperature < 30.0);
+    assert!(prop_mid.temperature > 0.0);
+
+    for _ in 0..15 {
+        app.update();
+    }
+
+    let prop_cold = app.world().get::<deep_alchemy::alchemy::Flammable>(prop_ent).unwrap();
+    assert!(!prop_cold.is_burning);
+    assert_eq!(prop_cold.temperature, 0.0);
+}
+
+#[test]
+fn test_unit_flammable_sequential_potions_spaced_requires_three_potions() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::transform::TransformPlugin,
+        bevy::asset::AssetPlugin::default(),
+        bevy::scene::ScenePlugin::default(),
+        avian3d::prelude::PhysicsPlugins::default(),
+    ));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(100)));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.insert_resource(deep_alchemy::player::camera::CameraShake::default());
+    app.add_systems(
+        Update,
+        (
+            deep_alchemy::alchemy::update_potion_projectiles,
+            deep_alchemy::alchemy::update_flammable_combustion,
+        )
+            .chain(),
+    );
+
+    let bench_ent = app
+        .world_mut()
+        .spawn((
+            Name::new("Rustic_Mossy_Bench"),
+            Transform::from_xyz(0.0, 0.0, 0.0),
+            deep_alchemy::alchemy::Flammable::with_duration(4.5)
+                .with_ignition_temperature(50.0)
+                .with_cooling_rate(4.0),
+        ))
+        .id();
+
+    app.world_mut().spawn((
+        Transform::from_xyz(0.0, 0.1, 0.0),
+        deep_alchemy::alchemy::PotionProjectile {
+            velocity: Vec3::ZERO,
+            effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                kind: deep_alchemy::alchemy::AlchemicalEffectKind::ThermalHeat,
+                duration: 5.0,
+                magnitude: 25.0,
+                elapsed: 0.0,
+            }],
+            lifetime: 8.0,
+            color: Color::srgb(0.95, 0.12, 0.16),
+            slot: 2,
+            hitstop_timer: 0.001,
+            entered_water: false,
+        },
+    ));
+
+    app.update();
+    app.update();
+
+    let bench_1 = app.world().get::<deep_alchemy::alchemy::Flammable>(bench_ent).unwrap();
+    assert!(!bench_1.is_burning);
+
+    for _ in 0..15 {
+        app.update();
+    }
+
+    let bench_cooldown = app.world().get::<deep_alchemy::alchemy::Flammable>(bench_ent).unwrap();
+    assert!(!bench_cooldown.is_burning);
+    assert!(bench_cooldown.temperature < 20.0);
+
+    app.world_mut().spawn((
+        Transform::from_xyz(0.0, 0.1, 0.0),
+        deep_alchemy::alchemy::PotionProjectile {
+            velocity: Vec3::ZERO,
+            effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                kind: deep_alchemy::alchemy::AlchemicalEffectKind::ThermalHeat,
+                duration: 5.0,
+                magnitude: 25.0,
+                elapsed: 0.0,
+            }],
+            lifetime: 8.0,
+            color: Color::srgb(0.95, 0.12, 0.16),
+            slot: 2,
+            hitstop_timer: 0.001,
+            entered_water: false,
+        },
+    ));
+
+    app.update();
+    app.update();
+
+    let bench_2 = app.world().get::<deep_alchemy::alchemy::Flammable>(bench_ent).unwrap();
+    assert!(!bench_2.is_burning, "Bench must not ignite yet because cooldown dissipated heat between throws");
+
+    app.world_mut().spawn((
+        Transform::from_xyz(0.0, 0.1, 0.0),
+        deep_alchemy::alchemy::PotionProjectile {
+            velocity: Vec3::ZERO,
+            effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                kind: deep_alchemy::alchemy::AlchemicalEffectKind::ThermalHeat,
+                duration: 5.0,
+                magnitude: 25.0,
+                elapsed: 0.0,
+            }],
+            lifetime: 8.0,
+            color: Color::srgb(0.95, 0.12, 0.16),
+            slot: 2,
+            hitstop_timer: 0.001,
+            entered_water: false,
+        },
+    ));
+
+    app.update();
+    app.update();
+
+    let bench_3 = app.world().get::<deep_alchemy::alchemy::Flammable>(bench_ent).unwrap();
+    assert!(bench_3.is_burning, "Bench must ignite after third potion when spaced across cooldown");
+}
+
+#[test]
+fn test_unit_flammable_grass_ignites_easily_single_potion() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::transform::TransformPlugin,
+        bevy::asset::AssetPlugin::default(),
+        bevy::scene::ScenePlugin::default(),
+        avian3d::prelude::PhysicsPlugins::default(),
+    ));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(50)));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.insert_resource(deep_alchemy::player::camera::CameraShake::default());
+    app.add_systems(Update, deep_alchemy::alchemy::update_potion_projectiles);
+
+    let grass_ent = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::dungeon::modular_kit::TallGrassClump,
+            Transform::from_xyz(1.0, 0.0, 1.0),
+            deep_alchemy::alchemy::Flammable::with_duration(2.5)
+                .with_ignition_temperature(15.0),
+        ))
+        .id();
+
+    app.world_mut().spawn((
+        Transform::from_xyz(1.0, 0.1, 1.0),
+        deep_alchemy::alchemy::PotionProjectile {
+            velocity: Vec3::ZERO,
+            effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                kind: deep_alchemy::alchemy::AlchemicalEffectKind::ThermalHeat,
+                duration: 5.0,
+                magnitude: 25.0,
+                elapsed: 0.0,
+            }],
+            lifetime: 8.0,
+            color: Color::srgb(0.95, 0.12, 0.16),
+            slot: 2,
+            hitstop_timer: 0.001,
+            entered_water: false,
+        },
+    ));
+
+    app.update();
+    app.update();
+
+    let grass = app.world().get::<deep_alchemy::alchemy::Flammable>(grass_ent).unwrap();
+    assert!(grass.is_burning, "Tall grass must ignite easily with a single fire potion");
+    assert!(grass.temperature >= grass.ignition_temperature);
 }

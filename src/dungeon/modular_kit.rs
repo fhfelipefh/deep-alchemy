@@ -151,7 +151,9 @@ pub fn mark_imported_tall_grass(
                     current_bend: Vec2::ZERO,
                     bend_velocity: Vec2::ZERO,
                 },
-                crate::alchemy::Flammable::with_duration(2.5).with_center_offset(center_offset),
+                crate::alchemy::Flammable::with_duration(2.5)
+                    .with_center_offset(center_offset)
+                    .with_ignition_temperature(15.0),
             ));
             if let Some(deformer) = deformer_opt {
                 ent_cmd.insert(deformer);
@@ -212,7 +214,9 @@ pub fn attach_mushroom_spore_emitters(
                         phase: 0.0,
                         surge_timer: 0.0,
                     },
-                    crate::alchemy::Flammable::with_duration(3.5).with_center_offset(center_offset),
+                    crate::alchemy::Flammable::with_duration(3.5)
+                        .with_center_offset(center_offset)
+                        .with_ignition_temperature(22.0),
                 ))
                 .with_children(|parent| {
                     parent.spawn((
@@ -266,9 +270,23 @@ pub fn mark_imported_flammable_props(
                 .map(|a| Vec3::from(a.center))
                 .unwrap_or(Vec3::ZERO);
 
+            let threshold = if s.contains("Dandelion") {
+                15.0
+            } else if s.contains("Fern") {
+                18.0
+            } else if s.contains("Vine") {
+                20.0
+            } else if s.contains("Stem") {
+                35.0
+            } else {
+                20.0
+            };
+
             let mut ent_cmd = commands.entity(entity);
             ent_cmd.insert(
-                crate::alchemy::Flammable::with_duration(duration).with_center_offset(center_offset),
+                crate::alchemy::Flammable::with_duration(duration)
+                    .with_center_offset(center_offset)
+                    .with_ignition_temperature(threshold),
             );
 
             if s.contains("Dandelion") {
@@ -1103,7 +1121,7 @@ pub fn setup_cavern_world(
         Transform::from_xyz(-3.6, 0.5, -3.2),
         GlobalTransform::default(),
         Collider::cylinder(0.4, 0.8),
-        crate::alchemy::Flammable::with_duration(3.0),
+        crate::alchemy::Flammable::with_duration(3.0).with_ignition_temperature(20.0),
     ));
 
     commands.spawn((
@@ -1130,7 +1148,9 @@ pub fn setup_cavern_world(
         },
         SceneRoot(registry.load_scene(&asset_server, "prop_wooden_bench")),
         Transform::from_translation(bench_position).with_rotation(bench_rotation),
-        crate::alchemy::Flammable::with_duration(4.5),
+        crate::alchemy::Flammable::with_duration(4.5)
+            .with_ignition_temperature(50.0)
+            .with_cooling_rate(4.0),
     ));
 
     let bench_colliders = [
