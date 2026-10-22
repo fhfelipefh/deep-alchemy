@@ -21,14 +21,14 @@ impl Default for VegetationProfile {
     fn default() -> Self {
         Self {
             id: "default_grotto_breeze".to_string(),
-            wind_speed: 1.85,
-            wind_gust_frequency: 0.75,
-            primary_sway_amplitude: 0.045,
-            secondary_sway_amplitude: 0.022,
+            wind_speed: 0.65,
+            wind_gust_frequency: 0.20,
+            primary_sway_amplitude: 0.018,
+            secondary_sway_amplitude: 0.008,
             player_push_radius: 0.70,
             player_push_strength: 0.16,
-            spring_stiffness: 38.0,
-            spring_damping: 7.5,
+            spring_stiffness: 28.0,
+            spring_damping: 9.0,
             wind_direction: (0.866, 0.5),
         }
     }

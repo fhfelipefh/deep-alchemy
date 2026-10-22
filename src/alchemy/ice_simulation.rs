@@ -120,6 +120,7 @@ pub fn update_lake_freeze_simulation(
         let neighbor_ice = neighbors(index).map(|other| old_freeze[other]).sum::<f32>() * 0.25;
         let irregularity = ((index as f32 * 19.73).sin() * 0.5 + 0.5) * 0.18;
         let mut heat = 0.0;
+        let mut has_active_frost = false;
         for (transform, puddle) in puddles.iter() {
             if puddle.effects.iter().any(|effect| effect.kind == AlchemicalEffectKind::ThermalHeat) {
                 let distance = position.distance(Vec2::new(transform.translation.x, transform.translation.z));
@@ -127,9 +128,12 @@ pub fn update_lake_freeze_simulation(
             }
             if puddle.effects.iter().any(|effect| effect.kind == AlchemicalEffectKind::Frost) {
                 let distance = position.distance(Vec2::new(transform.translation.x, transform.translation.z));
-                if distance <= puddle.radius + 0.35 {
-                    let cold_feed = (1.0 - distance / (puddle.radius + 0.35)).powi(2) * 1.2;
+                if distance <= puddle.radius + 0.45 {
+                    has_active_frost = true;
+                    let cold_feed = (1.0 - distance / (puddle.radius + 0.45)).powi(2) * 1.4;
                     simulation.cold[index] = (simulation.cold[index] + cold_feed * dt).min(2.5);
+                } else if distance <= puddle.radius + 2.5 {
+                    has_active_frost = true;
                 }
             }
         }
@@ -139,10 +143,20 @@ pub fn update_lake_freeze_simulation(
                 heat += (1.0 - distance / geyser.heat_radius).max(0.0) * 1.6;
             }
         }
-        let incoming_cold = (old_cold[index] * 0.97 + neighbor_cold * 0.03 - heat * dt).max(0.0);
+        let is_potion_active = has_active_frost || simulation.lifetime[index] < 8.0;
+        let incoming_cold = if is_potion_active {
+            (old_cold[index] * 0.97 + neighbor_cold * 0.03 - heat * dt).max(0.0)
+        } else {
+            (old_cold[index] * (1.0 - 0.75 * dt).max(0.0) - heat * dt).max(0.0)
+        };
         simulation.cold[index] = incoming_cold;
+        let melt_rate = if is_potion_active {
+            0.012
+        } else {
+            0.24 + (1.0 - incoming_cold.min(1.0)) * 0.20
+        };
         let growth = (incoming_cold * 0.62 + neighbor_ice * 0.18 - irregularity * 0.08 - heat * 0.62) * dt;
-        simulation.freeze[index] = (old_freeze[index] + growth - 0.012 * dt).clamp(0.0, 1.0);
+        simulation.freeze[index] = (old_freeze[index] + growth - melt_rate * dt).clamp(0.0, 1.0);
         simulation.lifetime[index] += dt;
     }
     for index in 0..simulation.freeze.len() {
@@ -164,17 +178,19 @@ pub fn update_lake_freeze_simulation(
                 depth_bias: 400.0,
                 ..default()
             });
+            let cell_yaw = Quat::from_rotation_y((index as f32 * 1.61803) % std::f32::consts::TAU);
+            let cell_mesh = meshes.add(crate::alchemy::create_irregular_ice_block_mesh(ICE_CELL_SIZE * 0.72, thickness, 10));
             let entity = commands
                 .spawn((
                     Name::new("Progressive_Ice_Cell"),
                     IceSimulationCell { index, solid: should_solid },
-                    Mesh3d(meshes.add(Cuboid::new(ICE_CELL_SIZE * 0.94, thickness, ICE_CELL_SIZE * 0.94))),
+                    Mesh3d(cell_mesh),
                     MeshMaterial3d(material),
-                    Transform::from_xyz(position.x, ICE_SURFACE_Y + thickness * 0.5, position.y),
+                    Transform::from_xyz(position.x, ICE_SURFACE_Y + thickness * 0.5, position.y).with_rotation(cell_yaw),
                 ))
                 .id();
             if should_solid {
-                commands.entity(entity).insert((RigidBody::Static, Collider::cuboid(ICE_CELL_SIZE * 0.94, thickness, ICE_CELL_SIZE * 0.94)));
+                commands.entity(entity).insert((RigidBody::Static, Collider::cylinder(ICE_CELL_SIZE * 0.65, thickness)));
             }
             simulation.tiles[index] = Some(entity);
         } else if !should_exist {
@@ -199,7 +215,7 @@ pub fn update_lake_freeze_simulation(
         if solid != cell.solid {
             cell.solid = solid;
             if solid {
-                commands.entity(entity).insert((RigidBody::Static, Collider::cuboid(ICE_CELL_SIZE * 0.94, thickness, ICE_CELL_SIZE * 0.94)));
+                commands.entity(entity).insert((RigidBody::Static, Collider::cylinder(ICE_CELL_SIZE * 0.65, thickness)));
             } else {
                 commands.entity(entity).remove::<(RigidBody, Collider)>();
                 commands.spawn((
@@ -213,10 +229,9 @@ pub fn update_lake_freeze_simulation(
                 ));
             }
         } else if solid {
-            commands.entity(entity).insert(Collider::cuboid(
-                ICE_CELL_SIZE * 0.94,
+            commands.entity(entity).insert(Collider::cylinder(
+                ICE_CELL_SIZE * 0.65,
                 thickness,
-                ICE_CELL_SIZE * 0.94,
             ));
         }
     }

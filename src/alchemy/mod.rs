@@ -1022,7 +1022,7 @@ fn spawn_alchemical_puddle(
             PotionPuddle {
                 color,
                 elapsed: 0.0,
-                max_lifetime: 75.0,
+                max_lifetime: 20.0,
                 radius,
                 effects,
                 is_wall: false,
@@ -1555,8 +1555,13 @@ pub fn update_potion_puddles(
             continue;
         }
 
-        let fade_start = 50.0;
-        let fade_duration = puddle.max_lifetime - fade_start;
+        let is_frost_puddle = puddle.effects.iter().any(|e| e.kind == AlchemicalEffectKind::Frost);
+        let fade_start = if is_frost_puddle {
+            (puddle.max_lifetime - 5.0).max(1.0)
+        } else {
+            50.0
+        };
+        let fade_duration = (puddle.max_lifetime - fade_start).max(0.1);
         let (alpha, fade_factor) = if puddle.elapsed <= fade_start {
             (0.88, 1.0)
         } else {
@@ -1564,7 +1569,6 @@ pub fn update_potion_puddles(
             (0.88 * (1.0 - progress), 1.0 - progress)
         };
 
-        let is_frost_puddle = puddle.effects.iter().any(|e| e.kind == AlchemicalEffectKind::Frost);
         if let Some(mat) = materials.get_mut(&mat_handle.0) {
             if is_frost_puddle {
                 mat.base_color = Color::srgba(0.68, 0.88, 0.98, alpha);

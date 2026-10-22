@@ -52,8 +52,10 @@ pub fn resolve_player_collision_sliding(
                     let dist = diff.length();
                     let min_dist = *radius + player_radius;
 
+                    let can_step_onto = obs_top <= step_max_feet || (has_grotto_terrain && player_feet >= -1.2 && obs_top <= 0.45);
+
                     if dist < min_dist {
-                        if obs_top <= step_max_feet {
+                        if can_step_onto {
                             let support = obs_top + PLAYER_BASE_HEIGHT;
                             if support > highest_support_y {
                                 highest_support_y = support;
@@ -119,8 +121,10 @@ pub fn resolve_player_collision_sliding(
                     let to_player = Vec2::new(local_x - clamped_x, local_z - clamped_z);
                     let dist = to_player.length();
 
+                    let can_step_onto = obs_top <= step_max_feet || (has_grotto_terrain && player_feet >= -1.2 && obs_top <= 0.45);
+
                     if inside_box || dist < player_radius {
-                        if obs_top <= step_max_feet {
+                        if can_step_onto {
                             let support = obs_top + PLAYER_BASE_HEIGHT;
                             if support > highest_support_y {
                                 highest_support_y = support;
@@ -171,7 +175,7 @@ pub fn resolve_player_collision_sliding(
 
     }
 
-    if is_grounded {
+    if is_grounded || (has_grotto_terrain && highest_support_y >= 0.20 + PLAYER_BASE_HEIGHT) {
         if highest_support_y > resolved.y {
             resolved.y = highest_support_y;
         } else if resolved.y > highest_support_y && (resolved.y - highest_support_y) <= STEP_OFFSET {
@@ -274,7 +278,7 @@ fn detect_player_surfaces<'a>(
     let mut on_ice = false;
     for (ice_tf, ice_cell) in ice_cells_iter {
         let distance = Vec2::new(translation.x - ice_tf.translation.x, translation.z - ice_tf.translation.z);
-        if ice_cell.solid && distance.x.abs() <= 0.42 && distance.y.abs() <= 0.42 && (translation.y - (ice_tf.translation.y + 1.2)).abs() <= 0.65 {
+        if ice_cell.solid && distance.length() <= 0.52 && (translation.y - (ice_tf.translation.y + 1.2)).abs() <= 0.85 {
             on_ice = true;
             break;
         }
@@ -282,7 +286,7 @@ fn detect_player_surfaces<'a>(
     if !on_ice {
         for (plat_tf, puddle) in ice_platforms_iter {
             let distance = Vec2::new(translation.x - plat_tf.translation.x, translation.z - plat_tf.translation.z).length();
-            if distance <= puddle.radius && (translation.y - (plat_tf.translation.y + 1.2)).abs() <= 0.85 {
+            if distance <= puddle.radius + 0.15 && (translation.y - (plat_tf.translation.y + 1.2)).abs() <= 0.85 {
                 on_ice = true;
                 break;
             }
@@ -392,7 +396,8 @@ fn calculate_landing_elevation(
                 let center = Vec2::new(obs_tf.translation.x, obs_tf.translation.z);
                 if (p_xz - center).length() <= *radius + 0.38 {
                     let top = obs_tf.translation.y + height * 0.5 + 1.2;
-                    if top <= pos.y + 0.1 && top > landing_y {
+                    let can_land = top <= pos.y + 0.45 || (has_lake && obs_tf.translation.y >= 0.15 && obs_tf.translation.y <= 0.35 && pos.y >= min_wade_floor + 0.95);
+                    if can_land && top > landing_y {
                         landing_y = top;
                     }
                 }
@@ -784,7 +789,7 @@ pub fn player_movement(
 
     let dt = time.delta_secs();
 
-    let obstacle_list: Vec<(&Transform, ObstacleShape)> = obstacles_query
+    let mut obstacle_list: Vec<(&Transform, ObstacleShape)> = obstacles_query
         .iter()
         .map(|(obs_tf, shape_opt)| {
             let shape = shape_opt.copied().unwrap_or(ObstacleShape::Cylinder {
@@ -794,6 +799,41 @@ pub fn player_movement(
             (obs_tf, shape)
         })
         .collect();
+
+    let ice_platform_shapes: Vec<(Transform, ObstacleShape)> = ice_platforms_query
+        .iter()
+        .map(|(tf, puddle)| {
+            (
+                *tf,
+                ObstacleShape::Cylinder {
+                    radius: puddle.radius,
+                    height: 0.22,
+                },
+            )
+        })
+        .collect();
+
+    for (tf, shape) in &ice_platform_shapes {
+        obstacle_list.push((tf, *shape));
+    }
+
+    let ice_cell_shapes: Vec<(Transform, ObstacleShape)> = ice_cells_query
+        .iter()
+        .filter(|(_, cell)| cell.solid)
+        .map(|(tf, _)| {
+            (
+                *tf,
+                ObstacleShape::Cylinder {
+                    radius: crate::alchemy::ice_simulation::ICE_CELL_SIZE * 0.65,
+                    height: 0.22,
+                },
+            )
+        })
+        .collect();
+
+    for (tf, shape) in &ice_cell_shapes {
+        obstacle_list.push((tf, *shape));
+    }
 
     let has_lake = !lake_query.is_empty();
 
@@ -1022,11 +1062,11 @@ pub fn player_movement(
         };
         let min_floor = floor_h.max(-1.1);
         let expected_support = if locomotion.is_on_ice {
-            0.17 + 0.13 + 1.2
+            0.18 + 0.11 + 1.2
         } else {
             min_floor + 1.2
         };
-        if locomotion.is_grounded && tf.translation.y > expected_support + 0.25 {
+        if locomotion.is_grounded && tf.translation.y > expected_support + 0.35 {
             locomotion.is_grounded = false;
         }
 
