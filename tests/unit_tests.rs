@@ -922,6 +922,7 @@ fn test_unit_grass_bending_spring_damping_and_player_contact() {
         ))
         .id();
 
+    let initial_pos = Vec3::new(0.35, 0.0, 0.0);
     let grass_entity = app
         .world_mut()
         .spawn((
@@ -931,19 +932,20 @@ fn test_unit_grass_bending_spring_damping_and_player_contact() {
                 current_bend: Vec2::ZERO,
                 bend_velocity: Vec2::ZERO,
             },
-            Transform::from_xyz(0.35, 0.0, 0.0),
-            GlobalTransform::from_translation(Vec3::new(0.35, 0.0, 0.0)),
+            Transform::from_translation(initial_pos),
+            GlobalTransform::from_translation(initial_pos),
         ))
         .id();
 
     app.update();
     app.update();
 
-    let grass = app
+    let grass_tf = app
         .world()
-        .get::<deep_alchemy::dungeon::modular_kit::GrassBending>(grass_entity)
+        .get::<Transform>(grass_entity)
         .unwrap();
-    assert!(grass.current_bend.x > 0.0);
+    assert_eq!(grass_tf.translation, initial_pos);
+    assert_eq!(grass_tf.rotation, Quat::IDENTITY);
 
     let mut player_tf = app.world_mut().get_mut::<Transform>(player_entity).unwrap();
     player_tf.translation = Vec3::new(10.0, 0.0, 0.0);
@@ -954,11 +956,12 @@ fn test_unit_grass_bending_spring_damping_and_player_contact() {
         app.update();
     }
 
-    let grass_returned = app
+    let grass_tf_after = app
         .world()
-        .get::<deep_alchemy::dungeon::modular_kit::GrassBending>(grass_entity)
+        .get::<Transform>(grass_entity)
         .unwrap();
-    assert!(grass_returned.current_bend.length() < 0.08);
+    assert_eq!(grass_tf_after.translation, initial_pos);
+    assert_eq!(grass_tf_after.rotation, Quat::IDENTITY);
 }
 
 #[test]

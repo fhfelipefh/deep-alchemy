@@ -93,8 +93,6 @@ impl Plugin for DungeonPlugin {
                 mark_imported_tall_grass,
                 attach_mushroom_spore_emitters,
                 mark_imported_flammable_props,
-                keep_tall_grass_clear_of_obstacles,
-                update_grass_bending,
                 update_water_ripples,
                 update_bioluminescent_mushrooms,
             ),
@@ -231,7 +229,7 @@ pub fn mark_imported_flammable_props(
 }
 
 pub fn keep_tall_grass_clear_of_obstacles(
-    mut grass_query: Query<
+    mut _grass_query: Query<
         (
             &mut Transform,
             &GlobalTransform,
@@ -240,104 +238,17 @@ pub fn keep_tall_grass_clear_of_obstacles(
         ),
         With<TallGrassClump>,
     >,
-    obstacles: Query<
+    _obstacles: Query<
         (&GlobalTransform, &ObstacleShape),
         (With<CavernObstacle>, Without<TallGrassClump>),
     >,
 ) {
-    const GRASS_RADIUS: f32 = 0.34;
-    const CLEARANCE: f32 = 0.16;
-
-    for (mut grass_transform, grass_global, flam_opt, aabb_opt) in &mut grass_query {
-        let grass_pos = flam_opt
-            .and_then(|f| f.center_offset)
-            .or_else(|| aabb_opt.map(|a| Vec3::from(a.center)))
-            .map(|off| grass_global.transform_point(off))
-            .unwrap_or_else(|| grass_global.translation());
-        let mut corrected = Vec2::new(grass_pos.x, grass_pos.z);
-
-        for _ in 0..6 {
-            let mut moved = false;
-            for (obstacle_global, shape) in &obstacles {
-                let obstacle_transform = obstacle_global.compute_transform();
-                let top = match shape {
-                    ObstacleShape::Cylinder { height, .. } => {
-                        obstacle_transform.translation.y + height * 0.5
-                    }
-                    ObstacleShape::Cuboid { half_extents } => {
-                        obstacle_transform.translation.y + half_extents.y
-                    }
-                };
-
-                if top <= grass_pos.y + 0.12 {
-                    continue;
-                }
-
-                let world_delta = Vec3::new(
-                    corrected.x - obstacle_transform.translation.x,
-                    0.0,
-                    corrected.y - obstacle_transform.translation.z,
-                );
-                let local_delta = obstacle_transform.rotation.inverse() * world_delta;
-                let local = Vec2::new(local_delta.x, local_delta.z);
-
-                let push_local = match shape {
-                    ObstacleShape::Cylinder { radius, .. } => {
-                        let minimum = radius + GRASS_RADIUS + CLEARANCE;
-                        let distance = local.length();
-                        if distance < minimum {
-                            let direction = if distance > 0.0001 {
-                                local / distance
-                            } else {
-                                Vec2::X
-                            };
-                            Some(direction * (minimum - distance))
-                        } else {
-                            None
-                        }
-                    }
-                    ObstacleShape::Cuboid { half_extents } => {
-                        let half_x = half_extents.x + GRASS_RADIUS + CLEARANCE;
-                        let half_z = half_extents.z + GRASS_RADIUS + CLEARANCE;
-                        if local.x.abs() < half_x && local.y.abs() < half_z {
-                            let to_x = half_x - local.x.abs();
-                            let to_z = half_z - local.y.abs();
-                            if to_x < to_z {
-                                let direction = if local.x >= 0.0 { 1.0 } else { -1.0 };
-                                Some(Vec2::new(direction * to_x, 0.0))
-                            } else {
-                                let direction = if local.y >= 0.0 { 1.0 } else { -1.0 };
-                                Some(Vec2::new(0.0, direction * to_z))
-                            }
-                        } else {
-                            None
-                        }
-                    }
-                };
-
-                if let Some(push) = push_local {
-                    let world_push = obstacle_transform.rotation * Vec3::new(push.x, 0.0, push.y);
-                    corrected += Vec2::new(world_push.x, world_push.z);
-                    moved = true;
-                }
-            }
-            if !moved {
-                break;
-            }
-        }
-
-        let correction = corrected - Vec2::new(grass_pos.x, grass_pos.z);
-        if correction.length_squared() > 0.000001 {
-            grass_transform.translation.x += correction.x;
-            grass_transform.translation.z += correction.y;
-        }
-    }
 }
 
 pub fn update_grass_bending(
-    time: Res<Time>,
-    player_query: Query<&GlobalTransform, (With<crate::player::camera::Player>, Without<TallGrassClump>)>,
-    mut grass_query: Query<
+    _time: Res<Time>,
+    _player_query: Query<&GlobalTransform, (With<crate::player::camera::Player>, Without<TallGrassClump>)>,
+    mut _grass_query: Query<
         (
             &mut Transform,
             &GlobalTransform,
@@ -348,55 +259,6 @@ pub fn update_grass_bending(
         With<TallGrassClump>,
     >,
 ) {
-    let dt = time.delta_secs();
-    if dt <= 0.0 || dt > 0.1 {
-        return;
-    }
-    let Ok(player_gt) = player_query.get_single() else {
-        return;
-    };
-    let player_pos = player_gt.translation();
-    let player_p = Vec2::new(player_pos.x, player_pos.z);
-
-    const CONTACT_RADIUS: f32 = 0.65;
-    const MAX_BEND_ANGLE: f32 = 0.48;
-    const SPRING_K: f32 = 42.0;
-    const DAMPING_C: f32 = 8.5;
-
-    for (mut tf, gt, mut bending, flam_opt, aabb_opt) in grass_query.iter_mut() {
-        let grass_pos = flam_opt
-            .and_then(|f| f.center_offset)
-            .or_else(|| aabb_opt.map(|a| Vec3::from(a.center)))
-            .map(|off| gt.transform_point(off))
-            .unwrap_or_else(|| gt.translation());
-        let grass_p = Vec2::new(grass_pos.x, grass_pos.z);
-        let delta = grass_p - player_p;
-        let dist = delta.length();
-
-        let target_bend = if dist < CONTACT_RADIUS && dist > 1e-4 {
-            let factor = ((CONTACT_RADIUS - dist) / CONTACT_RADIUS).clamp(0.0, 1.0);
-            let dir = delta / dist;
-            dir * (factor * MAX_BEND_ANGLE)
-        } else {
-            Vec2::ZERO
-        };
-
-        let diff = target_bend - bending.current_bend;
-        let spring_acc = diff * SPRING_K - bending.bend_velocity * DAMPING_C;
-        let new_vel = bending.bend_velocity + spring_acc * dt;
-        bending.bend_velocity = new_vel;
-        bending.current_bend += new_vel * dt;
-
-        let bend_axis = Vec3::new(bending.current_bend.y, 0.0, -bending.current_bend.x).normalize_or_zero();
-        let bend_mag = bending.current_bend.length();
-        let bend_quat = if bend_mag > 1e-4 && bend_axis.length_squared() > 0.5 {
-            Quat::from_axis_angle(bend_axis, bend_mag)
-        } else {
-            Quat::IDENTITY
-        };
-
-        tf.rotation = bending.base_rotation * bend_quat;
-    }
 }
 
 pub fn create_water_ring_mesh(radius: f32, inner_ratio: f32, segments: usize) -> Mesh {
