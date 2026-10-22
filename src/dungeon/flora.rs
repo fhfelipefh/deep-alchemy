@@ -7,6 +7,8 @@ pub struct DandelionPlant {
     pub sway_phase: f32,
     pub base_yaw: f32,
     pub base_rotation: Quat,
+    pub base_translation: Vec3,
+    pub pivot: Vec3,
 }
 
 #[derive(Resource)]
@@ -120,6 +122,8 @@ pub fn spawn_dandelion(
                 sway_phase,
                 base_yaw,
                 base_rotation: Quat::from_rotation_y(base_yaw),
+                base_translation: base_pos,
+                pivot: Vec3::ZERO,
             },
             root_tf,
             GlobalTransform::default(),
@@ -551,6 +555,9 @@ pub fn animate_dandelions(
         };
         let wind = Quat::from_rotation_x(sway_x) * Quat::from_rotation_z(sway_z);
         tf.rotation = base * wind;
+        if plant.pivot != Vec3::ZERO {
+            tf.translation = plant.base_translation + plant.pivot - (tf.rotation * plant.pivot);
+        }
     }
 }
 

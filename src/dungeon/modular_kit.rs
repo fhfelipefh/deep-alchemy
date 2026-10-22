@@ -66,6 +66,8 @@ pub struct MushroomCap;
 pub struct MushroomOrganicBreathing {
     pub base_scale: Vec3,
     pub base_rotation: Quat,
+    pub base_translation: Vec3,
+    pub pivot: Vec3,
     pub phase_offset: f32,
 }
 
@@ -187,6 +189,7 @@ pub fn attach_mushroom_spore_emitters(
 
             let base_scale = tf_opt.map(|t| t.scale).unwrap_or(Vec3::ONE);
             let base_rotation = tf_opt.map(|t| t.rotation).unwrap_or(Quat::IDENTITY);
+            let base_translation = tf_opt.map(|t| t.translation).unwrap_or(Vec3::ZERO);
             let phase = (entity.index() as f32 * 0.6180339) % 6.28318;
 
             commands
@@ -199,6 +202,8 @@ pub fn attach_mushroom_spore_emitters(
                     MushroomOrganicBreathing {
                         base_scale,
                         base_rotation,
+                        base_translation,
+                        pivot: center_offset,
                         phase_offset: phase,
                     },
                     BioluminescentMushroom {
@@ -269,22 +274,20 @@ pub fn mark_imported_flammable_props(
             if s.contains("Dandelion") {
                 let hash = (entity.index() as f32 * 0.6180339) % 6.28318;
                 let rot = tf_opt.map(|t| t.rotation).unwrap_or(Quat::IDENTITY);
+                let trans = tf_opt.map(|t| t.translation).unwrap_or(Vec3::ZERO);
                 let yaw = rot.to_euler(EulerRot::YXZ).0;
+                let min_y = mesh_opt
+                    .and_then(|h| meshes.as_ref().and_then(|m| m.get(&h.0)))
+                    .and_then(|m| m.compute_aabb())
+                    .map(|a| a.center[1] - a.half_extents[1])
+                    .unwrap_or(center_offset.y);
+                let pivot = Vec3::new(center_offset.x, min_y, center_offset.z);
                 ent_cmd.insert(crate::dungeon::flora::DandelionPlant {
                     sway_phase: hash,
                     base_yaw: yaw,
                     base_rotation: rot,
-                });
-            } else if (s.contains("Stem") && (s.contains("Shroom") || s.contains("Mushroom")))
-                || (s.contains("Shroom") || s.contains("Mushroom"))
-            {
-                let base_scale = tf_opt.map(|t| t.scale).unwrap_or(Vec3::ONE);
-                let base_rotation = tf_opt.map(|t| t.rotation).unwrap_or(Quat::IDENTITY);
-                let phase = (entity.index() as f32 * 0.6180339) % 6.28318;
-                ent_cmd.insert(MushroomOrganicBreathing {
-                    base_scale,
-                    base_rotation,
-                    phase_offset: phase,
+                    base_translation: trans,
+                    pivot,
                 });
             }
         }
@@ -516,12 +519,12 @@ pub fn update_bioluminescent_mushrooms(
 
         if let Some((breathing, ref mut tf)) = breathing_opt {
             let squash_amp = if is_surging {
-                m_prof.idle_squash_amplitude * 1.6
+                m_prof.idle_squash_amplitude * 1.5
             } else {
                 m_prof.idle_squash_amplitude
             };
             let sway_amp = if is_surging {
-                m_prof.idle_sway_amplitude * 1.5
+                m_prof.idle_sway_amplitude * 1.4
             } else {
                 m_prof.idle_sway_amplitude
             };
@@ -539,6 +542,11 @@ pub fn update_bioluminescent_mushrooms(
             let pitch = (phase * 0.7).cos() * sway_amp;
             let roll = (phase * 0.5).sin() * (sway_amp * 0.75);
             tf.rotation = breathing.base_rotation * Quat::from_rotation_x(pitch) * Quat::from_rotation_z(roll);
+
+            if breathing.pivot != Vec3::ZERO {
+                let rot_scale = tf.rotation * (tf.scale * breathing.pivot);
+                tf.translation = breathing.base_translation + breathing.pivot - rot_scale;
+            }
         }
 
         if is_surging && wave > 0.95 && crate::render::particles::fastrand::f32() < 0.25 {
@@ -575,6 +583,11 @@ pub fn update_bioluminescent_mushrooms(
         let pitch = (phase * 0.7).cos() * m_prof.idle_sway_amplitude;
         let roll = (phase * 0.5).sin() * (m_prof.idle_sway_amplitude * 0.75);
         tf.rotation = breathing.base_rotation * Quat::from_rotation_x(pitch) * Quat::from_rotation_z(roll);
+
+        if breathing.pivot != Vec3::ZERO {
+            let rot_scale = tf.rotation * (tf.scale * breathing.pivot);
+            tf.translation = breathing.base_translation + breathing.pivot - rot_scale;
+        }
     }
 }
 

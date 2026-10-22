@@ -3080,6 +3080,8 @@ fn test_unit_dandelion_idle_animation_and_player_interaction() {
                 sway_phase: 0.0,
                 base_yaw: 0.0,
                 base_rotation: Quat::IDENTITY,
+                base_translation: Vec3::new(2.0, 0.0, 2.0),
+                pivot: Vec3::ZERO,
             },
             Transform::from_xyz(2.0, 0.0, 2.0),
             GlobalTransform::from_xyz(2.0, 0.0, 2.0),
@@ -3142,6 +3144,8 @@ fn test_unit_mushroom_organic_breathing_and_file_driven_profile() {
             deep_alchemy::dungeon::modular_kit::MushroomOrganicBreathing {
                 base_scale: Vec3::splat(1.0),
                 base_rotation: Quat::IDENTITY,
+                base_translation: Vec3::new(0.0, 1.0, 0.0),
+                pivot: Vec3::ZERO,
                 phase_offset: 0.0,
             },
             deep_alchemy::dungeon::modular_kit::BioluminescentMushroom {
@@ -3196,4 +3200,82 @@ fn test_unit_mushroom_organic_breathing_and_file_driven_profile() {
     );
 
     app.world_mut().entity_mut(player_ent).despawn();
+}
+
+#[test]
+fn test_unit_dandelion_and_mushroom_pivot_stability() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_plugins(bevy::transform::TransformPlugin);
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(50)));
+
+    let config = deep_alchemy::dungeon::vegetation_animation::load_vegetation_animations_from_disk(
+        "assets/data/vegetation_animations.ron",
+    );
+    app.insert_resource(config);
+
+    app.add_systems(
+        Update,
+        (
+            deep_alchemy::dungeon::flora::animate_dandelions,
+            deep_alchemy::dungeon::modular_kit::update_bioluminescent_mushrooms,
+        ),
+    );
+
+    let pivot_point = Vec3::new(-4.5, 1.8, -4.6);
+    let shroom_ent = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::dungeon::modular_kit::MushroomCap,
+            deep_alchemy::dungeon::modular_kit::MushroomOrganicBreathing {
+                base_scale: Vec3::splat(1.0),
+                base_rotation: Quat::IDENTITY,
+                base_translation: Vec3::ZERO,
+                pivot: pivot_point,
+                phase_offset: 0.0,
+            },
+            deep_alchemy::dungeon::modular_kit::BioluminescentMushroom {
+                base_intensity: 1000.0,
+                base_color: Color::srgb(0.12, 0.96, 0.88),
+                phase: 0.0,
+                surge_timer: 0.0,
+            },
+            Transform::IDENTITY,
+            GlobalTransform::IDENTITY,
+        ))
+        .id();
+
+    let d_pivot = Vec3::new(-3.4, 0.3, -1.9);
+    let dandelion_ent = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::dungeon::flora::DandelionPlant {
+                sway_phase: 0.0,
+                base_yaw: 0.0,
+                base_rotation: Quat::IDENTITY,
+                base_translation: Vec3::ZERO,
+                pivot: d_pivot,
+            },
+            Transform::IDENTITY,
+            GlobalTransform::IDENTITY,
+        ))
+        .id();
+
+    for _ in 0..20 {
+        app.update();
+    }
+
+    let shroom_tf = app.world().get::<Transform>(shroom_ent).unwrap();
+    let computed_shroom_pivot = shroom_tf.translation + shroom_tf.rotation * (shroom_tf.scale * pivot_point);
+    assert!(
+        (computed_shroom_pivot - pivot_point).length() < 0.001,
+        "Mushroom pivot center must remain stationary during organic breathing"
+    );
+
+    let dandelion_tf = app.world().get::<Transform>(dandelion_ent).unwrap();
+    let computed_dandelion_pivot = dandelion_tf.translation + dandelion_tf.rotation * d_pivot;
+    assert!(
+        (computed_dandelion_pivot - d_pivot).length() < 0.001,
+        "Dandelion root base must remain stationary on ground during sway"
+    );
 }

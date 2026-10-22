@@ -50,13 +50,13 @@ impl Default for DandelionAnimationProfile {
     fn default() -> Self {
         Self {
             id: "default_dandelion_nod".to_string(),
-            idle_sway_speed: 0.50,
-            idle_pitch_amplitude: 0.014,
-            idle_roll_amplitude: 0.009,
+            idle_sway_speed: 0.040,
+            idle_pitch_amplitude: 0.0012,
+            idle_roll_amplitude: 0.0008,
             secondary_frequency_mult: 0.45,
             secondary_amplitude_mult: 0.38,
             player_push_radius: 0.65,
-            player_push_strength: 0.12,
+            player_push_strength: 0.010,
         }
     }
 }
@@ -75,11 +75,11 @@ impl Default for MushroomAnimationProfile {
     fn default() -> Self {
         Self {
             id: "default_mushroom_pulse".to_string(),
-            idle_pulse_speed: 0.32,
-            idle_squash_amplitude: 0.020,
-            idle_sway_amplitude: 0.007,
+            idle_pulse_speed: 0.025,
+            idle_squash_amplitude: 0.0015,
+            idle_sway_amplitude: 0.0005,
             player_reaction_radius: 2.5,
-            player_reaction_multiplier: 2.2,
+            player_reaction_multiplier: 1.20,
         }
     }
 }
