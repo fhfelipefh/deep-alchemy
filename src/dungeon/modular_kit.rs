@@ -62,6 +62,13 @@ pub struct BioluminescentMushroom {
 #[derive(Component)]
 pub struct MushroomCap;
 
+#[derive(Component, Debug, Clone)]
+pub struct MushroomOrganicBreathing {
+    pub base_scale: Vec3,
+    pub base_rotation: Quat,
+    pub phase_offset: f32,
+}
+
 #[derive(Component)]
 pub struct MushroomSporeAttached;
 
@@ -99,6 +106,7 @@ impl Plugin for DungeonPlugin {
                 mark_imported_flammable_props,
                 update_water_ripples,
                 update_bioluminescent_mushrooms,
+                crate::dungeon::flora::animate_dandelions,
                 crate::dungeon::vegetation_animation::update_vegetation_foliage_animation,
             ),
         );
@@ -153,7 +161,7 @@ pub fn mark_imported_tall_grass(
 pub fn attach_mushroom_spore_emitters(
     mut commands: Commands,
     mushroom_caps: Query<
-        (Entity, Option<&Name>, Option<&Mesh3d>),
+        (Entity, Option<&Name>, Option<&Mesh3d>, Option<&Transform>),
         (
             Or<(With<MushroomCap>, With<Name>)>,
             Without<MushroomSporeAttached>,
@@ -161,7 +169,7 @@ pub fn attach_mushroom_spore_emitters(
     >,
     meshes: Option<Res<Assets<Mesh>>>,
 ) {
-    for (entity, name_opt, mesh_opt) in &mushroom_caps {
+    for (entity, name_opt, mesh_opt, tf_opt) in &mushroom_caps {
         let is_target = if let Some(name) = name_opt {
             let s = name.as_str();
             (s.contains("Cap") && (s.contains("Shroom") || s.contains("Mushroom")))
@@ -177,6 +185,10 @@ pub fn attach_mushroom_spore_emitters(
                 .map(|a| Vec3::from(a.center))
                 .unwrap_or(Vec3::ZERO);
 
+            let base_scale = tf_opt.map(|t| t.scale).unwrap_or(Vec3::ONE);
+            let base_rotation = tf_opt.map(|t| t.rotation).unwrap_or(Quat::IDENTITY);
+            let phase = (entity.index() as f32 * 0.6180339) % 6.28318;
+
             commands
                 .entity(entity)
                 .insert((
@@ -184,6 +196,11 @@ pub fn attach_mushroom_spore_emitters(
                     InheritedVisibility::default(),
                     MushroomCap,
                     MushroomSporeAttached,
+                    MushroomOrganicBreathing {
+                        base_scale,
+                        base_rotation,
+                        phase_offset: phase,
+                    },
                     BioluminescentMushroom {
                         base_intensity: 1.0,
                         base_color: Color::srgb(0.12, 0.96, 0.88),
@@ -209,7 +226,7 @@ pub fn attach_mushroom_spore_emitters(
 pub fn mark_imported_flammable_props(
     mut commands: Commands,
     named_entities: Query<
-        (Entity, &Name, Option<&Mesh3d>),
+        (Entity, &Name, Option<&Mesh3d>, Option<&Transform>),
         (
             Added<Name>,
             Without<crate::alchemy::Flammable>,
@@ -219,7 +236,7 @@ pub fn mark_imported_flammable_props(
     >,
     meshes: Option<Res<Assets<Mesh>>>,
 ) {
-    for (entity, name, mesh_opt) in &named_entities {
+    for (entity, name, mesh_opt, tf_opt) in &named_entities {
         let s = name.as_str();
         let (duration, is_flammable) = if (s.contains("Stem") && (s.contains("Shroom") || s.contains("Mushroom")))
             || (s.contains("Shroom") || s.contains("Mushroom"))
@@ -244,9 +261,32 @@ pub fn mark_imported_flammable_props(
                 .map(|a| Vec3::from(a.center))
                 .unwrap_or(Vec3::ZERO);
 
-            commands.entity(entity).insert(
+            let mut ent_cmd = commands.entity(entity);
+            ent_cmd.insert(
                 crate::alchemy::Flammable::with_duration(duration).with_center_offset(center_offset),
             );
+
+            if s.contains("Dandelion") {
+                let hash = (entity.index() as f32 * 0.6180339) % 6.28318;
+                let rot = tf_opt.map(|t| t.rotation).unwrap_or(Quat::IDENTITY);
+                let yaw = rot.to_euler(EulerRot::YXZ).0;
+                ent_cmd.insert(crate::dungeon::flora::DandelionPlant {
+                    sway_phase: hash,
+                    base_yaw: yaw,
+                    base_rotation: rot,
+                });
+            } else if (s.contains("Stem") && (s.contains("Shroom") || s.contains("Mushroom")))
+                || (s.contains("Shroom") || s.contains("Mushroom"))
+            {
+                let base_scale = tf_opt.map(|t| t.scale).unwrap_or(Vec3::ONE);
+                let base_rotation = tf_opt.map(|t| t.rotation).unwrap_or(Quat::IDENTITY);
+                let phase = (entity.index() as f32 * 0.6180339) % 6.28318;
+                ent_cmd.insert(MushroomOrganicBreathing {
+                    base_scale,
+                    base_rotation,
+                    phase_offset: phase,
+                });
+            }
         }
     }
 }
@@ -402,6 +442,7 @@ pub fn update_water_ripples(
 
 pub fn update_bioluminescent_mushrooms(
     time: Res<Time>,
+    config: Option<Res<crate::dungeon::vegetation_animation::VegetationAnimationConfig>>,
     player_query: Query<&GlobalTransform, (With<crate::player::camera::Player>, Without<BioluminescentMushroom>)>,
     puddles_query: Query<&GlobalTransform, (With<crate::alchemy::PotionPuddle>, Without<BioluminescentMushroom>)>,
     mut mushrooms: Query<(
@@ -409,7 +450,12 @@ pub fn update_bioluminescent_mushrooms(
         &GlobalTransform,
         &mut BioluminescentMushroom,
         Option<&mut PointLight>,
-    )>,
+        Option<(&MushroomOrganicBreathing, &mut Transform)>,
+    ), Without<crate::player::camera::Player>>,
+    mut passive_shrooms: Query<(
+        &MushroomOrganicBreathing,
+        &mut Transform,
+    ), (Without<BioluminescentMushroom>, Without<crate::player::camera::Player>)>,
     mut commands: Commands,
 ) {
     let dt = time.delta_secs();
@@ -417,13 +463,20 @@ pub fn update_bioluminescent_mushrooms(
         return;
     }
 
+    let default_prof = crate::dungeon::vegetation_animation::MushroomAnimationProfile::default();
+    let m_prof = config
+        .as_ref()
+        .map(|c| &c.mushroom_profile)
+        .unwrap_or(&default_prof);
+
+    let elapsed = time.elapsed_secs();
     let player_pos = player_query.get_single().map(|gt| gt.translation()).unwrap_or(Vec3::splat(9999.0));
 
-    for (_entity, gt, mut shroom, light_opt) in mushrooms.iter_mut() {
+    for (_entity, gt, mut shroom, light_opt, mut breathing_opt) in mushrooms.iter_mut() {
         let shroom_pos = gt.translation();
 
         let dist_to_player = shroom_pos.distance(player_pos);
-        if dist_to_player < 2.5 {
+        if dist_to_player < m_prof.player_reaction_radius {
             shroom.surge_timer = shroom.surge_timer.max(2.5);
         }
 
@@ -439,7 +492,11 @@ pub fn update_bioluminescent_mushrooms(
             shroom.surge_timer = (shroom.surge_timer - dt).max(0.0);
         }
 
-        let frequency = if is_surging { 0.85 } else { 0.20 };
+        let frequency = if is_surging {
+            m_prof.idle_pulse_speed * m_prof.player_reaction_multiplier
+        } else {
+            m_prof.idle_pulse_speed
+        };
         shroom.phase += std::f32::consts::TAU * frequency * dt;
 
         let wave = shroom.phase.sin();
@@ -455,6 +512,33 @@ pub fn update_bioluminescent_mushrooms(
                 (base_srgb.green + hue_shift * 0.05).clamp(0.7, 1.0),
                 (base_srgb.blue + hue_shift * 0.12).clamp(0.7, 1.0),
             );
+        }
+
+        if let Some((breathing, ref mut tf)) = breathing_opt {
+            let squash_amp = if is_surging {
+                m_prof.idle_squash_amplitude * 1.6
+            } else {
+                m_prof.idle_squash_amplitude
+            };
+            let sway_amp = if is_surging {
+                m_prof.idle_sway_amplitude * 1.5
+            } else {
+                m_prof.idle_sway_amplitude
+            };
+
+            let phase = elapsed * frequency * std::f32::consts::TAU + breathing.phase_offset;
+            let w = phase.sin();
+            let squash = w * squash_amp;
+
+            tf.scale = Vec3::new(
+                breathing.base_scale.x * (1.0 - squash * 0.5),
+                breathing.base_scale.y * (1.0 + squash),
+                breathing.base_scale.z * (1.0 - squash * 0.5),
+            );
+
+            let pitch = (phase * 0.7).cos() * sway_amp;
+            let roll = (phase * 0.5).sin() * (sway_amp * 0.75);
+            tf.rotation = breathing.base_rotation * Quat::from_rotation_x(pitch) * Quat::from_rotation_z(roll);
         }
 
         if is_surging && wave > 0.95 && crate::render::particles::fastrand::f32() < 0.25 {
@@ -475,6 +559,22 @@ pub fn update_bioluminescent_mushrooms(
                 },
             ));
         }
+    }
+
+    for (breathing, mut tf) in passive_shrooms.iter_mut() {
+        let phase = elapsed * m_prof.idle_pulse_speed * std::f32::consts::TAU + breathing.phase_offset;
+        let w = phase.sin();
+        let squash = w * m_prof.idle_squash_amplitude;
+
+        tf.scale = Vec3::new(
+            breathing.base_scale.x * (1.0 - squash * 0.5),
+            breathing.base_scale.y * (1.0 + squash),
+            breathing.base_scale.z * (1.0 - squash * 0.5),
+        );
+
+        let pitch = (phase * 0.7).cos() * m_prof.idle_sway_amplitude;
+        let roll = (phase * 0.5).sin() * (m_prof.idle_sway_amplitude * 0.75);
+        tf.rotation = breathing.base_rotation * Quat::from_rotation_x(pitch) * Quat::from_rotation_z(roll);
     }
 }
 

@@ -34,20 +34,78 @@ impl Default for VegetationProfile {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DandelionAnimationProfile {
+    pub id: String,
+    pub idle_sway_speed: f32,
+    pub idle_pitch_amplitude: f32,
+    pub idle_roll_amplitude: f32,
+    pub secondary_frequency_mult: f32,
+    pub secondary_amplitude_mult: f32,
+    pub player_push_radius: f32,
+    pub player_push_strength: f32,
+}
+
+impl Default for DandelionAnimationProfile {
+    fn default() -> Self {
+        Self {
+            id: "default_dandelion_nod".to_string(),
+            idle_sway_speed: 0.50,
+            idle_pitch_amplitude: 0.014,
+            idle_roll_amplitude: 0.009,
+            secondary_frequency_mult: 0.45,
+            secondary_amplitude_mult: 0.38,
+            player_push_radius: 0.65,
+            player_push_strength: 0.12,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MushroomAnimationProfile {
+    pub id: String,
+    pub idle_pulse_speed: f32,
+    pub idle_squash_amplitude: f32,
+    pub idle_sway_amplitude: f32,
+    pub player_reaction_radius: f32,
+    pub player_reaction_multiplier: f32,
+}
+
+impl Default for MushroomAnimationProfile {
+    fn default() -> Self {
+        Self {
+            id: "default_mushroom_pulse".to_string(),
+            idle_pulse_speed: 0.32,
+            idle_squash_amplitude: 0.020,
+            idle_sway_amplitude: 0.007,
+            player_reaction_radius: 2.5,
+            player_reaction_multiplier: 2.2,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VegetationDatabase {
     pub clumps: Vec<VegetationProfile>,
+    #[serde(default)]
+    pub dandelions: Vec<DandelionAnimationProfile>,
+    #[serde(default)]
+    pub mushrooms: Vec<MushroomAnimationProfile>,
 }
 
 #[derive(Resource, Debug, Clone)]
 pub struct VegetationAnimationConfig {
     pub profile: VegetationProfile,
+    pub dandelion_profile: DandelionAnimationProfile,
+    pub mushroom_profile: MushroomAnimationProfile,
 }
 
 impl Default for VegetationAnimationConfig {
     fn default() -> Self {
         Self {
             profile: VegetationProfile::default(),
+            dandelion_profile: DandelionAnimationProfile::default(),
+            mushroom_profile: MushroomAnimationProfile::default(),
         }
     }
 }
@@ -55,9 +113,14 @@ impl Default for VegetationAnimationConfig {
 pub fn load_vegetation_animations_from_disk<P: AsRef<Path>>(path: P) -> VegetationAnimationConfig {
     if let Ok(content) = fs::read_to_string(path) {
         if let Ok(database) = ron::from_str::<VegetationDatabase>(&content) {
-            if let Some(first) = database.clumps.into_iter().next() {
-                return VegetationAnimationConfig { profile: first };
-            }
+            let grass = database.clumps.into_iter().next().unwrap_or_default();
+            let dandelion = database.dandelions.into_iter().next().unwrap_or_default();
+            let mushroom = database.mushrooms.into_iter().next().unwrap_or_default();
+            return VegetationAnimationConfig {
+                profile: grass,
+                dandelion_profile: dandelion,
+                mushroom_profile: mushroom,
+            };
         }
     }
     VegetationAnimationConfig::default()

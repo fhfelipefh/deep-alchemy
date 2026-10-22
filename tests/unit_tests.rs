@@ -3052,3 +3052,148 @@ fn test_unit_vegetation_foliage_animation_anchored_roots() {
 
     assert!(app.world().get_entity(grass_ent).is_ok());
 }
+
+#[test]
+fn test_unit_dandelion_idle_animation_and_player_interaction() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_plugins(bevy::transform::TransformPlugin);
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(50)));
+
+    let config = deep_alchemy::dungeon::vegetation_animation::load_vegetation_animations_from_disk(
+        "assets/data/vegetation_animations.ron",
+    );
+    assert_eq!(config.dandelion_profile.id, "ambient_dandelion_nod");
+    assert!(config.dandelion_profile.idle_sway_speed > 0.0);
+    assert!(config.dandelion_profile.idle_pitch_amplitude > 0.0);
+    app.insert_resource(config);
+
+    app.add_systems(
+        Update,
+        deep_alchemy::dungeon::flora::animate_dandelions,
+    );
+
+    let dandelion_ent = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::dungeon::flora::DandelionPlant {
+                sway_phase: 0.0,
+                base_yaw: 0.0,
+                base_rotation: Quat::IDENTITY,
+            },
+            Transform::from_xyz(2.0, 0.0, 2.0),
+            GlobalTransform::from_xyz(2.0, 0.0, 2.0),
+        ))
+        .id();
+
+    app.update();
+    let rot_initial = app.world().get::<Transform>(dandelion_ent).unwrap().rotation;
+
+    for _ in 0..10 {
+        app.update();
+    }
+
+    let rot_after_idle = app.world().get::<Transform>(dandelion_ent).unwrap().rotation;
+    assert_ne!(rot_initial, rot_after_idle, "Dandelion must animate gently in idle state");
+
+    let player_ent = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            Transform::from_xyz(2.1, 0.0, 2.0),
+            GlobalTransform::from_xyz(2.1, 0.0, 2.0),
+        ))
+        .id();
+
+    app.update();
+    let rot_pushed = app.world().get::<Transform>(dandelion_ent).unwrap().rotation;
+    assert_ne!(rot_after_idle, rot_pushed, "Dandelion must deflect when player is nearby");
+
+    app.world_mut().entity_mut(player_ent).despawn();
+    for _ in 0..10 {
+        app.update();
+    }
+}
+
+#[test]
+fn test_unit_mushroom_organic_breathing_and_file_driven_profile() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_plugins(bevy::transform::TransformPlugin);
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(50)));
+
+    let config = deep_alchemy::dungeon::vegetation_animation::load_vegetation_animations_from_disk(
+        "assets/data/vegetation_animations.ron",
+    );
+    assert_eq!(config.mushroom_profile.id, "ambient_mushroom_pulse");
+    assert!(config.mushroom_profile.idle_pulse_speed > 0.0);
+    assert!(config.mushroom_profile.idle_squash_amplitude > 0.0);
+    app.insert_resource(config);
+
+    app.add_systems(
+        Update,
+        deep_alchemy::dungeon::modular_kit::update_bioluminescent_mushrooms,
+    );
+
+    let shroom_ent = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::dungeon::modular_kit::MushroomCap,
+            deep_alchemy::dungeon::modular_kit::MushroomOrganicBreathing {
+                base_scale: Vec3::splat(1.0),
+                base_rotation: Quat::IDENTITY,
+                phase_offset: 0.0,
+            },
+            deep_alchemy::dungeon::modular_kit::BioluminescentMushroom {
+                base_intensity: 1000.0,
+                base_color: Color::srgb(0.12, 0.96, 0.88),
+                phase: 0.0,
+                surge_timer: 0.0,
+            },
+            Transform::from_xyz(0.0, 1.0, 0.0),
+            GlobalTransform::from_xyz(0.0, 1.0, 0.0),
+        ))
+        .id();
+
+    let initial_scale = app.world().get::<Transform>(shroom_ent).unwrap().scale;
+    assert_eq!(initial_scale, Vec3::ONE);
+
+    for _ in 0..10 {
+        app.update();
+    }
+
+    let breathing_scale = app.world().get::<Transform>(shroom_ent).unwrap().scale;
+    assert_ne!(
+        breathing_scale,
+        Vec3::ONE,
+        "Mushroom scale must breathe organically over time"
+    );
+
+    let breathing_rot = app.world().get::<Transform>(shroom_ent).unwrap().rotation;
+    assert_ne!(
+        breathing_rot,
+        Quat::IDENTITY,
+        "Mushroom rotation must have subtle idle sway"
+    );
+
+    let player_ent = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            Transform::from_xyz(0.5, 1.0, 0.0),
+            GlobalTransform::from_xyz(0.5, 1.0, 0.0),
+        ))
+        .id();
+
+    app.update();
+    let shroom = app
+        .world()
+        .get::<deep_alchemy::dungeon::modular_kit::BioluminescentMushroom>(shroom_ent)
+        .unwrap();
+    assert!(
+        shroom.surge_timer > 0.0,
+        "Mushroom must react and surge when player is close"
+    );
+
+    app.world_mut().entity_mut(player_ent).despawn();
+}

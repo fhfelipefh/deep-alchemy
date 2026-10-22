@@ -122,6 +122,30 @@ fn test_architecture_vegetation_animations_ron_integrity() {
         assert!(profile.spring_stiffness > 0.0, "Spring stiffness must be positive");
         assert!(profile.spring_damping > 0.0, "Spring damping must be positive");
     }
+
+    assert!(
+        !database.dandelions.is_empty(),
+        "Vegetation database must contain dandelion animation profiles"
+    );
+    for profile in &database.dandelions {
+        assert!(!profile.id.is_empty(), "Dandelion profile id must not be empty");
+        assert!(profile.idle_sway_speed > 0.0, "Dandelion idle sway speed must be positive");
+        assert!(profile.idle_pitch_amplitude > 0.0, "Dandelion pitch amplitude must be positive");
+        assert!(profile.idle_roll_amplitude > 0.0, "Dandelion roll amplitude must be positive");
+        assert!(profile.player_push_radius > 0.0, "Dandelion push radius must be positive");
+    }
+
+    assert!(
+        !database.mushrooms.is_empty(),
+        "Vegetation database must contain mushroom animation profiles"
+    );
+    for profile in &database.mushrooms {
+        assert!(!profile.id.is_empty(), "Mushroom profile id must not be empty");
+        assert!(profile.idle_pulse_speed > 0.0, "Mushroom idle pulse speed must be positive");
+        assert!(profile.idle_squash_amplitude > 0.0, "Mushroom squash amplitude must be positive");
+        assert!(profile.idle_sway_amplitude > 0.0, "Mushroom sway amplitude must be positive");
+        assert!(profile.player_reaction_radius > 0.0, "Mushroom player reaction radius must be positive");
+    }
 }
 
 #[test]
@@ -1088,6 +1112,7 @@ fn test_architecture_full_game_app_schedule_integrity_and_disjoint_queries_gate(
         deep_alchemy::dungeon::modular_kit::update_grass_bending,
         deep_alchemy::dungeon::modular_kit::update_water_ripples,
         deep_alchemy::dungeon::modular_kit::update_bioluminescent_mushrooms,
+        deep_alchemy::dungeon::flora::animate_dandelions,
         deep_alchemy::dungeon::vegetation_animation::update_vegetation_foliage_animation,
     ));
 

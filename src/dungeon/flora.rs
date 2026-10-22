@@ -2,11 +2,11 @@ use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 use bevy::render::render_asset::RenderAssetUsages;
 
-#[derive(Component)]
+#[derive(Component, Debug, Clone)]
 pub struct DandelionPlant {
     pub sway_phase: f32,
-
     pub base_yaw: f32,
+    pub base_rotation: Quat,
 }
 
 #[derive(Resource)]
@@ -116,7 +116,11 @@ pub fn spawn_dandelion(
 
     commands
         .spawn((
-            DandelionPlant { sway_phase, base_yaw },
+            DandelionPlant {
+                sway_phase,
+                base_yaw,
+                base_rotation: Quat::from_rotation_y(base_yaw),
+            },
             root_tf,
             GlobalTransform::default(),
             Visibility::default(),
@@ -502,15 +506,50 @@ fn create_pappus_mesh(tip: Vec3, outward: Vec3, radius: f32, ray_count: u32) -> 
 
 pub fn animate_dandelions(
     time: Res<Time>,
-    mut query: Query<(&DandelionPlant, &mut Transform)>,
+    config: Option<Res<crate::dungeon::vegetation_animation::VegetationAnimationConfig>>,
+    player_query: Query<&GlobalTransform, (With<crate::player::camera::Player>, Without<DandelionPlant>)>,
+    mut query: Query<(&DandelionPlant, &GlobalTransform, &mut Transform), Without<crate::player::camera::Player>>,
 ) {
+    let dt = time.delta_secs();
+    if dt <= 0.0 || dt > 0.1 {
+        return;
+    }
+    let default_prof = crate::dungeon::vegetation_animation::DandelionAnimationProfile::default();
+    let prof = config
+        .as_ref()
+        .map(|c| &c.dandelion_profile)
+        .unwrap_or(&default_prof);
+
     let t = time.elapsed_secs();
-    for (plant, mut tf) in query.iter_mut() {
-        let sway_x = (t * 1.85 + plant.sway_phase).sin() * 0.022
-            + (t * 0.85 + plant.sway_phase * 0.6).cos() * 0.010;
-        let sway_z = (t * 1.50 + plant.sway_phase * 1.4).sin() * 0.014;
-        let base   = Quat::from_rotation_y(plant.base_yaw);
-        let wind   = Quat::from_rotation_x(sway_x) * Quat::from_rotation_z(sway_z);
+    let player_pos_opt = player_query.get_single().map(|gt| gt.translation()).ok();
+
+    for (plant, gt, mut tf) in query.iter_mut() {
+        let idle_speed = prof.idle_sway_speed;
+        let idle_x = (t * idle_speed + plant.sway_phase).sin() * prof.idle_pitch_amplitude
+            + (t * (idle_speed * prof.secondary_frequency_mult) + plant.sway_phase * 0.6).cos()
+                * (prof.idle_pitch_amplitude * prof.secondary_amplitude_mult);
+        let idle_z = (t * (idle_speed * 0.85) + plant.sway_phase * 1.3).sin() * prof.idle_roll_amplitude;
+
+        let mut push = Vec2::ZERO;
+        if let Some(player_pos) = player_pos_opt {
+            let d_pos = gt.translation();
+            let to_d = Vec2::new(d_pos.x - player_pos.x, d_pos.z - player_pos.z);
+            let dist = to_d.length();
+            if dist < prof.player_push_radius && dist > 1e-4 {
+                let factor = (1.0 - dist / prof.player_push_radius).clamp(0.0, 1.0);
+                let push_dir = to_d / dist;
+                push = push_dir * (factor * prof.player_push_strength);
+            }
+        }
+
+        let sway_x = idle_x + push.x;
+        let sway_z = idle_z + push.y;
+        let base = if plant.base_rotation != Quat::IDENTITY {
+            plant.base_rotation
+        } else {
+            Quat::from_rotation_y(plant.base_yaw)
+        };
+        let wind = Quat::from_rotation_x(sway_x) * Quat::from_rotation_z(sway_z);
         tf.rotation = base * wind;
     }
 }
