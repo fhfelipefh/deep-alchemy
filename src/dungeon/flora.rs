@@ -512,7 +512,12 @@ pub fn animate_dandelions(
     time: Res<Time>,
     config: Option<Res<crate::dungeon::vegetation_animation::VegetationAnimationConfig>>,
     player_query: Query<&GlobalTransform, (With<crate::player::camera::Player>, Without<DandelionPlant>)>,
-    mut query: Query<(&DandelionPlant, &GlobalTransform, &mut Transform), Without<crate::player::camera::Player>>,
+    mut query: Query<(
+        &DandelionPlant,
+        &GlobalTransform,
+        &mut Transform,
+        Option<&crate::alchemy::Flammable>,
+    ), Without<crate::player::camera::Player>>,
 ) {
     let dt = time.delta_secs();
     if dt <= 0.0 || dt > 0.1 {
@@ -527,7 +532,10 @@ pub fn animate_dandelions(
     let t = time.elapsed_secs();
     let player_pos_opt = player_query.get_single().map(|gt| gt.translation()).ok();
 
-    for (plant, gt, mut tf) in query.iter_mut() {
+    for (plant, gt, mut tf, flam_opt) in query.iter_mut() {
+        if flam_opt.map(|f| f.is_burning).unwrap_or(false) {
+            continue;
+        }
         let idle_speed = prof.idle_sway_speed;
         let idle_x = (t * idle_speed + plant.sway_phase).sin() * prof.idle_pitch_amplitude
             + (t * (idle_speed * prof.secondary_frequency_mult) + plant.sway_phase * 0.6).cos()

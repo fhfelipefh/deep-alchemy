@@ -480,10 +480,12 @@ pub fn update_bioluminescent_mushrooms(
         &mut BioluminescentMushroom,
         Option<&mut PointLight>,
         Option<(&MushroomOrganicBreathing, &mut Transform)>,
+        Option<&crate::alchemy::Flammable>,
     ), Without<crate::player::camera::Player>>,
     mut passive_shrooms: Query<(
         &MushroomOrganicBreathing,
         &mut Transform,
+        Option<&crate::alchemy::Flammable>,
     ), (Without<BioluminescentMushroom>, Without<crate::player::camera::Player>)>,
     mut commands: Commands,
 ) {
@@ -501,7 +503,8 @@ pub fn update_bioluminescent_mushrooms(
     let elapsed = time.elapsed_secs();
     let player_pos = player_query.get_single().map(|gt| gt.translation()).unwrap_or(Vec3::splat(9999.0));
 
-    for (_entity, gt, mut shroom, light_opt, mut breathing_opt) in mushrooms.iter_mut() {
+    for (_entity, gt, mut shroom, light_opt, mut breathing_opt, flam_opt) in mushrooms.iter_mut() {
+        let is_burning = flam_opt.map(|f| f.is_burning).unwrap_or(false);
         let shroom_pos = gt.translation();
 
         let dist_to_player = shroom_pos.distance(player_pos);
@@ -543,35 +546,37 @@ pub fn update_bioluminescent_mushrooms(
             );
         }
 
-        if let Some((breathing, ref mut tf)) = breathing_opt {
-            let squash_amp = if is_surging {
-                m_prof.idle_squash_amplitude * 1.5
-            } else {
-                m_prof.idle_squash_amplitude
-            };
-            let sway_amp = if is_surging {
-                m_prof.idle_sway_amplitude * 1.4
-            } else {
-                m_prof.idle_sway_amplitude
-            };
+        if !is_burning {
+            if let Some((breathing, ref mut tf)) = breathing_opt {
+                let squash_amp = if is_surging {
+                    m_prof.idle_squash_amplitude * 1.5
+                } else {
+                    m_prof.idle_squash_amplitude
+                };
+                let sway_amp = if is_surging {
+                    m_prof.idle_sway_amplitude * 1.4
+                } else {
+                    m_prof.idle_sway_amplitude
+                };
 
-            let phase = elapsed * frequency * std::f32::consts::TAU + breathing.phase_offset;
-            let w = phase.sin();
-            let squash = w * squash_amp;
+                let phase = elapsed * frequency * std::f32::consts::TAU + breathing.phase_offset;
+                let w = phase.sin();
+                let squash = w * squash_amp;
 
-            tf.scale = Vec3::new(
-                breathing.base_scale.x * (1.0 - squash * 0.5),
-                breathing.base_scale.y * (1.0 + squash),
-                breathing.base_scale.z * (1.0 - squash * 0.5),
-            );
+                tf.scale = Vec3::new(
+                    breathing.base_scale.x * (1.0 - squash * 0.5),
+                    breathing.base_scale.y * (1.0 + squash),
+                    breathing.base_scale.z * (1.0 - squash * 0.5),
+                );
 
-            let pitch = (phase * 0.7).cos() * sway_amp;
-            let roll = (phase * 0.5).sin() * (sway_amp * 0.75);
-            tf.rotation = breathing.base_rotation * Quat::from_rotation_x(pitch) * Quat::from_rotation_z(roll);
+                let pitch = (phase * 0.7).cos() * sway_amp;
+                let roll = (phase * 0.5).sin() * (sway_amp * 0.75);
+                tf.rotation = breathing.base_rotation * Quat::from_rotation_x(pitch) * Quat::from_rotation_z(roll);
 
-            if breathing.pivot != Vec3::ZERO {
-                let rot_scale = tf.rotation * (tf.scale * breathing.pivot);
-                tf.translation = breathing.base_translation + breathing.pivot - rot_scale;
+                if breathing.pivot != Vec3::ZERO {
+                    let rot_scale = tf.rotation * (tf.scale * breathing.pivot);
+                    tf.translation = breathing.base_translation + breathing.pivot - rot_scale;
+                }
             }
         }
 
@@ -595,7 +600,10 @@ pub fn update_bioluminescent_mushrooms(
         }
     }
 
-    for (breathing, mut tf) in passive_shrooms.iter_mut() {
+    for (breathing, mut tf, flam_opt) in passive_shrooms.iter_mut() {
+        if flam_opt.map(|f| f.is_burning).unwrap_or(false) {
+            continue;
+        }
         let phase = elapsed * m_prof.idle_pulse_speed * std::f32::consts::TAU + breathing.phase_offset;
         let w = phase.sin();
         let squash = w * m_prof.idle_squash_amplitude;

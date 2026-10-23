@@ -3632,3 +3632,78 @@ fn test_unit_realistic_fluid_droplet_aerodynamics_and_teardrop_physics() {
     assert!(vel.0.z.abs() < 0.2);
 }
 
+#[test]
+fn test_unit_burning_flammable_collapses_in_place_without_sliding_to_origin() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::transform::TransformPlugin,
+        bevy::asset::AssetPlugin::default(),
+    ));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(50)));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+
+    app.add_systems(
+        Update,
+        (
+            deep_alchemy::dungeon::modular_kit::update_bioluminescent_mushrooms,
+            deep_alchemy::alchemy::update_flammable_combustion,
+        ),
+    );
+
+    let initial_pos = Vec3::new(4.13, 1.60, -3.76);
+    let mushroom_ent = app
+        .world_mut()
+        .spawn((
+            Name::new("Right_Dome_Mushroom_1_Cap"),
+            Transform::from_translation(initial_pos),
+            deep_alchemy::dungeon::modular_kit::MushroomCap,
+            deep_alchemy::dungeon::modular_kit::MushroomOrganicBreathing {
+                base_scale: Vec3::ONE,
+                base_rotation: Quat::IDENTITY,
+                base_translation: initial_pos,
+                pivot: Vec3::ZERO,
+                phase_offset: 0.0,
+            },
+            deep_alchemy::dungeon::modular_kit::BioluminescentMushroom {
+                base_intensity: 1.0,
+                base_color: Color::srgb(0.12, 0.96, 0.88),
+                phase: 0.0,
+                surge_timer: 0.0,
+            },
+            deep_alchemy::alchemy::Flammable {
+                burn_duration: 1.0,
+                elapsed: 0.0,
+                is_burning: false,
+                fire_light: None,
+                fire_emitter: None,
+                initial_scale: None,
+                initial_translation: None,
+                center_offset: None,
+                temperature: 0.0,
+                ignition_temperature: 20.0,
+                cooling_rate: 6.0,
+            },
+        ))
+        .id();
+
+    app.update();
+
+    app.world_mut()
+        .get_mut::<deep_alchemy::alchemy::Flammable>(mushroom_ent)
+        .unwrap()
+        .ignite();
+
+    for _ in 0..18 {
+        app.update();
+    }
+
+    let gt = app.world().get::<GlobalTransform>(mushroom_ent).unwrap();
+    let tf = app.world().get::<Transform>(mushroom_ent).unwrap();
+
+    let xz_dist = Vec2::new(gt.translation().x - initial_pos.x, gt.translation().z - initial_pos.z).length();
+    assert!(xz_dist < 0.02, "Burning mushroom must not slide on XZ towards scene origin, shifted {}", xz_dist);
+    assert!(tf.scale.y < 0.30, "Burning mushroom must collapse vertically in-place, scale_y: {}", tf.scale.y);
+}
+
