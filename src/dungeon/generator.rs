@@ -469,12 +469,12 @@ pub fn spawn_procedural_dungeon(
             continue;
         }
 
-        let is_exit_continuation =
-            cell.world_pos.x.abs() < 1.0 && (cell.world_pos.z - 8.0).abs() < 1.0;
-        if is_exit_continuation {
+        let is_exit_corridor =
+            cell.world_pos.x.abs() < 1.0 && cell.world_pos.z >= 7.0 && cell.world_pos.z <= 30.0;
+        if is_exit_corridor {
             let handle = registry.load_scene(&asset_server, "tile_corridor_straight");
             commands.spawn((
-                Name::new("DungeonTile_ExitContinuation"),
+                Name::new("DungeonTile_ExitCorridor"),
                 SceneRoot(handle),
                 Transform::from_translation(cell.world_pos),
                 RigidBody::Static,
@@ -501,6 +501,71 @@ pub fn spawn_procedural_dungeon(
                 Transform::from_translation(cell.world_pos + wall_offset_right),
                 RigidBody::Static,
                 Collider::cuboid(0.75, 2.4, config.tile_size),
+            ));
+            continue;
+        }
+
+        let is_exit_corridor_terminus =
+            cell.world_pos.x.abs() < 1.0 && (cell.world_pos.z - 32.0).abs() < 1.0;
+        if is_exit_corridor_terminus {
+            let floor_handle = registry.load_scene(&asset_server, "tile_corridor_straight");
+            commands.spawn((
+                Name::new("DungeonTile_CorridorTerminus_Floor"),
+                SceneRoot(floor_handle),
+                Transform::from_translation(cell.world_pos),
+                RigidBody::Static,
+                Collider::cuboid(config.tile_size, 0.4, config.tile_size),
+            ));
+            let wall_offset_north = Vec3::new(0.0, 1.2, half_tile - 0.35);
+            commands.spawn((
+                Name::new("Collider_Dungeon_Wall_Terminus_North"),
+                CavernObstacle,
+                ObstacleShape::Cuboid {
+                    half_extents: Vec3::new(config.tile_size * 0.5, 1.2, 0.375),
+                },
+                Transform::from_translation(cell.world_pos + wall_offset_north),
+                RigidBody::Static,
+                Collider::cuboid(config.tile_size, 2.4, 0.75),
+            ));
+            let wall_offset_west = Vec3::new(-half_tile + 0.35, 1.2, 0.0);
+            commands.spawn((
+                Name::new("Collider_Dungeon_Wall_Terminus_West"),
+                CavernObstacle,
+                ObstacleShape::Cuboid {
+                    half_extents: Vec3::new(0.375, 1.2, config.tile_size * 0.5),
+                },
+                Transform::from_translation(cell.world_pos + wall_offset_west),
+                RigidBody::Static,
+                Collider::cuboid(0.75, 2.4, config.tile_size),
+            ));
+            let crystal_handle = registry.load_scene(&asset_server, "macro_crystal_cluster");
+            commands.spawn((
+                Name::new("MacroRoom_CrystalGeode_Terminus"),
+                SceneRoot(crystal_handle),
+                Transform::from_translation(cell.world_pos + Vec3::new(0.0, 0.0, 1.2)),
+                RigidBody::Static,
+                Collider::cuboid(1.4, 2.4, 1.2),
+                PointLight {
+                    color: Color::srgb(0.95, 0.72, 0.35),
+                    intensity: 14000.0,
+                    range: 20.0,
+                    shadows_enabled: false,
+                    ..default()
+                },
+            ));
+            continue;
+        }
+
+        let is_exit_corridor_flank =
+            (cell.world_pos.x - -4.0).abs() < 1.0 && cell.world_pos.z >= 7.0 && cell.world_pos.z <= 30.0;
+        if is_exit_corridor_flank {
+            let handle = registry.load_scene(&asset_server, "tile_solid_pillar");
+            commands.spawn((
+                Name::new("DungeonTile_SolidPillar_Flank"),
+                SceneRoot(handle),
+                Transform::from_translation(cell.world_pos),
+                RigidBody::Static,
+                Collider::cuboid(config.tile_size, 4.0, config.tile_size),
             ));
             continue;
         }
@@ -568,10 +633,16 @@ pub fn spawn_procedural_dungeon(
             }
             CanonicalPiece::StraightEdge => {
                 let handle = registry.load_scene(&asset_server, "tile_corridor_straight");
+                let is_ns = (cell.rotation_y_deg - 90.0).abs() < 1.0 || (cell.rotation_y_deg - 270.0).abs() < 1.0;
+                let mesh_rot = if is_ns {
+                    Quat::IDENTITY
+                } else {
+                    Quat::from_rotation_y(90.0_f32.to_radians())
+                };
                 commands.spawn((
                     Name::new("DungeonTile_StraightEdge"),
                     SceneRoot(handle),
-                    Transform::from_translation(cell.world_pos).with_rotation(rot),
+                    Transform::from_translation(cell.world_pos).with_rotation(mesh_rot),
                     RigidBody::Static,
                     Collider::cuboid(config.tile_size, 0.4, config.tile_size),
                 ));

@@ -836,9 +836,9 @@ pub fn setup_cavern_world(
     ));
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.22, 0.92, 0.96),
-            intensity: 5200.0,
-            range: 16.0,
+            color: Color::srgb(0.95, 0.70, 0.38),
+            intensity: 2800.0,
+            range: 14.0,
             shadows_enabled: false,
             ..default()
         },
@@ -846,9 +846,9 @@ pub fn setup_cavern_world(
     ));
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.96, 0.82, 0.52),
-            intensity: 12500.0,
-            range: 20.0,
+            color: Color::srgb(0.95, 0.72, 0.40),
+            intensity: 3000.0,
+            range: 14.0,
             shadows_enabled: false,
             ..default()
         },
@@ -856,13 +856,33 @@ pub fn setup_cavern_world(
     ));
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.35, 0.85, 0.95),
-            intensity: 18000.0,
-            range: 22.0,
+            color: Color::srgb(0.92, 0.68, 0.35),
+            intensity: 2600.0,
+            range: 14.0,
             shadows_enabled: false,
             ..default()
         },
         Transform::from_xyz(0.0, 2.6, 9.5),
+    ));
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.90, 0.65, 0.32),
+            intensity: 2400.0,
+            range: 14.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 2.6, 17.5),
+    ));
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.95, 0.70, 0.36),
+            intensity: 2800.0,
+            range: 14.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 2.6, 25.5),
     ));
 
     for (name, x) in [
