@@ -347,6 +347,7 @@ impl Plugin for AlchemyPlugin {
                     update_potion_puddles.run_if(resource_exists::<Assets<StandardMaterial>>),
                     update_glass_shards.run_if(resource_exists::<Assets<StandardMaterial>>),
                     surface_fluid::update_surface_fluid_patches.run_if(resource_exists::<SpatialQueryPipeline>),
+                    surface_fluid::update_surface_fluid_droplet_physics,
                     surface_fluid::capture_surface_fluid_droplets.run_if(resource_exists::<SpatialQueryPipeline>),
                     surface_fluid::merge_surface_fluid_patches,
                     ice_simulation::update_lake_freeze_simulation
@@ -1332,7 +1333,7 @@ pub fn update_potion_projectiles(
                         angle.sin() * speed,
                     );
                     commands.spawn((
-                        Mesh3d(meshes.add(Sphere::new(0.06).mesh().uv(8, 6))),
+                        Mesh3d(meshes.add(surface_fluid::create_teardrop_droplet_mesh(0.045, 8, 6))),
                         MeshMaterial3d(materials.add(StandardMaterial {
                             base_color: Color::LinearRgba(LinearRgba::new(0.35, 0.70, 0.95, 0.45)),
                             alpha_mode: AlphaMode::Add,

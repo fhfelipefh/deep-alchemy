@@ -77,6 +77,82 @@ pub struct SurfaceFluidDroplet {
     pub effects: Vec<ActiveEffect>,
     pub volume: f32,
     pub age: f32,
+    pub base_radius: f32,
+}
+
+pub fn create_teardrop_droplet_mesh(radius: f32, rings: usize, sectors: usize) -> Mesh {
+    let rings = rings.max(6);
+    let sectors = sectors.max(6);
+    let mut positions = Vec::with_capacity((rings + 1) * (sectors + 1));
+    let mut normals = Vec::with_capacity((rings + 1) * (sectors + 1));
+    let mut uvs = Vec::with_capacity((rings + 1) * (sectors + 1));
+    let mut indices = Vec::with_capacity(rings * sectors * 6);
+
+    for i in 0..=rings {
+        let t = i as f32 / rings as f32;
+        let y = radius * (1.5 * (1.0 - t).powf(1.35) - t);
+        let r = radius * (t * std::f32::consts::PI).sin() * (0.55 + 0.45 * t);
+
+        let dt = 0.001;
+        let t_next = (t + dt).min(1.0);
+        let t_prev = (t - dt).max(0.0);
+        let y_next = radius * (1.5 * (1.0 - t_next).powf(1.35) - t_next);
+        let y_prev = radius * (1.5 * (1.0 - t_prev).powf(1.35) - t_prev);
+        let dy = (y_next - y_prev) / (t_next - t_prev);
+
+        let r_next = radius * (t_next * std::f32::consts::PI).sin() * (0.55 + 0.45 * t_next);
+        let r_prev = radius * (t_prev * std::f32::consts::PI).sin() * (0.55 + 0.45 * t_prev);
+        let dr = (r_next - r_prev) / (t_next - t_prev);
+
+        for j in 0..=sectors {
+            let u = j as f32 / sectors as f32;
+            let theta = u * std::f32::consts::TAU;
+            let cos_theta = theta.cos();
+            let sin_theta = theta.sin();
+
+            let x = r * cos_theta;
+            let z = r * sin_theta;
+            positions.push([x, y, z]);
+            uvs.push([u, t]);
+
+            if i == 0 {
+                normals.push([0.0, 1.0, 0.0]);
+            } else if i == rings {
+                normals.push([0.0, -1.0, 0.0]);
+            } else {
+                let norm = Vec3::new(-dy * cos_theta, dr, -dy * sin_theta).normalize_or_zero();
+                normals.push([norm.x, norm.y, norm.z]);
+            }
+        }
+    }
+
+    let stride = (sectors + 1) as u32;
+    for i in 0..rings as u32 {
+        for j in 0..sectors as u32 {
+            let top_left = i * stride + j;
+            let top_right = top_left + 1;
+            let bottom_left = (i + 1) * stride + j;
+            let bottom_right = bottom_left + 1;
+
+            indices.push(top_left);
+            indices.push(bottom_left);
+            indices.push(top_right);
+
+            indices.push(top_right);
+            indices.push(bottom_left);
+            indices.push(bottom_right);
+        }
+    }
+
+    let mut mesh = Mesh::new(
+        bevy::render::render_resource::PrimitiveTopology::TriangleList,
+        bevy::render::render_asset::RenderAssetUsages::default(),
+    );
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_indices(bevy::render::mesh::Indices::U32(indices));
+    mesh
 }
 
 pub fn surface_basis(normal: Vec3) -> (Vec3, Vec3) {
@@ -303,14 +379,15 @@ pub fn update_surface_fluid_patches(
                     can_spawn_droplets = false;
                     let drop_offset = -Vec3::Y * (patch.radius * 0.70) + patch.normal * 0.03;
                     let drop_pos = transform.translation + drop_offset;
-                    let drop_radius = (drop_volume * 0.12).cbrt().clamp(0.025, 0.08);
+                    let drop_radius = (drop_volume * 0.08).cbrt().clamp(0.022, 0.046);
                     let drop_vel = Vec3::new(0.0, -1.8, 0.0) + patch.normal * 0.04;
+                    let drop_mesh = meshes.add(create_teardrop_droplet_mesh(drop_radius, 10, 8));
                     commands.spawn((
-                        SurfaceFluidDroplet { profile: patch.profile, color: patch.color, effects: patch.effects.clone(), volume: drop_volume, age: 0.0 },
+                        SurfaceFluidDroplet { profile: patch.profile, color: patch.color, effects: patch.effects.clone(), volume: drop_volume, age: 0.0, base_radius: drop_radius },
                         RigidBody::Dynamic,
-                        Collider::sphere(drop_radius),
+                        Collider::sphere(drop_radius * 0.75),
                         LinearVelocity(drop_vel),
-                        Mesh3d(meshes.add(Sphere::new(drop_radius).mesh().uv(8, 6))),
+                        Mesh3d(drop_mesh),
                         MeshMaterial3d(material.0.clone()),
                         Transform::from_translation(drop_pos),
                     ));
@@ -373,12 +450,57 @@ pub fn merge_surface_fluid_patches(
     }
 }
 
+pub fn update_surface_fluid_droplet_physics(
+    time: Res<Time>,
+    mut droplets: Query<(
+        &SurfaceFluidDroplet,
+        &mut Transform,
+        &mut LinearVelocity,
+    )>,
+) {
+    let dt = time.delta_secs();
+    if dt <= 0.0 {
+        return;
+    }
+    for (droplet, mut transform, mut velocity) in droplets.iter_mut() {
+        let speed = velocity.0.length();
+        if speed <= 0.001 {
+            continue;
+        }
+
+        let terminal_speed = 5.2 + droplet.base_radius * 40.0;
+        let drag_factor = (speed / terminal_speed).powi(2) * 9.81;
+        let drag_accel = -velocity.0.normalize() * drag_factor * dt;
+        velocity.0 += drag_accel;
+
+        velocity.0.x *= (1.0 - 1.5 * dt).max(0.0);
+        velocity.0.z *= (1.0 - 1.5 * dt).max(0.0);
+
+        let travel_dir = velocity.0.normalize();
+        let target_rot = Quat::from_rotation_arc(Vec3::NEG_Y, travel_dir);
+        transform.rotation = transform.rotation.slerp(target_rot, (dt * 18.0).min(1.0));
+
+        let stretch_ratio = 1.0 + (speed / terminal_speed).min(1.5) * 0.55;
+
+        let omega = 24.0 * (droplet.profile.surface_tension / 0.7).sqrt();
+        let damping = 1.8 + droplet.profile.viscosity * 5.0;
+        let decay = (-droplet.age * damping).exp();
+        let wobble = (droplet.age * omega).sin() * decay * 0.22;
+
+        let scale_y = (stretch_ratio * (1.0 + wobble)).clamp(0.35, 2.8);
+        let scale_lateral = 1.0 / scale_y.sqrt();
+
+        transform.scale = Vec3::new(scale_lateral, scale_y, scale_lateral);
+    }
+}
+
 pub fn capture_surface_fluid_droplets(
     time: Res<Time>,
     spatial_query: SpatialQuery,
     mut droplets: Query<(Entity, &mut SurfaceFluidDroplet, &Transform, &LinearVelocity)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<SurfaceFluidMaterial>>,
+    mut std_materials: Option<ResMut<Assets<StandardMaterial>>>,
     mut commands: Commands,
 ) {
     let mut despawned: std::collections::HashSet<Entity> = std::collections::HashSet::new();
@@ -397,9 +519,22 @@ pub fn capture_surface_fluid_droplets(
             continue;
         }
         let filter = SpatialQueryFilter::default().with_excluded_entities([entity]);
-        if let Some(hit) = spatial_query.cast_ray(transform.translation, Dir3::new(velocity.0).unwrap_or(Dir3::NEG_Y), speed * time.delta_secs() + 0.06, true, &filter) {
-            if droplet.volume >= 0.15 {
-                let point = transform.translation + velocity.0.normalize_or_zero() * hit.distance;
+        if let Some(hit) = spatial_query.cast_ray(transform.translation, Dir3::new(velocity.0).unwrap_or(Dir3::NEG_Y), speed * time.delta_secs() + 0.08, true, &filter) {
+            let point = transform.translation + velocity.0.normalize_or_zero() * hit.distance;
+            if crate::dungeon::modular_kit::is_in_lake_water(point) {
+                if let Some(ref mut std_mats) = std_materials {
+                    crate::dungeon::modular_kit::spawn_water_ripple(
+                        &mut commands,
+                        &mut meshes,
+                        std_mats,
+                        Vec3::new(point.x, 0.09, point.z),
+                        0.04,
+                        0.42,
+                        0.85,
+                        0.70,
+                    );
+                }
+            } else if droplet.volume >= 0.010 {
                 spawn_surface_fluid_patch(&mut commands, &mut meshes, &mut materials, point, hit.normal, Some(hit.entity), droplet.profile, droplet.color, droplet.effects.clone(), droplet.volume);
             }
             if despawned.insert(entity) {
@@ -471,7 +606,7 @@ mod tests {
         ));
         app.init_resource::<Assets<Mesh>>();
         app.init_resource::<Assets<SurfaceFluidMaterial>>();
-        app.add_systems(Update, (update_surface_fluid_patches, capture_surface_fluid_droplets, merge_surface_fluid_patches));
+        app.add_systems(Update, (update_surface_fluid_patches, update_surface_fluid_droplet_physics, capture_surface_fluid_droplets, merge_surface_fluid_patches));
 
         app.world_mut().spawn((
             Transform::from_xyz(0.0, -5.0, 0.0),

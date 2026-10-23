@@ -441,7 +441,7 @@ fn spawn_water_splash_burst(
             (crate::render::particles::fastrand::f32() - 0.5) * speed_scale * 1.6,
         );
         commands.spawn((
-            Mesh3d(mesh_assets.add(Sphere::new(radius).mesh().uv(8, 6))),
+            Mesh3d(mesh_assets.add(crate::alchemy::surface_fluid::create_teardrop_droplet_mesh(radius, 8, 6))),
             MeshMaterial3d(mat_assets.add(StandardMaterial {
                 base_color: Color::LinearRgba(LinearRgba::new(0.30, 0.60, 0.82, 0.30)),
                 alpha_mode: AlphaMode::Add,

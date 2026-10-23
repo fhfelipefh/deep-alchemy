@@ -3577,3 +3577,58 @@ fn test_unit_flammable_grass_ignites_easily_single_potion() {
     assert!(grass.is_burning, "Tall grass must ignite easily with a single fire potion");
     assert!(grass.temperature >= grass.ignition_temperature);
 }
+
+#[test]
+fn test_unit_realistic_fluid_droplet_aerodynamics_and_teardrop_physics() {
+    use deep_alchemy::alchemy::surface_fluid::*;
+    use avian3d::prelude::LinearVelocity;
+
+    let radius = 0.04;
+    let mesh = create_teardrop_droplet_mesh(radius, 10, 8);
+    let positions = mesh.attribute(Mesh::ATTRIBUTE_POSITION).unwrap().as_float3().unwrap();
+    let normals = mesh.attribute(Mesh::ATTRIBUTE_NORMAL).unwrap().as_float3().unwrap();
+    assert_eq!(positions.len(), normals.len());
+    assert!(positions.len() >= 80);
+
+    let max_y = positions.iter().map(|p| p[1]).fold(f32::NEG_INFINITY, f32::max);
+    let min_y = positions.iter().map(|p| p[1]).fold(f32::INFINITY, f32::min);
+    assert!((max_y - radius * 1.5).abs() < 0.001);
+    assert!((min_y - (-radius)).abs() < 0.001);
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(50)));
+    app.add_systems(Update, update_surface_fluid_droplet_physics);
+
+    let profile = PotionFluidProfiles::default().for_slot(1);
+    let droplet_ent = app.world_mut().spawn((
+        SurfaceFluidDroplet {
+            profile,
+            color: Color::srgb(0.2, 0.6, 0.9),
+            effects: Vec::new(),
+            volume: 0.03,
+            age: 0.1,
+            base_radius: radius,
+        },
+        Transform::from_xyz(0.0, 5.0, 0.0),
+        LinearVelocity(Vec3::new(0.5, -4.5, 0.2)),
+    )).id();
+
+    for _ in 0..10 {
+        app.update();
+    }
+
+    let tf = app.world().get::<Transform>(droplet_ent).unwrap();
+    let vel = app.world().get::<LinearVelocity>(droplet_ent).unwrap();
+
+    assert!(tf.scale.y > 1.05);
+    let vol_scale = tf.scale.x * tf.scale.z * tf.scale.y;
+    assert!((vol_scale - 1.0).abs() < 0.35);
+
+    let travel_dir = vel.0.normalize();
+    let dot = (tf.rotation * Vec3::NEG_Y).dot(travel_dir);
+    assert!(dot > 0.85);
+    assert!(vel.0.x.abs() < 0.5);
+    assert!(vel.0.z.abs() < 0.2);
+}
+
