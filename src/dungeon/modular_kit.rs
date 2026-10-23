@@ -964,25 +964,44 @@ pub fn setup_cavern_world(
         Collider::cylinder(0.32, 1.05),
     ));
 
-    for (name, x, z, hx, hz) in [
-        ("Collider_Rock_Terrace_Left_Fore", -6.4, 1.0, 1.6, 2.3),
-        ("Collider_Rock_Terrace_Right_Fore", 6.4, 1.0, 1.6, 2.3),
-        ("Collider_Rock_Terrace_Left_Mid", -6.1, -3.1, 1.6, 2.1),
-        ("Collider_Rock_Terrace_Right_Mid", 6.1, -3.1, 1.6, 2.1),
-        ("Collider_Rock_Terrace_Left_Back", -6.6, -6.8, 1.7, 1.9),
-        ("Collider_Rock_Terrace_Right_Back", 6.6, -6.8, 1.7, 1.9),
-        ("Collider_Rock_Terrace_Left_Deep", -6.4, -9.4, 1.6, 1.9),
-        ("Collider_Rock_Terrace_Right_Deep", 6.4, -9.4, 1.6, 1.9),
+    for (name, x, y, z, hx, hy, hz) in [
+        ("Collider_Left_Terrace_1", -6.49, 0.61, -6.82, 1.65, 0.82, 1.31),
+        ("Collider_Left_Terrace_2", -6.78, 1.47, -7.81, 1.37, 0.89, 1.21),
+        ("Collider_Left_Terrace_3", -7.00, 2.52, -8.79, 1.36, 1.06, 1.24),
+        ("Collider_Left_Terrace_4", -7.37, 3.74, -9.81, 1.21, 1.13, 1.13),
+        ("Collider_Left_Terrace_B0", -6.99, 0.45, 1.98, 1.55, 0.66, 1.39),
+        ("Collider_Left_Terrace_B1", -6.80, 0.47, 0.50, 1.49, 0.69, 1.31),
+        ("Collider_Left_Terrace_B2", -6.60, 0.50, -1.01, 1.56, 0.77, 1.34),
+        ("Collider_Left_Terrace_B3", -6.47, 0.54, -2.61, 1.32, 0.74, 1.26),
+        ("Collider_Left_Terrace_B4", -6.61, 0.57, -4.38, 1.56, 0.80, 1.38),
+        ("Collider_Left_Terrace_Low", -5.80, 0.44, -5.79, 1.12, 0.56, 1.07),
+        ("Collider_Left_Terrace_M0", -7.51, 1.45, 1.21, 1.43, 0.87, 1.25),
+        ("Collider_Left_Terrace_M1", -7.28, 1.62, -0.62, 1.52, 0.86, 1.16),
+        ("Collider_Left_Terrace_M2", -7.19, 1.86, -2.51, 1.29, 0.81, 1.08),
+        ("Collider_Left_Terrace_M3", -7.21, 2.07, -4.39, 1.45, 0.97, 1.22),
+        ("Collider_Right_Terrace_1", 6.53, 0.62, -6.81, 1.56, 0.79, 1.48),
+        ("Collider_Right_Terrace_2", 6.78, 1.47, -7.78, 1.43, 0.98, 1.26),
+        ("Collider_Right_Terrace_3", 6.99, 2.53, -8.80, 1.43, 1.08, 1.21),
+        ("Collider_Right_Terrace_4", 7.41, 3.74, -9.82, 1.39, 1.16, 1.07),
+        ("Collider_Right_Terrace_B0", 7.01, 0.45, 2.00, 1.37, 0.67, 1.22),
+        ("Collider_Right_Terrace_B1", 6.78, 0.47, 0.53, 1.52, 0.74, 1.20),
+        ("Collider_Right_Terrace_B2", 6.61, 0.51, -1.00, 1.64, 0.76, 1.40),
+        ("Collider_Right_Terrace_B3", 6.50, 0.53, -2.61, 1.38, 0.69, 1.28),
+        ("Collider_Right_Terrace_Low", 5.80, 0.44, -5.80, 1.11, 0.54, 1.17),
+        ("Collider_Right_Terrace_M0", 7.49, 1.46, 1.23, 1.44, 0.87, 1.15),
+        ("Collider_Right_Terrace_M1", 7.31, 1.63, -0.61, 1.51, 0.91, 1.24),
+        ("Collider_Right_Terrace_M2", 7.19, 1.87, -2.50, 1.40, 0.94, 1.24),
+        ("Collider_Right_Terrace_M3", 7.22, 2.07, -4.40, 1.58, 0.99, 1.29),
     ] {
         commands.spawn((
             Name::new(name),
             CavernObstacle,
             ObstacleShape::Cuboid {
-                half_extents: Vec3::new(hx, 3.5, hz),
+                half_extents: Vec3::new(hx, hy, hz),
             },
-            Transform::from_xyz(x, 2.5, z),
+            Transform::from_xyz(x, y, z),
             RigidBody::Static,
-            Collider::cuboid(hx * 2.0, 7.0, hz * 2.0),
+            Collider::cuboid(hx * 2.0, hy * 2.0, hz * 2.0),
         ));
     }
 
@@ -1380,7 +1399,7 @@ pub fn get_grotto_terrain_height(x: f32, z: f32) -> f32 {
     let dz = z - lake_center_z;
     let dist_lake = (dx * dx + dz * dz).sqrt();
 
-    if dist_lake < lake_radius {
+    let lake_floor = if dist_lake < lake_radius {
         let u = dist_lake / lake_radius;
         let funnel_depth = (1.0 - u).max(0.0).powf(1.75) * 3.15 + (1.0 - u) * 0.35;
         0.04 - funnel_depth
@@ -1389,7 +1408,31 @@ pub fn get_grotto_terrain_height(x: f32, z: f32) -> f32 {
         0.04 + rim_blend * 0.03
     } else {
         0.04
-    }
+    };
+
+    let lateral_ramp = if x.abs() > 2.5 {
+        let x_abs = x.abs();
+        let lateral_rise = if x_abs < 5.5 {
+            ((x_abs - 2.5) / 3.0) * 1.05
+        } else {
+            1.05 + ((x_abs - 5.5) / 2.5).min(1.0) * 0.85
+        };
+
+        if z > -4.0 {
+            lateral_rise
+        } else if z > -7.5 {
+            let t = (z - (-7.5)) / 3.5;
+            lateral_rise * t.clamp(0.2, 1.0)
+        } else if x_abs > 6.0 {
+            (lateral_rise * 0.85).max(0.10)
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    };
+
+    lake_floor + lateral_ramp
 }
 
 pub fn is_in_lake_water(pos: Vec3) -> bool {

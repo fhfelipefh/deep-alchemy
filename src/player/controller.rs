@@ -42,7 +42,8 @@ pub fn resolve_player_collision_sliding(
                     let obs_bottom = obs_y - half_h;
                     let obs_top = obs_y + half_h;
 
-                    if obs_top < player_feet - STEP_OFFSET || obs_bottom > resolved.y + 0.65 {
+                    let is_ice = obs_y >= 0.15 && obs_y <= 0.35 && *height <= 0.30;
+                    if (!is_ice && obs_top < player_feet - STEP_OFFSET) || obs_bottom > resolved.y + 0.65 {
                         continue;
                     }
 
@@ -56,7 +57,9 @@ pub fn resolve_player_collision_sliding(
                     }
 
                     let dist = diff.length();
-                    let can_step_onto = obs_top <= step_max_feet || (has_grotto_terrain && player_feet >= -1.2 && obs_top <= 0.45);
+                    let can_step_onto = obs_top <= step_max_feet
+                        || (has_grotto_terrain && obs_top <= player_feet + 0.55)
+                        || (is_ice && player_feet >= -1.15);
 
                     if dist < min_dist {
                         if can_step_onto {
@@ -125,7 +128,7 @@ pub fn resolve_player_collision_sliding(
                     let to_player = Vec2::new(local_x - clamped_x, local_z - clamped_z);
                     let dist = to_player.length();
 
-                    let can_step_onto = obs_top <= step_max_feet || (has_grotto_terrain && player_feet >= -1.2 && obs_top <= 0.45);
+                    let can_step_onto = obs_top <= step_max_feet || (has_grotto_terrain && obs_top <= player_feet + 0.55);
 
                     if inside_box || dist < player_radius {
                         if can_step_onto {
@@ -415,7 +418,8 @@ fn calculate_landing_elevation(
                 let lz = diff_world.x * sin_r + diff_world.y * cos_r;
                 if lx.abs() <= half_extents.x + 0.38 && lz.abs() <= half_extents.z + 0.38 {
                     let top = obs_tf.translation.y + half_extents.y + 1.2;
-                    if top <= pos.y + 0.1 && top > landing_y {
+                    let can_land = top <= pos.y + 0.50 || (has_lake && pos.y >= top - 0.40);
+                    if can_land && top > landing_y {
                         landing_y = top;
                     }
                 }
@@ -821,6 +825,24 @@ pub fn player_movement(
         obstacle_list.push((tf, *shape));
     }
 
+    let ice_cell_shapes: Vec<(Transform, ObstacleShape)> = ice_cells_query
+        .iter()
+        .filter(|(_, cell)| cell.solid)
+        .map(|(tf, _)| {
+            (
+                *tf,
+                ObstacleShape::Cylinder {
+                    radius: crate::alchemy::ice_simulation::ICE_CELL_SIZE * 0.65,
+                    height: 0.22,
+                },
+            )
+        })
+        .collect();
+
+    for (tf, shape) in &ice_cell_shapes {
+        obstacle_list.push((tf, *shape));
+    }
+
     let has_lake = !lake_query.is_empty();
 
     for (state, mut tf, mut stamina, mut locomotion) in query.iter_mut() {
@@ -1047,12 +1069,13 @@ pub fn player_movement(
             0.0
         };
         let min_floor = floor_h.max(-1.1);
+        let landing_elevation = calculate_landing_elevation(tf.translation, &obstacle_list, has_lake);
         let expected_support = if locomotion.is_on_ice {
-            0.18 + 0.11 + 1.2
+            (0.18f32 + 0.11 + 1.2).max(landing_elevation)
         } else {
-            min_floor + 1.2
+            (min_floor + 1.2).max(landing_elevation)
         };
-        if locomotion.is_grounded && tf.translation.y > expected_support + 0.35 {
+        if locomotion.is_grounded && tf.translation.y > expected_support + 0.45 {
             locomotion.is_grounded = false;
         }
 

@@ -314,9 +314,11 @@ pub fn update_surface_fluid_patches(
         patch.age += dt;
         if patch.age >= patch.max_age || patch.volume <= 0.000_1 {
             if despawned.insert(entity) {
-                if let Some(mut cmd) = commands.get_entity(entity) {
-                    cmd.despawn();
-                }
+                commands.queue(move |world: &mut World| {
+                    if let Ok(ent) = world.get_entity_mut(entity) {
+                        ent.despawn();
+                    }
+                });
             }
             continue;
         }
@@ -430,7 +432,7 @@ pub fn merge_surface_fluid_patches(
             if a_host != b_host || a_normal.dot(*b_normal) < 0.75 || a_position.distance(*b_position) > (a_radius + b_radius) * 0.55 {
                 continue;
             }
-            if let Ok([(_, mut a), (_, mut b)]) = patches.p1().get_many_mut([*a_entity, *b_entity]) {
+            if let Ok([(_, mut a), (_, b)]) = patches.p1().get_many_mut([*a_entity, *b_entity]) {
                 let transferred = b.volume;
                 if transferred <= 0.0 {
                     continue;
@@ -440,11 +442,13 @@ pub fn merge_surface_fluid_patches(
                 }
                 a.volume = fluid_volume(&a.thickness);
                 a.radius = (a.radius * a.radius + b.radius * b.radius).sqrt().min(1.5);
-                b.volume = 0.0;
-                despawned.insert(*b_entity);
-                if let Some(mut cmd) = commands.get_entity(*b_entity) {
-                    cmd.despawn();
-                }
+                let b_ent = *b_entity;
+                despawned.insert(b_ent);
+                commands.queue(move |world: &mut World| {
+                    if let Ok(ent) = world.get_entity_mut(b_ent) {
+                        ent.despawn();
+                    }
+                });
             }
         }
     }
@@ -508,9 +512,11 @@ pub fn capture_surface_fluid_droplets(
         droplet.age += time.delta_secs();
         if droplet.age > 4.0 {
             if despawned.insert(entity) {
-                if let Some(mut cmd) = commands.get_entity(entity) {
-                    cmd.despawn();
-                }
+                commands.queue(move |world: &mut World| {
+                    if let Ok(ent) = world.get_entity_mut(entity) {
+                        ent.despawn();
+                    }
+                });
             }
             continue;
         }
@@ -538,9 +544,11 @@ pub fn capture_surface_fluid_droplets(
                 spawn_surface_fluid_patch(&mut commands, &mut meshes, &mut materials, point, hit.normal, Some(hit.entity), droplet.profile, droplet.color, droplet.effects.clone(), droplet.volume);
             }
             if despawned.insert(entity) {
-                if let Some(mut cmd) = commands.get_entity(entity) {
-                    cmd.despawn();
-                }
+                commands.queue(move |world: &mut World| {
+                    if let Ok(ent) = world.get_entity_mut(entity) {
+                        ent.despawn();
+                    }
+                });
             }
         }
     }
