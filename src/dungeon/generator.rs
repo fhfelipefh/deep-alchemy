@@ -469,6 +469,42 @@ pub fn spawn_procedural_dungeon(
             continue;
         }
 
+        let is_exit_continuation =
+            cell.world_pos.x.abs() < 1.0 && (cell.world_pos.z - 8.0).abs() < 1.0;
+        if is_exit_continuation {
+            let handle = registry.load_scene(&asset_server, "tile_corridor_straight");
+            commands.spawn((
+                Name::new("DungeonTile_ExitContinuation"),
+                SceneRoot(handle),
+                Transform::from_translation(cell.world_pos),
+                RigidBody::Static,
+                Collider::cuboid(config.tile_size, 0.4, config.tile_size),
+            ));
+            let wall_offset_left = Vec3::new(-half_tile + 0.35, 1.2, 0.0);
+            commands.spawn((
+                Name::new("Collider_Dungeon_Wall_Straight_L"),
+                CavernObstacle,
+                ObstacleShape::Cuboid {
+                    half_extents: Vec3::new(0.375, 1.2, config.tile_size * 0.5),
+                },
+                Transform::from_translation(cell.world_pos + wall_offset_left),
+                RigidBody::Static,
+                Collider::cuboid(0.75, 2.4, config.tile_size),
+            ));
+            let wall_offset_right = Vec3::new(half_tile - 0.35, 1.2, 0.0);
+            commands.spawn((
+                Name::new("Collider_Dungeon_Wall_Straight_R"),
+                CavernObstacle,
+                ObstacleShape::Cuboid {
+                    half_extents: Vec3::new(0.375, 1.2, config.tile_size * 0.5),
+                },
+                Transform::from_translation(cell.world_pos + wall_offset_right),
+                RigidBody::Static,
+                Collider::cuboid(0.75, 2.4, config.tile_size),
+            ));
+            continue;
+        }
+
         if cell.world_pos.x.abs() < 10.0 && cell.world_pos.z > -16.0 && cell.world_pos.z < 6.0 {
             continue;
         }

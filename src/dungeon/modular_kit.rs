@@ -844,6 +844,26 @@ pub fn setup_cavern_world(
         },
         Transform::from_xyz(0.0, 4.0, 2.2),
     ));
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.96, 0.82, 0.52),
+            intensity: 12500.0,
+            range: 20.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 2.8, 5.8),
+    ));
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(0.35, 0.85, 0.95),
+            intensity: 18000.0,
+            range: 22.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 2.6, 9.5),
+    ));
 
     for (name, x) in [
         ("Striated_Cliff_Left", -5.25),
