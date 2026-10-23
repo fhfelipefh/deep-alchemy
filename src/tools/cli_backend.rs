@@ -298,9 +298,17 @@ pub fn main_entry() {
                 std::process::exit(1);
             }
         }
+        "panorama" => {
+            let pano_path = Path::new("debug_output/panorama_360.png");
+            if pano_path.exists() {
+                println!("Panorama 360° image available at: {}", pano_path.display());
+            } else {
+                println!("To capture a 360° panoramic screenshot, run: cargo run -- --panorama");
+            }
+        }
         _ => {
             println!("Deep Alchemy Rust CLI Harness");
-            println!("Commands: status, recipes, brew, player, validate, squeeze, blueprint");
+            println!("Commands: status, recipes, brew, player, validate, squeeze, blueprint, panorama");
         }
     }
 }
