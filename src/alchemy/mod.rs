@@ -181,7 +181,9 @@ impl Flammable {
     }
 
     pub fn with_center_offset(mut self, offset: Vec3) -> Self {
-        self.center_offset = Some(offset);
+        if offset != Vec3::ZERO {
+            self.center_offset = Some(offset);
+        }
         self
     }
 
@@ -2053,6 +2055,7 @@ pub fn update_flammable_combustion(
 
         let local_offset = flammable
             .center_offset
+            .filter(|&c| c != Vec3::ZERO)
             .or_else(|| aabb.map(|a| Vec3::from(a.center)))
             .unwrap_or(Vec3::ZERO);
 
@@ -2111,9 +2114,12 @@ pub fn update_flammable_combustion(
             let collapse_t = (progress - 0.60) / 0.40;
             let scale_y = (1.0 - collapse_t * 0.94).max(0.03);
             let scale_xz = (1.0 - collapse_t * 0.85).max(0.06);
-            transform.scale = base_scale * Vec3::new(scale_xz, scale_y, scale_xz);
+            let current_scale = base_scale * Vec3::new(scale_xz, scale_y, scale_xz);
+            transform.scale = current_scale;
             if local_offset != Vec3::ZERO {
-                transform.translation = base_trans + local_offset * (Vec3::ONE - Vec3::new(scale_xz, scale_y, scale_xz));
+                let rot_scale = transform.rotation * (current_scale * local_offset);
+                let base_rot_scale = transform.rotation * (base_scale * local_offset);
+                transform.translation = base_trans + base_rot_scale - rot_scale - Vec3::new(0.0, collapse_t * 0.05, 0.0);
             } else {
                 transform.translation.y = base_trans.y - (collapse_t * 0.05);
             }
