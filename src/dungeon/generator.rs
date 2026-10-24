@@ -466,6 +466,17 @@ pub fn spawn_procedural_dungeon(
                 RigidBody::Static,
                 Collider::cuboid(4.4, 0.4, 4.0),
             ));
+            commands.spawn((
+                Name::new("Light_Connector_Vault"),
+                Transform::from_xyz(0.0, 2.5, 6.0),
+                PointLight {
+                    color: Color::srgb(1.0, 0.78, 0.42),
+                    intensity: 7500.0,
+                    range: 12.0,
+                    shadows_enabled: false,
+                    ..default()
+                },
+            ));
             continue;
         }
 
@@ -479,6 +490,17 @@ pub fn spawn_procedural_dungeon(
                 Transform::from_translation(cell.world_pos),
                 RigidBody::Static,
                 Collider::cuboid(config.tile_size, 0.4, config.tile_size),
+            ));
+            commands.spawn((
+                Name::new("Light_Corridor_Vault"),
+                Transform::from_translation(cell.world_pos + Vec3::new(0.0, 2.6, 0.0)),
+                PointLight {
+                    color: Color::srgb(1.0, 0.76, 0.42),
+                    intensity: 6500.0,
+                    range: 10.0,
+                    shadows_enabled: false,
+                    ..default()
+                },
             ));
             let wall_offset_left = Vec3::new(-half_tile + 0.35, 1.2, 0.0);
             commands.spawn((
