@@ -241,7 +241,17 @@ pub fn spawn_surface_fluid_patch(
     effects: Vec<ActiveEffect>,
     volume: f32,
 ) {
-    let normal = normal.normalize_or_zero();
+    let in_grotto_ramp = position.x.abs() > 2.5 && position.x.abs() < 7.5 && position.z > -16.0 && position.z < 3.8;
+    let normal = if in_grotto_ramp {
+        let terr_y = crate::dungeon::modular_kit::get_grotto_terrain_height(position.x, position.z);
+        if (position.y - terr_y).abs() <= 0.65 {
+            crate::dungeon::modular_kit::get_grotto_terrain_normal(position.x, position.z)
+        } else {
+            normal.normalize_or_zero()
+        }
+    } else {
+        normal.normalize_or_zero()
+    };
     let (tangent, bitangent) = surface_basis(normal);
     let mut thickness = [0.0; SURFACE_FLUID_CELLS];
     for y in 0..SURFACE_FLUID_GRID {
@@ -339,10 +349,22 @@ pub fn update_surface_fluid_patches(
         if let Some(hit) = spatial_query.cast_ray(probe_origin, probe_dir, 0.28, true, &filter) {
             if hit.distance > 0.001 && hit.normal.length_squared() > 0.25 {
                 let contact = probe_origin + probe_dir.as_vec3() * hit.distance;
-                transform.translation = contact + hit.normal.normalize_or_zero() * 0.012;
+                let hit_norm = hit.normal.normalize_or_zero();
+                let in_grotto_ramp = contact.x.abs() > 2.5 && contact.x.abs() < 7.5 && contact.z > -16.0 && contact.z < 3.8;
+                let final_normal = if in_grotto_ramp {
+                    let terr_y = crate::dungeon::modular_kit::get_grotto_terrain_height(contact.x, contact.z);
+                    if (contact.y - terr_y).abs() <= 0.65 {
+                        crate::dungeon::modular_kit::get_grotto_terrain_normal(contact.x, contact.z)
+                    } else {
+                        hit_norm
+                    }
+                } else {
+                    hit_norm
+                };
+                transform.translation = contact + final_normal * 0.012;
                 patch.host = Some(hit.entity);
                 patch.surface_adhesion = receivers.get(hit.entity).map(|receiver| receiver.adhesion).unwrap_or(1.0);
-                patch.normal = hit.normal.normalize_or_zero();
+                patch.normal = final_normal;
                 (patch.tangent, patch.bitangent) = surface_basis(patch.normal);
                 transform.rotation = Quat::from_rotation_arc(Vec3::Y, patch.normal);
             }

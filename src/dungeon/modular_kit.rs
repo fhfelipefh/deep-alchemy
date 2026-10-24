@@ -1475,6 +1475,19 @@ pub fn get_grotto_terrain_height(x: f32, z: f32) -> f32 {
     lake_floor + lateral_ramp
 }
 
+pub fn get_grotto_terrain_normal(x: f32, z: f32) -> Vec3 {
+    let eps = 0.08;
+    let h_r = get_grotto_terrain_height(x + eps, z);
+    let h_l = get_grotto_terrain_height(x - eps, z);
+    let h_u = get_grotto_terrain_height(x, z + eps);
+    let h_d = get_grotto_terrain_height(x, z - eps);
+
+    let dh_dx = (h_r - h_l) / (2.0 * eps);
+    let dh_dz = (h_u - h_d) / (2.0 * eps);
+
+    Vec3::new(-dh_dx, 1.0, -dh_dz).normalize()
+}
+
 pub fn is_in_lake_water(pos: Vec3) -> bool {
     let dx = pos.x;
     let dz = pos.z - (-8.5);

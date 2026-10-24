@@ -640,7 +640,8 @@ pub fn update_potion_aiming(
         ));
     }
 
-    if let Some((hit_pos, hit_normal)) = hit_info {
+    if let Some((raw_hit_pos, raw_hit_normal)) = hit_info {
+        let (hit_pos, hit_normal) = resolve_surface_impact_normal(raw_hit_pos, raw_hit_normal);
         let decal_mesh = meshes.add(create_flat_circle_mesh(0.35 + 0.08 * windup, 24));
         let decal_mat = materials.add(StandardMaterial {
             base_color: color.with_alpha(0.88),
@@ -1028,6 +1029,20 @@ fn spawn_glass_shards_burst(
     }
 }
 
+pub fn resolve_surface_impact_normal(impact_point: Vec3, raw_normal: Vec3) -> (Vec3, Vec3) {
+    let x_abs = impact_point.x.abs();
+    let is_ramp = x_abs > 2.5 && x_abs < 7.5 && impact_point.z > -16.0 && impact_point.z < 3.8;
+    if is_ramp {
+        let terr_y = crate::dungeon::modular_kit::get_grotto_terrain_height(impact_point.x, impact_point.z);
+        if (impact_point.y - terr_y).abs() <= 0.65 {
+            let terr_norm = crate::dungeon::modular_kit::get_grotto_terrain_normal(impact_point.x, impact_point.z);
+            let adjusted_pos = Vec3::new(impact_point.x, impact_point.y.max(terr_y), impact_point.z);
+            return (adjusted_pos, terr_norm);
+        }
+    }
+    (impact_point, raw_normal.normalize_or_zero())
+}
+
 fn spawn_alchemical_puddle(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -1039,6 +1054,7 @@ fn spawn_alchemical_puddle(
     _is_wall: bool,
     is_rtx: bool,
 ) {
+    let (impact_point, impact_normal) = resolve_surface_impact_normal(impact_point, impact_normal);
     let is_frost = effects.iter().any(|e| e.kind == AlchemicalEffectKind::Frost);
     let in_water = crate::dungeon::modular_kit::is_in_lake_water(impact_point);
 
@@ -1201,10 +1217,11 @@ pub fn update_potion_projectiles(
             if projectile.hitstop_timer > 0.0 {
                 continue;
             }
-            let impact_point = transform.translation;
-            let impact_normal = impact_surface
+            let raw_point = transform.translation;
+            let raw_normal = impact_surface
                 .map(|impact| impact.normal)
                 .unwrap_or_else(|| (transform.rotation * Vec3::Y).normalize());
+            let (impact_point, impact_normal) = resolve_surface_impact_normal(raw_point, raw_normal);
             let impact_host = impact_surface.map(|impact| impact.host);
 
             apply_splash_effects(&mut receivers, &mut player_query, impact_point, &projectile.effects, entity, 2.8);
@@ -1478,8 +1495,8 @@ pub fn update_potion_projectiles(
 
         if let Some(hit) = hit {
             if hit.distance > 0.001 && hit.entity != entity && !excluded.contains(&hit.entity) {
-                let impact_point = transform.translation + direction * hit.distance;
-                let impact_normal = hit.normal;
+                let raw_impact_point = transform.translation + direction * hit.distance;
+                let (impact_point, impact_normal) = resolve_surface_impact_normal(raw_impact_point, hit.normal);
 
                 projectile.hitstop_timer = 0.045;
                 transform.translation = impact_point;
@@ -1515,6 +1532,43 @@ pub fn update_potion_projectiles(
         }
 
         transform.translation += step;
+
+        let in_grotto = transform.translation.x.abs() > 2.5 && transform.translation.x.abs() < 7.5 && transform.translation.z > -16.0 && transform.translation.z < 3.8;
+        if in_grotto {
+            let terr_y = crate::dungeon::modular_kit::get_grotto_terrain_height(transform.translation.x, transform.translation.z);
+            if transform.translation.y <= terr_y + 0.05 {
+                let terr_norm = crate::dungeon::modular_kit::get_grotto_terrain_normal(transform.translation.x, transform.translation.z);
+                let impact_point = Vec3::new(transform.translation.x, terr_y + 0.02, transform.translation.z);
+                let impact_normal = terr_norm;
+                projectile.hitstop_timer = 0.045;
+                transform.translation = impact_point;
+                transform.rotation = Quat::from_rotation_arc(Vec3::Y, impact_normal);
+                projectile.velocity = Vec3::ZERO;
+                commands.entity(entity).insert(PotionSurfaceImpact {
+                    host: entity,
+                    normal: impact_normal,
+                });
+                let flash_mesh = meshes.add(Sphere::new(0.20).mesh().uv(8, 6));
+                let flash_mat = materials.add(StandardMaterial {
+                    base_color: projectile.color.with_alpha(0.95),
+                    emissive: projectile.color.to_linear() * 6.5,
+                    unlit: true,
+                    alpha_mode: AlphaMode::Add,
+                    ..default()
+                });
+                commands.spawn((
+                    Mesh3d(flash_mesh),
+                    MeshMaterial3d(flash_mat),
+                    Transform::from_translation(impact_point + impact_normal * 0.04),
+                    AlchemyTransientEmitter {
+                        elapsed: 0.0,
+                        max_lifetime: 0.045,
+                    },
+                ));
+                apply_impact_trauma_shake(&player_query, &mut shake, impact_point, 5.0, 1.0);
+                continue;
+            }
+        }
 
         if transform.translation.z > 200.0 {
             let origin = crate::dungeon::test_room::SECRET_TEST_ROOM_ORIGIN;

@@ -3707,3 +3707,27 @@ fn test_unit_burning_flammable_collapses_in_place_without_sliding_to_origin() {
     assert!(tf.scale.y < 0.30, "Burning mushroom must collapse vertically in-place, scale_y: {}", tf.scale.y);
 }
 
+#[test]
+fn test_unit_potion_impact_on_ramp_conforms_to_ramp_inclination() {
+    let flat_normal = deep_alchemy::dungeon::modular_kit::get_grotto_terrain_normal(0.0, 0.0);
+    assert!((flat_normal.y - 1.0).abs() < 1e-3);
+    assert!(flat_normal.x.abs() < 1e-3);
+
+    let ramp_pos = Vec3::new(4.0, 0.56, -1.0);
+    let ramp_normal = deep_alchemy::dungeon::modular_kit::get_grotto_terrain_normal(ramp_pos.x, ramp_pos.z);
+    assert!(ramp_normal.y > 0.85);
+    assert!(ramp_normal.y < 0.98);
+    assert!(ramp_normal.x < -0.20);
+
+    let raw_wall_normal = Vec3::new(-1.0, 0.0, 0.0);
+    let (resolved_pos, resolved_normal) = deep_alchemy::alchemy::resolve_surface_impact_normal(ramp_pos, raw_wall_normal);
+    assert!(resolved_pos.y >= ramp_pos.y);
+    assert!(resolved_normal.y > 0.85);
+    assert!(resolved_normal.y.abs() >= 0.65);
+    assert_eq!(resolved_normal, ramp_normal);
+
+    let puddle_rot = Quat::from_rotation_arc(Vec3::Y, resolved_normal);
+    let up_transformed = puddle_rot * Vec3::Y;
+    assert!((up_transformed.dot(ramp_normal) - 1.0).abs() < 1e-3);
+}
+
