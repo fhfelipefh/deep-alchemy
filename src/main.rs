@@ -172,8 +172,19 @@ fn handle_screenshot_test_lifecycle(
             .spawn(Screenshot::primary_window())
             .observe(save_to_disk("debug_output/frame_rear_check.png"));
         info!(">>> [SCREENSHOT GATE] Triggered rear screenshot at frame 45 -> debug_output/frame_rear_check.png");
-    } else if *counter >= 70 {
-        info!(">>> [SCREENSHOT GATE] Frame 70 reached, gracefully exiting.");
+    } else if *counter == 48 {
+        if let Ok(mut transform) = player_query.get_single_mut() {
+            transform.translation = Vec3::new(0.0, 1.40, 7.5);
+            transform.rotation = Quat::from_rotation_x(0.48);
+            info!(">>> [SCREENSHOT GATE] Moved player inside corridor looking up at ceiling.");
+        }
+    } else if *counter == 60 {
+        commands
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk("debug_output/frame_ceiling_check.png"));
+        info!(">>> [SCREENSHOT GATE] Triggered ceiling screenshot at frame 60 -> debug_output/frame_ceiling_check.png");
+    } else if *counter >= 80 {
+        info!(">>> [SCREENSHOT GATE] Frame 80 reached, gracefully exiting.");
         app_exit.send(AppExit::Success);
     }
 }
