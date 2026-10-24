@@ -648,6 +648,7 @@ pub fn setup_cavern_world(
     asset_server: Res<AssetServer>,
     registry: Res<SceneAssetRegistry>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut standard_materials: ResMut<Assets<StandardMaterial>>,
     mut water_materials: ResMut<Assets<WaterMaterial>>,
     mut moss_materials: ResMut<Assets<CelShadedMossMaterial>>,
 ) {
@@ -669,7 +670,7 @@ pub fn setup_cavern_world(
 
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.48, 0.64, 0.76),
+            color: Color::srgb(0.20, 0.72, 0.85),
             intensity: 3200.0,
             range: 11.0,
             shadows_enabled: false,
@@ -854,9 +855,9 @@ pub fn setup_cavern_world(
     ));
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.55, 0.68, 0.80),
+            color: Color::srgb(0.22, 0.70, 0.82),
             intensity: 1400.0,
-            range: 9.0,
+            range: 9.5,
             shadows_enabled: false,
             ..default()
         },
@@ -864,7 +865,7 @@ pub fn setup_cavern_world(
     ));
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.50, 0.65, 0.78),
+            color: Color::srgb(0.18, 0.75, 0.88),
             intensity: 1200.0,
             range: 9.0,
             shadows_enabled: false,
@@ -875,12 +876,12 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.95, 0.72, 0.40),
-            intensity: 2600.0,
-            range: 9.5,
+            intensity: 2200.0,
+            range: 8.0,
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(0.0, 2.8, 5.8),
+        Transform::from_xyz(0.0, 2.8, 6.8),
     ));
     commands.spawn((
         PointLight {
@@ -1191,9 +1192,17 @@ pub fn setup_cavern_world(
         Transform::from_xyz(0.0, 0.065, -8.5),
     ));
 
-    let shoreline_moss_mat = moss_materials.add(CelShadedMossMaterial {
-        base_color: LinearRgba::new(0.12, 0.16, 0.20, 1.0),
-        moss_color: LinearRgba::new(0.09, 0.15, 0.13, 1.0),
+    let cavern_rock_mat = standard_materials.add(StandardMaterial {
+        base_color: Color::srgb(0.12, 0.16, 0.20),
+        perceptual_roughness: 0.88,
+        metallic: 0.0,
+        reflectance: 0.15,
+        ..default()
+    });
+
+    let _shoreline_moss_mat = moss_materials.add(CelShadedMossMaterial {
+        base_color: LinearRgba::new(0.036, 0.088, 0.134, 1.0),
+        moss_color: LinearRgba::new(0.025, 0.075, 0.065, 1.0),
         light_dir: Vec4::new(0.25, 0.85, -0.45, 0.0),
         moss_params: Vec4::new(0.70, 3.50, 0.15, 3.0),
     });
@@ -1240,7 +1249,7 @@ pub fn setup_cavern_world(
         };
         commands.spawn((
             Mesh3d(mesh_handle),
-            MeshMaterial3d(shoreline_moss_mat.clone()),
+            MeshMaterial3d(cavern_rock_mat.clone()),
             Transform::from_xyz(x, y, z)
                 .with_scale(Vec3::splat(scale))
                 .with_rotation(Quat::from_rotation_y(rot_y)),
@@ -1321,7 +1330,7 @@ pub fn setup_cavern_world(
         };
         commands.spawn((
             Mesh3d(mesh_handle),
-            MeshMaterial3d(shoreline_moss_mat.clone()),
+            MeshMaterial3d(cavern_rock_mat.clone()),
             Transform::from_xyz(x, y, z)
                 .with_scale(Vec3::splat(scale))
                 .with_rotation(Quat::from_rotation_y(rot_y)),
