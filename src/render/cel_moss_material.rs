@@ -20,13 +20,13 @@ impl Default for CelShadedMossMaterial {
     fn default() -> Self {
         Self {
 
-            base_color: LinearRgba::new(0.149, 0.200, 0.227, 1.0),
+            base_color: LinearRgba::new(0.12, 0.16, 0.20, 1.0),
 
-            moss_color: LinearRgba::new(0.141, 0.431, 0.204, 1.0),
+            moss_color: LinearRgba::new(0.09, 0.15, 0.13, 1.0),
 
             light_dir: Vec4::new(0.25, 0.85, -0.45, 0.0),
 
-            moss_params: Vec4::new(0.60, 3.50, 0.22, 3.0),
+            moss_params: Vec4::new(0.60, 3.50, 0.16, 3.0),
         }
     }
 }

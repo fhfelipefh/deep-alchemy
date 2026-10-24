@@ -136,7 +136,7 @@ fn handle_screenshot_test_lifecycle(
     *counter += 1;
     if *counter == 2 {
         commands.spawn((
-            Transform::from_xyz(0.0, 2.0, -3.2),
+            Transform::from_xyz(0.0, 2.0, -6.5),
             deep_alchemy::alchemy::PotionProjectile {
                 velocity: Vec3::new(0.0, -16.0, 0.0),
                 effects: vec![deep_alchemy::alchemy::ActiveEffect {
@@ -164,7 +164,8 @@ fn handle_screenshot_test_lifecycle(
         info!(">>> [SCREENSHOT GATE] Triggered primary_window screenshot at frame 20 -> debug_output/frame_check.png");
     } else if *counter == 25 {
         if let Ok(mut transform) = player_query.get_single_mut() {
-            transform.rotation = Quat::from_rotation_y(std::f32::consts::PI);
+            transform.translation = Vec3::new(0.0, 1.40, -2.8);
+            transform.rotation = Quat::from_rotation_y(std::f32::consts::PI) * Quat::from_rotation_x(-0.12);
             info!(">>> [SCREENSHOT GATE] Rotated player 180° to capture rear portal view.");
         }
     } else if *counter == 45 {

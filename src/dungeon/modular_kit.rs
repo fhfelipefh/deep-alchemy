@@ -106,12 +106,30 @@ impl Plugin for DungeonPlugin {
                 mark_imported_tall_grass,
                 attach_mushroom_spore_emitters,
                 mark_imported_flammable_props,
+                mark_imported_lake_features,
                 update_water_ripples,
                 update_bioluminescent_mushrooms,
                 crate::dungeon::flora::animate_dandelions,
                 crate::dungeon::vegetation_animation::update_vegetation_foliage_animation,
             ),
         );
+    }
+}
+
+pub fn mark_imported_lake_features(
+    mut commands: Commands,
+    named_entities: Query<(Entity, &Name), Added<Name>>,
+) {
+    for (entity, name) in &named_entities {
+        let name_str = name.as_str();
+        if name_str == "Lake_Fine_Rim"
+            || name_str.starts_with("WaterRipple_")
+            || name_str == "WaterRipple_1"
+            || name_str == "WaterRipple_2"
+            || name_str == "WaterRipple_3"
+        {
+            commands.entity(entity).despawn();
+        }
     }
 }
 
@@ -631,7 +649,7 @@ pub fn setup_cavern_world(
     registry: Res<SceneAssetRegistry>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut water_materials: ResMut<Assets<WaterMaterial>>,
-    _moss_materials: ResMut<Assets<CelShadedMossMaterial>>,
+    mut moss_materials: ResMut<Assets<CelShadedMossMaterial>>,
 ) {
 
     commands.insert_resource(AmbientLight {
@@ -651,9 +669,9 @@ pub fn setup_cavern_world(
 
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.96, 0.84, 0.48),
-            intensity: 7500.0,
-            range: 15.0,
+            color: Color::srgb(0.48, 0.64, 0.76),
+            intensity: 3200.0,
+            range: 11.0,
             shadows_enabled: false,
             ..default()
         },
@@ -836,9 +854,9 @@ pub fn setup_cavern_world(
     ));
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.95, 0.70, 0.38),
-            intensity: 2800.0,
-            range: 14.0,
+            color: Color::srgb(0.55, 0.68, 0.80),
+            intensity: 1400.0,
+            range: 9.0,
             shadows_enabled: false,
             ..default()
         },
@@ -846,9 +864,19 @@ pub fn setup_cavern_world(
     ));
     commands.spawn((
         PointLight {
+            color: Color::srgb(0.50, 0.65, 0.78),
+            intensity: 1200.0,
+            range: 9.0,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 4.6, 2.9),
+    ));
+    commands.spawn((
+        PointLight {
             color: Color::srgb(0.95, 0.72, 0.40),
-            intensity: 3000.0,
-            range: 14.0,
+            intensity: 2600.0,
+            range: 9.5,
             shadows_enabled: false,
             ..default()
         },
@@ -857,8 +885,8 @@ pub fn setup_cavern_world(
     commands.spawn((
         PointLight {
             color: Color::srgb(0.92, 0.68, 0.35),
-            intensity: 2600.0,
-            range: 14.0,
+            intensity: 2400.0,
+            range: 10.0,
             shadows_enabled: false,
             ..default()
         },
@@ -1163,6 +1191,143 @@ pub fn setup_cavern_world(
         Transform::from_xyz(0.0, 0.065, -8.5),
     ));
 
+    let shoreline_moss_mat = moss_materials.add(CelShadedMossMaterial {
+        base_color: LinearRgba::new(0.12, 0.16, 0.20, 1.0),
+        moss_color: LinearRgba::new(0.09, 0.15, 0.13, 1.0),
+        light_dir: Vec4::new(0.25, 0.85, -0.45, 0.0),
+        moss_params: Vec4::new(0.70, 3.50, 0.15, 3.0),
+    });
+
+    let mesh_boulder = meshes.add(create_faceted_stone_mesh(7, 4, Vec3::new(0.68, 0.44, 0.62), 0.4));
+    let mesh_pebble = meshes.add(create_faceted_stone_mesh(6, 4, Vec3::new(0.40, 0.20, 0.36), 0.8));
+    let mesh_flat_stepping = meshes.add(create_faceted_stone_mesh(7, 4, Vec3::new(0.55, 0.15, 0.48), 1.2));
+
+    let shore_stone_configs = [
+        (-1.45, 0.035, -3.35, 0.52, 0.4, 1),
+        (-0.95, 0.025, -3.42, 0.38, -0.6, 2),
+        (-1.95, 0.045, -3.48, 0.62, 0.8, 0),
+        (1.10, 0.030, -3.38, 0.44, 0.5, 2),
+        (1.65, 0.040, -3.45, 0.58, -0.3, 1),
+        (2.25, 0.055, -3.65, 0.68, 0.7, 0),
+        (-0.40, 0.015, -3.55, 0.36, 0.2, 2),
+        (0.45, 0.018, -3.58, 0.38, -0.4, 2),
+        (-3.10, 0.075, -4.20, 0.85, 0.3, 0),
+        (-3.85, 0.090, -4.95, 0.95, -0.5, 0),
+        (-4.55, 0.110, -5.90, 1.05, 0.4, 0),
+        (-4.95, 0.125, -7.10, 1.10, -0.6, 0),
+        (-5.10, 0.130, -8.30, 1.05, 0.5, 0),
+        (-4.80, 0.115, -9.55, 0.95, -0.4, 0),
+        (-4.20, 0.095, -10.75, 0.90, 0.3, 0),
+        (3.05, 0.075, -4.25, 0.85, -0.4, 0),
+        (3.80, 0.090, -5.00, 0.95, 0.5, 0),
+        (4.50, 0.110, -5.95, 1.05, -0.3, 0),
+        (4.90, 0.125, -7.15, 1.10, 0.6, 0),
+        (5.05, 0.130, -8.35, 1.05, -0.5, 0),
+        (4.75, 0.115, -9.60, 0.95, 0.4, 0),
+        (4.15, 0.095, -10.80, 0.90, -0.3, 0),
+        (-2.80, 0.080, -12.40, 0.85, 0.6, 0),
+        (-1.50, 0.065, -13.15, 0.75, -0.4, 1),
+        (0.00, 0.060, -13.40, 0.80, 0.2, 0),
+        (1.50, 0.065, -13.15, 0.75, 0.5, 1),
+        (2.80, 0.080, -12.40, 0.85, -0.5, 0),
+    ];
+
+    for (x, y, z, scale, rot_y, mesh_type) in shore_stone_configs {
+        let mesh_handle = match mesh_type {
+            0 => mesh_boulder.clone(),
+            1 => mesh_pebble.clone(),
+            _ => mesh_flat_stepping.clone(),
+        };
+        commands.spawn((
+            Mesh3d(mesh_handle),
+            MeshMaterial3d(shoreline_moss_mat.clone()),
+            Transform::from_xyz(x, y, z)
+                .with_scale(Vec3::splat(scale))
+                .with_rotation(Quat::from_rotation_y(rot_y)),
+        ));
+    }
+
+    let mesh_cliff_boulder = meshes.add(create_faceted_stone_mesh(7, 4, Vec3::new(1.05, 0.90, 1.00), 0.3));
+    let mesh_cliff_pillar = meshes.add(create_faceted_stone_mesh(6, 5, Vec3::new(0.80, 1.45, 0.85), 0.8));
+    let mesh_cliff_shelf = meshes.add(create_faceted_stone_mesh(7, 4, Vec3::new(1.30, 0.60, 1.10), 1.2));
+    let mesh_arch_keystone = meshes.add(create_faceted_stone_mesh(7, 4, Vec3::new(0.95, 0.70, 0.85), 0.5));
+    let mesh_cliff_accent = meshes.add(create_faceted_stone_mesh(6, 4, Vec3::new(0.65, 0.55, 0.60), 1.6));
+
+    let portal_wall_stone_configs = [
+        (0.00, 5.42, 3.96, 1.15, 0.10, 0),
+        (-0.85, 5.32, 3.96, 1.05, -0.25, 3),
+        (0.85, 5.32, 3.96, 1.05, 0.30, 3),
+        (-1.75, 4.95, 3.95, 1.10, 0.40, 0),
+        (1.75, 4.95, 3.95, 1.10, -0.45, 0),
+        (0.00, 6.45, 4.05, 1.35, 0.50, 2),
+        (-1.25, 6.35, 4.00, 1.25, -0.40, 0),
+        (1.25, 6.35, 4.00, 1.25, 0.35, 0),
+        (0.00, 7.50, 4.15, 1.40, 0.20, 2),
+        (-1.50, 7.40, 4.10, 1.30, -0.30, 0),
+        (1.50, 7.40, 4.10, 1.30, 0.25, 0),
+        (-2.85, 0.50, 3.85, 1.15, 0.25, 0),
+        (-3.95, 0.55, 3.80, 1.25, -0.40, 2),
+        (-5.20, 0.50, 3.80, 1.30, 0.30, 0),
+        (-6.50, 0.55, 3.85, 1.25, -0.50, 2),
+        (-7.60, 0.60, 3.85, 1.30, 0.40, 0),
+        (-2.90, 1.90, 3.90, 1.10, -0.30, 1),
+        (-4.10, 2.05, 3.85, 1.30, 0.45, 2),
+        (-5.40, 2.15, 3.80, 1.25, -0.35, 0),
+        (-6.70, 2.10, 3.85, 1.25, 0.40, 2),
+        (-2.85, 3.35, 3.95, 1.15, 0.35, 0),
+        (-4.25, 3.50, 3.85, 1.35, -0.45, 2),
+        (-5.60, 3.60, 3.80, 1.25, 0.50, 1),
+        (-6.90, 3.55, 3.85, 1.20, -0.25, 2),
+        (-2.70, 4.60, 4.00, 1.15, -0.40, 0),
+        (-3.95, 4.80, 3.95, 1.30, 0.35, 2),
+        (-5.35, 4.90, 3.85, 1.25, -0.50, 0),
+        (-6.70, 4.95, 3.90, 1.20, 0.45, 2),
+        (-3.50, 6.10, 4.05, 1.30, -0.35, 0),
+        (-5.10, 6.20, 4.00, 1.35, 0.40, 2),
+        (-6.60, 6.15, 4.00, 1.25, -0.30, 0),
+        (2.85, 0.50, 3.85, 1.15, -0.30, 0),
+        (4.00, 0.55, 3.80, 1.25, 0.45, 2),
+        (5.25, 0.50, 3.80, 1.30, -0.35, 0),
+        (6.55, 0.55, 3.85, 1.25, 0.55, 2),
+        (7.65, 0.60, 3.85, 1.30, -0.40, 0),
+        (2.90, 1.90, 3.90, 1.10, 0.35, 1),
+        (4.15, 2.05, 3.85, 1.30, -0.40, 2),
+        (5.45, 2.15, 3.80, 1.25, 0.30, 0),
+        (6.75, 2.10, 3.85, 1.25, -0.45, 2),
+        (2.85, 3.35, 3.95, 1.15, -0.40, 0),
+        (4.30, 3.50, 3.85, 1.35, 0.50, 2),
+        (5.65, 3.60, 3.80, 1.25, -0.45, 1),
+        (6.95, 3.55, 3.85, 1.20, 0.30, 2),
+        (2.70, 4.60, 4.00, 1.15, 0.45, 0),
+        (4.00, 4.80, 3.95, 1.30, -0.30, 2),
+        (5.40, 4.90, 3.85, 1.25, 0.45, 0),
+        (6.75, 4.95, 3.90, 1.20, -0.40, 2),
+        (3.55, 6.10, 4.05, 1.30, 0.40, 0),
+        (5.15, 6.20, 4.00, 1.35, -0.35, 2),
+        (6.65, 6.15, 4.00, 1.25, 0.35, 0),
+        (-2.45, 0.18, 3.65, 0.65, 0.50, 4),
+        (2.45, 0.18, 3.65, 0.65, -0.45, 4),
+        (-3.35, 0.90, 3.65, 0.70, -0.35, 4),
+        (3.35, 0.90, 3.65, 0.70, 0.40, 4),
+    ];
+
+    for (x, y, z, scale, rot_y, mesh_type) in portal_wall_stone_configs {
+        let mesh_handle = match mesh_type {
+            0 => mesh_cliff_boulder.clone(),
+            1 => mesh_cliff_pillar.clone(),
+            2 => mesh_cliff_shelf.clone(),
+            3 => mesh_arch_keystone.clone(),
+            _ => mesh_cliff_accent.clone(),
+        };
+        commands.spawn((
+            Mesh3d(mesh_handle),
+            MeshMaterial3d(shoreline_moss_mat.clone()),
+            Transform::from_xyz(x, y, z)
+                .with_scale(Vec3::splat(scale))
+                .with_rotation(Quat::from_rotation_y(rot_y)),
+        ));
+    }
+
     for x_off in [-3.6, -2.4, -1.2, 0.0, 1.2, 2.4, 3.6] {
         commands.spawn((
             Transform::from_xyz(x_off, 0.06, -8.55),
@@ -1307,6 +1472,143 @@ pub fn create_water_disk_mesh(radius: f32, segments: usize) -> Mesh {
         PrimitiveTopology::TriangleList,
         RenderAssetUsages::default(),
     );
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_indices(Indices::U32(indices));
+    mesh
+}
+
+pub fn create_faceted_stone_mesh(u_segs: usize, v_segs: usize, scale: Vec3, aspect_shift: f32) -> Mesh {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+
+    let u_steps = u_segs.max(6);
+    let v_steps = v_segs.max(3);
+
+    let apex = Vec3::new(0.0, scale.y * 1.02, 0.0);
+    let bottom = Vec3::new(0.0, -scale.y * 0.28, 0.0);
+
+    let mut temp_pos = Vec::new();
+
+    for iv in 0..v_steps {
+        let v_frac = (iv as f32 + 0.5) / v_steps as f32;
+        let phi = 0.22 + v_frac * (std::f32::consts::PI - 0.44);
+        let y = phi.cos();
+        let r_sin = phi.sin();
+
+        for iu in 0..u_steps {
+            let u_frac = iu as f32 / u_steps as f32;
+            let theta = u_frac * std::f32::consts::TAU;
+
+            let x = theta.cos() * r_sin;
+            let z = theta.sin() * r_sin;
+
+            let oblong = 1.0 + (theta * 2.0 + aspect_shift).cos() * 0.15;
+            let p = Vec3::new(
+                x * oblong * scale.x,
+                (y * oblong * scale.y).max(-scale.y * 0.28),
+                z * oblong * scale.z,
+            );
+            temp_pos.push(p);
+        }
+    }
+
+    let mut vert_idx = 0u32;
+
+    for iu in 0..u_steps {
+        let next_u = (iu + 1) % u_steps;
+        let p0 = temp_pos[iu];
+        let p1 = temp_pos[next_u];
+
+        let v_a = p0 - apex;
+        let v_b = p1 - apex;
+        let n = v_b.cross(v_a).normalize_or_zero();
+
+        positions.push([apex.x, apex.y, apex.z]);
+        positions.push([p1.x, p1.y, p1.z]);
+        positions.push([p0.x, p0.y, p0.z]);
+        normals.push([n.x, n.y, n.z]);
+        normals.push([n.x, n.y, n.z]);
+        normals.push([n.x, n.y, n.z]);
+        uvs.push([0.5, 0.5]);
+        uvs.push([1.0, 0.0]);
+        uvs.push([0.0, 0.0]);
+        indices.push(vert_idx);
+        indices.push(vert_idx + 1);
+        indices.push(vert_idx + 2);
+        vert_idx += 3;
+    }
+
+    for iv in 0..(v_steps - 1) {
+        for iu in 0..u_steps {
+            let next_u = (iu + 1) % u_steps;
+
+            let p00 = temp_pos[iv * u_steps + iu];
+            let p10 = temp_pos[iv * u_steps + next_u];
+            let p01 = temp_pos[(iv + 1) * u_steps + iu];
+            let p11 = temp_pos[(iv + 1) * u_steps + next_u];
+
+            let n1 = (p10 - p00).cross(p01 - p00).normalize_or_zero();
+            positions.push([p00.x, p00.y, p00.z]);
+            positions.push([p10.x, p10.y, p10.z]);
+            positions.push([p01.x, p01.y, p01.z]);
+            normals.push([n1.x, n1.y, n1.z]);
+            normals.push([n1.x, n1.y, n1.z]);
+            normals.push([n1.x, n1.y, n1.z]);
+            uvs.push([0.0, 0.0]);
+            uvs.push([1.0, 0.0]);
+            uvs.push([0.0, 1.0]);
+            indices.push(vert_idx);
+            indices.push(vert_idx + 1);
+            indices.push(vert_idx + 2);
+            vert_idx += 3;
+
+            let n2 = (p11 - p10).cross(p01 - p11).normalize_or_zero();
+            positions.push([p10.x, p10.y, p10.z]);
+            positions.push([p11.x, p11.y, p11.z]);
+            positions.push([p01.x, p01.y, p01.z]);
+            normals.push([n2.x, n2.y, n2.z]);
+            normals.push([n2.x, n2.y, n2.z]);
+            normals.push([n2.x, n2.y, n2.z]);
+            uvs.push([1.0, 0.0]);
+            uvs.push([1.0, 1.0]);
+            uvs.push([0.0, 1.0]);
+            indices.push(vert_idx);
+            indices.push(vert_idx + 1);
+            indices.push(vert_idx + 2);
+            vert_idx += 3;
+        }
+    }
+
+    let last_ring = (v_steps - 1) * u_steps;
+    for iu in 0..u_steps {
+        let next_u = (iu + 1) % u_steps;
+        let p0 = temp_pos[last_ring + iu];
+        let p1 = temp_pos[last_ring + next_u];
+
+        let v_a = p0 - bottom;
+        let v_b = p1 - bottom;
+        let n = v_a.cross(v_b).normalize_or_zero();
+
+        positions.push([bottom.x, bottom.y, bottom.z]);
+        positions.push([p0.x, p0.y, p0.z]);
+        positions.push([p1.x, p1.y, p1.z]);
+        normals.push([n.x, n.y, n.z]);
+        normals.push([n.x, n.y, n.z]);
+        normals.push([n.x, n.y, n.z]);
+        uvs.push([0.5, 0.5]);
+        uvs.push([0.0, 1.0]);
+        uvs.push([1.0, 1.0]);
+        indices.push(vert_idx);
+        indices.push(vert_idx + 1);
+        indices.push(vert_idx + 2);
+        vert_idx += 3;
+    }
+
+    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);

@@ -146,26 +146,28 @@ fn fragment(
         let v_edge2 = 1.0 - voronoi(uv_micro);
         let froth_noise = v_edge1 * 0.60 + v_edge2 * 0.40;
 
-        let shore_in = smoothstep(4.00, 4.75, dist_to_impact);
-        let shore_out = 1.0 - smoothstep(5.08, 5.22, dist_to_impact);
+        let shore_angle = atan2(in.world_position.x, in.world_position.z + 8.5);
+        let shore_lap = sin(t * 1.5 + shore_angle * 3.0) * 0.04 + cos(t * 2.2 - shore_angle * 5.0) * 0.02;
+        let shore_in = smoothstep(4.90 + shore_lap, 5.14 + shore_lap, dist_to_impact);
+        let shore_out = 1.0 - smoothstep(5.20, 5.24, dist_to_impact);
         let shore_zone = shore_in * shore_out;
         let edge_foam_threshold = reflection_params.z;
-        let shoreline_foam = smoothstep(0.36, 0.72, froth_noise * (0.8 + edge_foam_threshold * 0.2)) * shore_zone;
+        let shoreline_foam = smoothstep(0.40, 0.80, froth_noise * (0.8 + edge_foam_threshold * 0.2)) * shore_zone;
 
         let uv_plunge = in.uv * vec2<f32>(14.0, 18.0) + vec2<f32>(0.0, -t * 2.2);
         let plunge_noise = 1.0 - voronoi(uv_plunge);
         let plunge_zone = smoothstep(2.2, 0.25, dist_to_impact);
         let plunge_froth = smoothstep(0.35, 0.75, plunge_noise) * plunge_zone;
 
-        let total_foam = clamp(shoreline_foam * 1.25 + ripple_crests * 0.62 + plunge_froth * 0.85, 0.0, 1.0);
+        let total_foam = clamp(shoreline_foam * 0.75 + plunge_froth * 0.85, 0.0, 1.0);
 
         let foam_cel_tint = mix(material_foam.rgb, vec3<f32>(0.84, 0.98, 1.0), 0.45);
         let col_rgb = mix(reflected_lake, foam_cel_tint, total_foam * 0.94);
 
-        let edge_feather = 1.0 - smoothstep(5.10, 5.23, dist_to_impact);
-        let lake_specular = vec3<f32>(0.88, 0.97, 1.0) * (pow(lake_fresnel, 2.0) * 0.32 + pow(ripple_crests, 2.0) * 0.18) * edge_feather;
+        let edge_feather = 1.0 - smoothstep(5.15, 5.24, dist_to_impact);
+        let lake_specular = vec3<f32>(0.88, 0.97, 1.0) * (pow(lake_fresnel, 2.5) * 0.35 + pow(ripple_crests, 2.8) * 0.15) * edge_feather;
         let lake_glow = material_foam.rgb * (total_foam * bloom_boost * 0.085) * edge_feather;
-        let lake_alpha = clamp((clear_water_alpha + total_foam * 0.30 + lake_fresnel * 0.16) * edge_feather, 0.0, 0.88);
+        let lake_alpha = clamp((clear_water_alpha + total_foam * 0.35 + lake_fresnel * 0.18) * edge_feather, 0.0, 0.88);
 
         return vec4<f32>(col_rgb + lake_specular + lake_glow, lake_alpha);
     }
