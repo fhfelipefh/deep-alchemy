@@ -1043,6 +1043,83 @@ pub fn resolve_surface_impact_normal(impact_point: Vec3, raw_normal: Vec3) -> (V
     (impact_point, raw_normal.normalize_or_zero())
 }
 
+pub fn spawn_massive_steam_cloud(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    center: Vec3,
+    intensity: f32,
+) {
+    let steam_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.88, 0.95, 1.0, 0.32),
+        alpha_mode: AlphaMode::Blend,
+        unlit: true,
+        ..default()
+    });
+
+    let count = (36.0 * intensity).round() as usize;
+    for i in 0..count {
+        let angle = i as f32 * (std::f32::consts::TAU / count as f32);
+        let radius = 0.2 + crate::render::particles::fastrand::f32() * 1.6;
+        let speed = 0.6 + crate::render::particles::fastrand::f32() * 1.8;
+        let vel = Vec3::new(
+            angle.cos() * speed + (crate::render::particles::fastrand::f32() - 0.5) * 0.8,
+            1.4 + crate::render::particles::fastrand::f32() * 1.8,
+            angle.sin() * speed + (crate::render::particles::fastrand::f32() - 0.5) * 0.8,
+        );
+        let puff_radius = 0.12 + crate::render::particles::fastrand::f32() * 0.08;
+        let sphere_mesh = meshes.add(Sphere::new(puff_radius).mesh().uv(8, 6));
+
+        commands.spawn((
+            Mesh3d(sphere_mesh),
+            MeshMaterial3d(steam_mat.clone()),
+            Transform::from_xyz(
+                center.x + angle.cos() * radius * 0.5,
+                center.y + 0.10 + crate::render::particles::fastrand::f32() * 0.25,
+                center.z + angle.sin() * radius * 0.5,
+            ),
+            crate::render::particles::Particle {
+                lifetime: 0.0,
+                max_lifetime: 2.2 + crate::render::particles::fastrand::f32() * 1.4,
+                velocity: vel,
+                p_type: crate::render::particles::ParticleType::Steam,
+            },
+        ));
+    }
+
+    let emitter_count = 14;
+    for i in 0..emitter_count {
+        let (r, y_off) = if i == 0 {
+            (0.0, 0.10)
+        } else if i <= 5 {
+            (0.65, 0.12)
+        } else {
+            (1.35, 0.15)
+        };
+        let angle = if i == 0 {
+            0.0
+        } else {
+            i as f32 * (std::f32::consts::TAU / (emitter_count - 1) as f32)
+        };
+        commands.spawn((
+            Transform::from_xyz(
+                center.x + angle.cos() * r,
+                center.y + y_off,
+                center.z + angle.sin() * r,
+            ),
+            crate::render::particles::ParticleEmitter {
+                spawn_timer: 0.0,
+                spawn_rate: 0.022,
+                particle_type: crate::render::particles::ParticleType::Steam,
+            },
+            AlchemyTransientEmitter {
+                elapsed: 0.0,
+                max_lifetime: 3.8,
+            },
+        ));
+    }
+}
+
 fn spawn_alchemical_puddle(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -1114,6 +1191,14 @@ fn spawn_alchemical_puddle(
     }
 
     let rot = Quat::from_rotation_arc(Vec3::Y, impact_normal);
+    let is_fire_puddle = effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat);
+    let dx = impact_point.x;
+    let dz = impact_point.z - (-8.5);
+    let dist_lake = (dx * dx + dz * dz).sqrt();
+    let is_near_water = (dist_lake <= 6.8 && impact_point.y <= 0.65) || in_water;
+    if is_fire_puddle && is_near_water {
+        spawn_massive_steam_cloud(commands, meshes, materials, impact_point, 1.0);
+    }
     let mesh = meshes.add(create_conforming_puddle_mesh(1.15, 32, impact_point));
     let puddle_pos = impact_point + impact_normal * 0.045;
 
@@ -1257,6 +1342,21 @@ pub fn update_potion_projectiles(
                     .map(|e| e.magnitude)
                     .unwrap_or(25.0);
                 ignite_nearby_flammables(&mut flammables, impact_point, 2.8, heat_magnitude);
+
+                let dx = impact_point.x;
+                let dz = impact_point.z - (-8.5);
+                let dist_lake = (dx * dx + dz * dz).sqrt();
+                let is_near_water = (dist_lake <= 6.8 && impact_point.y <= 0.65)
+                    || crate::dungeon::modular_kit::is_in_lake_water(impact_point);
+                if is_near_water {
+                    spawn_massive_steam_cloud(
+                        &mut commands,
+                        &mut meshes,
+                        &mut materials,
+                        impact_point,
+                        1.15,
+                    );
+                }
             }
 
             let is_wall = impact_normal.y.abs() < 0.65;
@@ -1369,23 +1469,15 @@ pub fn update_potion_projectiles(
                     ));
                 }
 
-                if projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat) {
-                    for i in 0..8 {
-                        let angle = i as f32 * (std::f32::consts::TAU / 8.0);
-                        let r = 0.9;
-                        commands.spawn((
-                            Transform::from_xyz(current_pos.x + angle.cos() * r, 0.24, current_pos.z + angle.sin() * r),
-                            crate::render::particles::ParticleEmitter {
-                                spawn_timer: 0.0,
-                                spawn_rate: 0.035,
-                                particle_type: crate::render::particles::ParticleType::Steam,
-                            },
-                            AlchemyTransientEmitter {
-                                elapsed: 0.0,
-                                max_lifetime: 3.0,
-                            },
-                        ));
-                    }
+                let is_fire_water = projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat) || projectile.slot == 2;
+                if is_fire_water {
+                    spawn_massive_steam_cloud(
+                        &mut commands,
+                        &mut meshes,
+                        &mut materials,
+                        Vec3::new(current_pos.x, 0.06, current_pos.z),
+                        1.25,
+                    );
                 }
             }
 
@@ -1442,6 +1534,21 @@ pub fn update_potion_projectiles(
                         .map(|e| e.magnitude)
                         .unwrap_or(25.0);
                     ignite_nearby_flammables(&mut flammables, impact_point, 2.8, heat_magnitude);
+
+                    let dx = impact_point.x;
+                    let dz = impact_point.z - (-8.5);
+                    let dist_lake = (dx * dx + dz * dz).sqrt();
+                    let is_near_water = (dist_lake <= 6.8 && impact_point.y <= 0.65)
+                        || crate::dungeon::modular_kit::is_in_lake_water(impact_point);
+                    if is_near_water {
+                        spawn_massive_steam_cloud(
+                            &mut commands,
+                            &mut meshes,
+                            &mut materials,
+                            impact_point,
+                            1.15,
+                        );
+                    }
                 }
 
                 let is_rtx = settings.as_ref().map(|s| s.rtx_enabled).unwrap_or(false);
@@ -1769,19 +1876,31 @@ pub fn update_potion_puddles(
                 }
             }
         }
-        if has_thermal && puddle.elapsed <= dt && crate::dungeon::modular_kit::is_in_lake_water(transform.translation) {
-            commands.spawn((
-                Transform::from_translation(transform.translation + Vec3::new(0.0, 0.22, 0.0)),
-                crate::render::particles::ParticleEmitter {
-                    spawn_timer: 0.0,
-                    spawn_rate: 0.035,
-                    particle_type: crate::render::particles::ParticleType::Steam,
-                },
-                AlchemyTransientEmitter {
-                    elapsed: 0.0,
-                    max_lifetime: 3.0,
-                },
-            ));
+        let dx = transform.translation.x;
+        let dz = transform.translation.z - (-8.5);
+        let dist_lake = (dx * dx + dz * dz).sqrt();
+        let near_water = dist_lake <= 6.8 || crate::dungeon::modular_kit::is_in_lake_water(transform.translation);
+        if has_thermal && puddle.elapsed <= dt && near_water {
+            for i in 0..12 {
+                let angle = i as f32 * (std::f32::consts::TAU / 12.0);
+                let r = 0.4 + (i as f32 % 3.0) * 0.45;
+                commands.spawn((
+                    Transform::from_xyz(
+                        transform.translation.x + angle.cos() * r,
+                        transform.translation.y + 0.15,
+                        transform.translation.z + angle.sin() * r,
+                    ),
+                    crate::render::particles::ParticleEmitter {
+                        spawn_timer: 0.0,
+                        spawn_rate: 0.022,
+                        particle_type: crate::render::particles::ParticleType::Steam,
+                    },
+                    AlchemyTransientEmitter {
+                        elapsed: 0.0,
+                        max_lifetime: 3.5,
+                    },
+                ));
+            }
         }
     }
 

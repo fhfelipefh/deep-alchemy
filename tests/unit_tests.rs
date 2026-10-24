@@ -3731,3 +3731,64 @@ fn test_unit_potion_impact_on_ramp_conforms_to_ramp_inclination() {
     assert!((up_transformed.dot(ramp_normal) - 1.0).abs() < 1e-3);
 }
 
+#[test]
+fn test_unit_fire_potion_impact_near_water_edge_spawns_massive_steam_cloud() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::transform::TransformPlugin,
+        bevy::asset::AssetPlugin::default(),
+        bevy::scene::ScenePlugin::default(),
+        avian3d::prelude::PhysicsPlugins::default(),
+    ));
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.init_resource::<Assets<Mesh>>();
+    app.insert_resource(deep_alchemy::player::camera::CameraShake::default());
+
+    let water_edge_impact = Vec3::new(0.0, 0.08, -3.3);
+    let mut system_state = bevy::ecs::system::SystemState::<(
+        Commands,
+        ResMut<Assets<Mesh>>,
+        ResMut<Assets<StandardMaterial>>,
+    )>::new(app.world_mut());
+    let (mut commands, mut meshes, mut materials) = system_state.get_mut(app.world_mut());
+
+    deep_alchemy::alchemy::spawn_massive_steam_cloud(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        water_edge_impact,
+        1.0,
+    );
+    system_state.apply(app.world_mut());
+
+    app.update();
+
+    let mut particle_query = app
+        .world_mut()
+        .query::<(&deep_alchemy::render::particles::Particle, &Transform)>();
+    let steam_particles: Vec<_> = particle_query
+        .iter(app.world())
+        .filter(|(p, _)| matches!(p.p_type, deep_alchemy::render::particles::ParticleType::Steam))
+        .collect();
+    assert!(
+        steam_particles.len() >= 30,
+        "Massive steam cloud must immediately burst with at least 30 steam particles, found: {}",
+        steam_particles.len()
+    );
+
+    let mut emitter_query = app
+        .world_mut()
+        .query::<(&deep_alchemy::render::particles::ParticleEmitter, &deep_alchemy::alchemy::AlchemyTransientEmitter)>();
+    let steam_emitters: Vec<_> = emitter_query
+        .iter(app.world())
+        .filter(|(e, _)| matches!(e.particle_type, deep_alchemy::render::particles::ParticleType::Steam))
+        .collect();
+    assert!(
+        steam_emitters.len() >= 12,
+        "Massive steam cloud must spawn a cluster of at least 12 billowing emitters across water edge, found: {}",
+        steam_emitters.len()
+    );
+}
+
+

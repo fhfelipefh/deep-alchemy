@@ -92,7 +92,7 @@ fn fragment(
         return vec4<f32>(surface_color + specular_highlight + ambient_froth_glow, final_alpha);
     } else {
         let dist_to_impact = length(in.world_position.xz - vec2<f32>(0.0, -8.5));
-        let lake_max_radius = 5.85;
+        let lake_max_radius = 5.24;
         let depth_factor = clamp(1.0 - (dist_to_impact / lake_max_radius), 0.0, 1.0);
         let depth_curve = pow(depth_factor, 1.65);
 
@@ -118,7 +118,7 @@ fn fragment(
         let ripple_sin1 = sin(ripple_p1);
         let ripple_sin2 = sin(ripple_p2);
 
-        let ripple_envelope = smoothstep(0.35, 1.3, dist_to_impact) * smoothstep(5.6, 2.0, dist_to_impact);
+        let ripple_envelope = smoothstep(0.35, 1.3, dist_to_impact) * smoothstep(4.90, 2.0, dist_to_impact);
         let ripple_crests = (smoothstep(0.70, 0.96, ripple_sin1) * 0.70 + smoothstep(0.78, 0.98, ripple_sin2) * 0.30) * ripple_envelope;
 
         let r_dx = (in.world_position.x / max(dist_to_impact, 0.01)) * ripple_freq_1 * 0.025 * cos(ripple_p1) * ripple_envelope;
@@ -140,13 +140,15 @@ fn fragment(
         let cel_refl = smoothstep(0.12, 0.65, lake_fresnel) * refl_blend_factor;
         let reflected_lake = mix(lake_water, refl_sample.rgb, clamp(cel_refl + 0.15, 0.0, 0.88));
 
-        let uv_macro = in.uv * vec2<f32>(22.0, 22.0) + vec2<f32>(cos(t * 0.5) * 0.2, sin(t * 0.5) * 0.2);
-        let uv_micro = in.uv * vec2<f32>(44.0, 44.0) + vec2<f32>(0.0, -t * 1.1);
+        let uv_macro = in.uv * vec2<f32>(14.0, 14.0) + vec2<f32>(cos(t * 0.35) * 0.15, sin(t * 0.35) * 0.15);
+        let uv_micro = in.uv * vec2<f32>(26.0, 26.0) + vec2<f32>(sin(t * 0.45) * 0.12, -cos(t * 0.45) * 0.12);
         let v_edge1 = 1.0 - voronoi(uv_macro);
         let v_edge2 = 1.0 - voronoi(uv_micro);
-        let froth_noise = v_edge1 * 0.65 + v_edge2 * 0.35;
+        let froth_noise = v_edge1 * 0.60 + v_edge2 * 0.40;
 
-        let shore_zone = smoothstep(4.65, 5.82, dist_to_impact);
+        let shore_in = smoothstep(4.00, 4.75, dist_to_impact);
+        let shore_out = 1.0 - smoothstep(5.08, 5.22, dist_to_impact);
+        let shore_zone = shore_in * shore_out;
         let edge_foam_threshold = reflection_params.z;
         let shoreline_foam = smoothstep(0.36, 0.72, froth_noise * (0.8 + edge_foam_threshold * 0.2)) * shore_zone;
 
@@ -160,9 +162,10 @@ fn fragment(
         let foam_cel_tint = mix(material_foam.rgb, vec3<f32>(0.84, 0.98, 1.0), 0.45);
         let col_rgb = mix(reflected_lake, foam_cel_tint, total_foam * 0.94);
 
-        let lake_specular = vec3<f32>(0.88, 0.97, 1.0) * (pow(lake_fresnel, 2.0) * 0.32 + pow(ripple_crests, 2.0) * 0.18);
-        let lake_glow = material_foam.rgb * (total_foam * bloom_boost * 0.085);
-        let lake_alpha = clamp(clear_water_alpha + total_foam * 0.30 + lake_fresnel * 0.16, 0.10, 0.88);
+        let edge_feather = 1.0 - smoothstep(5.10, 5.23, dist_to_impact);
+        let lake_specular = vec3<f32>(0.88, 0.97, 1.0) * (pow(lake_fresnel, 2.0) * 0.32 + pow(ripple_crests, 2.0) * 0.18) * edge_feather;
+        let lake_glow = material_foam.rgb * (total_foam * bloom_boost * 0.085) * edge_feather;
+        let lake_alpha = clamp((clear_water_alpha + total_foam * 0.30 + lake_fresnel * 0.16) * edge_feather, 0.0, 0.88);
 
         return vec4<f32>(col_rgb + lake_specular + lake_glow, lake_alpha);
     }

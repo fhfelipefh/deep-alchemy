@@ -1148,7 +1148,7 @@ pub fn setup_cavern_world(
     ));
 
     commands.spawn((
-        Mesh3d(meshes.add(create_water_disk_mesh(5.85, 64))),
+        Mesh3d(meshes.add(create_water_disk_mesh(5.24, 96))),
         MeshMaterial3d(water_materials.add(WaterMaterial {
             base_color: LinearRgba::new(0.10, 0.62, 0.70, 0.16),
             deep_color: LinearRgba::new(0.012, 0.055, 0.12, 0.88),
@@ -1160,12 +1160,12 @@ pub fn setup_cavern_world(
         bevy::pbr::NotShadowCaster,
         bevy::pbr::NotShadowReceiver,
         LakeWaterPool,
-        Transform::from_xyz(0.0, 0.08, -8.5),
+        Transform::from_xyz(0.0, 0.065, -8.5),
     ));
 
     for x_off in [-3.6, -2.4, -1.2, 0.0, 1.2, 2.4, 3.6] {
         commands.spawn((
-            Transform::from_xyz(x_off, 0.08, -8.55),
+            Transform::from_xyz(x_off, 0.06, -8.55),
             ParticleEmitter {
                 spawn_timer: 0.0,
                 spawn_rate: 0.08,
@@ -1173,7 +1173,7 @@ pub fn setup_cavern_world(
             },
         ));
         commands.spawn((
-            Transform::from_xyz(x_off * 0.8, 0.14, -8.7),
+            Transform::from_xyz(x_off * 0.8, 0.10, -8.7),
             ParticleEmitter {
                 spawn_timer: 0.0,
                 spawn_rate: 0.10,
@@ -1492,7 +1492,7 @@ pub fn is_in_lake_water(pos: Vec3) -> bool {
     let dx = pos.x;
     let dz = pos.z - (-8.5);
     let dist = (dx * dx + dz * dz).sqrt();
-    dist <= 5.80 && pos.y <= 0.22
+    dist <= 5.35 && pos.y <= 0.22
 }
 
 #[cfg(test)]

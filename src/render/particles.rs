@@ -39,14 +39,14 @@ pub fn spawn_particles(
             match emitter.particle_type {
                 ParticleType::Steam => {
                     let vel = Vec3::new(
-                        (fastrand::f32() - 0.5) * 0.4,
-                        0.8 + fastrand::f32() * 0.5,
-                        (fastrand::f32() - 0.5) * 0.4,
+                        (fastrand::f32() - 0.5) * 0.7,
+                        0.9 + fastrand::f32() * 0.9,
+                        (fastrand::f32() - 0.5) * 0.7,
                     );
                     commands.spawn((
-                        Mesh3d(meshes.add(Sphere::new(0.08).mesh().uv(8, 6))),
+                        Mesh3d(meshes.add(Sphere::new(0.11).mesh().uv(8, 6))),
                         MeshMaterial3d(materials.add(StandardMaterial {
-                            base_color: Color::srgba(0.85, 0.94, 1.0, 0.16),
+                            base_color: Color::srgba(0.88, 0.95, 1.0, 0.28),
                             alpha_mode: AlphaMode::Blend,
                             unlit: true,
                             ..default()
@@ -54,7 +54,7 @@ pub fn spawn_particles(
                         Transform::from_translation(pos),
                         Particle {
                             lifetime: 0.0,
-                            max_lifetime: 2.2,
+                            max_lifetime: 2.6 + fastrand::f32() * 0.8,
                             velocity: vel,
                             p_type: ParticleType::Steam,
                         },
@@ -170,8 +170,10 @@ pub fn update_particles(
         match p.p_type {
             ParticleType::Steam => {
                 let progress = p.lifetime / p.max_lifetime;
-                let scale = 1.0 + progress * 2.5;
-                tf.scale = Vec3::splat(scale);
+                let expansion = 1.0 + (progress * std::f32::consts::PI * 0.5).sin() * 4.8;
+                tf.scale = Vec3::splat(expansion);
+                tf.translation.y += 0.35 * dt * (1.0 - progress * 0.5);
+                p.velocity.y *= (1.0 - 0.35 * dt).max(0.0);
             }
             ParticleType::WaterSplash => {
                 let progress = p.lifetime / p.max_lifetime;
