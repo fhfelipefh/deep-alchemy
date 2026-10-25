@@ -748,6 +748,200 @@ fn spawn_player_ice_footprints(
     ));
 }
 
+#[derive(Resource, Debug, Clone)]
+pub struct FlyModeState {
+    pub enabled: bool,
+    pub cheat_buffer: Vec<KeyCode>,
+    pub last_key_time: f32,
+    pub fly_speed: f32,
+    pub fast_fly_multiplier: f32,
+}
+
+impl Default for FlyModeState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            cheat_buffer: Vec::new(),
+            last_key_time: 0.0,
+            fly_speed: 12.0,
+            fast_fly_multiplier: 2.5,
+        }
+    }
+}
+
+impl FlyModeState {
+    pub const CHEAT_SEQUENCE: [KeyCode; 7] = [
+        KeyCode::KeyH,
+        KeyCode::KeyE,
+        KeyCode::KeyS,
+        KeyCode::KeyO,
+        KeyCode::KeyY,
+        KeyCode::KeyA,
+        KeyCode::KeyM,
+    ];
+
+    pub fn handle_key_press(&mut self, key: KeyCode, current_time: f32) -> bool {
+        if self.cheat_buffer.is_empty() {
+            if key == Self::CHEAT_SEQUENCE[0] {
+                self.cheat_buffer.push(key);
+                self.last_key_time = current_time;
+            }
+            return false;
+        }
+
+        let elapsed = current_time - self.last_key_time;
+        if elapsed >= 2.0 {
+            self.cheat_buffer.clear();
+            if key == Self::CHEAT_SEQUENCE[0] {
+                self.cheat_buffer.push(key);
+                self.last_key_time = current_time;
+            }
+            return false;
+        }
+
+        let next_index = self.cheat_buffer.len();
+        if next_index < Self::CHEAT_SEQUENCE.len() && key == Self::CHEAT_SEQUENCE[next_index] {
+            self.cheat_buffer.push(key);
+            self.last_key_time = current_time;
+            if self.cheat_buffer.len() == Self::CHEAT_SEQUENCE.len() {
+                self.enabled = !self.enabled;
+                self.cheat_buffer.clear();
+                return true;
+            }
+        } else {
+            self.cheat_buffer.clear();
+            if key == Self::CHEAT_SEQUENCE[0] {
+                self.cheat_buffer.push(key);
+                self.last_key_time = current_time;
+            }
+        }
+
+        false
+    }
+
+    pub fn update_timeout(&mut self, current_time: f32) {
+        if !self.cheat_buffer.is_empty() && current_time - self.last_key_time >= 2.0 {
+            self.cheat_buffer.clear();
+        }
+    }
+}
+
+pub fn update_fly_mode_cheat(
+    game_state: Option<Res<State<GameState>>>,
+    time: Option<Res<Time>>,
+    keys: Option<Res<ButtonInput<KeyCode>>>,
+    mut fly_mode_opt: Option<ResMut<FlyModeState>>,
+) {
+    if let Some(state) = game_state {
+        if *state.get() != GameState::InGame {
+            return;
+        }
+    }
+
+    let Some(ref mut fly_mode) = fly_mode_opt else {
+        return;
+    };
+
+    let current_time = time.as_ref().map(|t| t.elapsed_secs()).unwrap_or(0.0);
+    fly_mode.update_timeout(current_time);
+
+    if let Some(keys) = keys {
+        for key in keys.get_just_pressed() {
+            fly_mode.handle_key_press(*key, current_time);
+        }
+    }
+}
+
+fn update_player_fly_mode(
+    tf: &mut Transform,
+    locomotion: &mut LocomotionState,
+    camera_query: &Query<&Transform, (With<PlayerCamera>, Without<Player>)>,
+    keys: Option<&ButtonInput<KeyCode>>,
+    gamepads: &Query<&Gamepad>,
+    fly_state: &FlyModeState,
+    dt: f32,
+) {
+    locomotion.vertical_velocity = 0.0;
+    locomotion.horizontal_velocity = Vec2::ZERO;
+    locomotion.is_grounded = false;
+    locomotion.head_bob_timer = 0.0;
+    locomotion.head_bob_intensity = 0.0;
+    locomotion.camera_landing_dip = 0.0;
+    locomotion.is_crouching = false;
+
+    let cam_world_rot = if let Ok(cam_tf) = camera_query.get_single() {
+        tf.rotation * cam_tf.rotation
+    } else {
+        tf.rotation
+    };
+
+    let cam_forward = cam_world_rot * Vec3::NEG_Z;
+    let cam_right = cam_world_rot * Vec3::X;
+
+    let mut move_dir = Vec3::ZERO;
+    let mut is_fast = false;
+
+    if let Some(keys) = keys {
+        if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) {
+            move_dir += cam_forward;
+        }
+        if keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown) {
+            move_dir -= cam_forward;
+        }
+        if keys.pressed(KeyCode::KeyD) || keys.pressed(KeyCode::ArrowRight) {
+            move_dir += cam_right;
+        }
+        if keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft) {
+            move_dir -= cam_right;
+        }
+        if keys.pressed(KeyCode::Space) {
+            move_dir += Vec3::Y;
+        }
+        if keys.pressed(KeyCode::ControlLeft)
+            || keys.pressed(KeyCode::ControlRight)
+            || keys.pressed(KeyCode::KeyC)
+            || keys.pressed(KeyCode::KeyQ)
+        {
+            move_dir -= Vec3::Y;
+        }
+        if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
+            is_fast = true;
+        }
+    }
+
+    for gamepad in gamepads.iter() {
+        let lx = gamepad.get(GamepadAxis::LeftStickX).unwrap_or(0.0);
+        let ly = gamepad.get(GamepadAxis::LeftStickY).unwrap_or(0.0);
+        if lx.abs() > 0.15 {
+            move_dir += cam_right * lx;
+        }
+        if ly.abs() > 0.15 {
+            move_dir += cam_forward * ly;
+        }
+        if gamepad.pressed(GamepadButton::South) || gamepad.pressed(GamepadButton::RightTrigger) {
+            move_dir += Vec3::Y;
+        }
+        if gamepad.pressed(GamepadButton::East) || gamepad.pressed(GamepadButton::LeftTrigger) {
+            move_dir -= Vec3::Y;
+        }
+        if gamepad.pressed(GamepadButton::LeftThumb) {
+            is_fast = true;
+        }
+    }
+
+    locomotion.is_sprinting = is_fast;
+
+    if move_dir.length_squared() > 1e-5 {
+        let norm_dir = move_dir.normalize();
+        let speed = if is_fast {
+            fly_state.fly_speed * fly_state.fast_fly_multiplier
+        } else {
+            fly_state.fly_speed
+        };
+        tf.translation += norm_dir * speed * dt;
+    }
+}
+
 pub fn player_movement(
     game_state: Option<Res<State<GameState>>>,
     time: Res<Time>,
@@ -788,6 +982,8 @@ pub fn player_movement(
     mut meshes: Option<ResMut<Assets<Mesh>>>,
     mut materials: Option<ResMut<Assets<StandardMaterial>>>,
     mut shake: Option<ResMut<CameraShake>>,
+    fly_mode: Option<Res<FlyModeState>>,
+    camera_query: Query<&Transform, (With<PlayerCamera>, Without<Player>)>,
 ) {
     if let Some(state) = game_state {
         if *state.get() != GameState::InGame {
@@ -844,10 +1040,26 @@ pub fn player_movement(
     }
 
     let has_lake = !lake_query.is_empty();
+    let is_fly_active = fly_mode.as_ref().map_or(false, |f| f.enabled);
 
     for (state, mut tf, mut stamina, mut locomotion) in query.iter_mut() {
         if *state != PlayerState::Active {
             continue;
+        }
+
+        if is_fly_active {
+            if let Some(ref fly_state) = fly_mode {
+                update_player_fly_mode(
+                    &mut tf,
+                    &mut locomotion,
+                    &camera_query,
+                    keys.as_deref(),
+                    &gamepads,
+                    fly_state,
+                    dt,
+                );
+                continue;
+            }
         }
 
         let (on_ice, is_in_water) = detect_player_surfaces(

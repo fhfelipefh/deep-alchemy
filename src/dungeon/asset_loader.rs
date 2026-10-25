@@ -16,6 +16,9 @@ impl Default for SceneAssetRegistry {
         assets.insert("prop_faceted_rock".to_string(), "models/prop_faceted_rock.glb#Scene0".to_string());
         assets.insert("tile_corridor_straight".to_string(), "models/tile_corridor_straight.glb#Scene0".to_string());
         assets.insert("tile_corridor_corner".to_string(), "models/tile_corridor_corner.glb#Scene0".to_string());
+        assets.insert("tile_outer_corner".to_string(), "models/tile_outer_corner.glb#Scene0".to_string());
+        assets.insert("tile_straight_edge".to_string(), "models/tile_straight_edge.glb#Scene0".to_string());
+        assets.insert("tile_corridor_open".to_string(), "models/tile_corridor_open.glb#Scene0".to_string());
         assets.insert("tile_solid_pillar".to_string(), "models/tile_solid_pillar.glb#Scene0".to_string());
         assets.insert("macro_alchemical_shrine".to_string(), "models/macro_alchemical_shrine.glb#Scene0".to_string());
         assets.insert("macro_crystal_cluster".to_string(), "models/macro_crystal_cluster.glb#Scene0".to_string());
@@ -101,6 +104,9 @@ mod tests {
         assert!(registry.get_path("prop_faceted_rock").is_some());
         assert!(registry.get_path("tile_corridor_straight").is_some());
         assert!(registry.get_path("tile_corridor_corner").is_some());
+        assert!(registry.get_path("tile_outer_corner").is_some());
+        assert!(registry.get_path("tile_straight_edge").is_some());
+        assert!(registry.get_path("tile_corridor_open").is_some());
         assert!(registry.get_path("tile_solid_pillar").is_some());
         assert!(registry.get_path("macro_alchemical_shrine").is_some());
         assert!(registry.get_path("macro_crystal_cluster").is_some());

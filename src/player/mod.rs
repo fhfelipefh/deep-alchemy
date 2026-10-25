@@ -3,6 +3,8 @@ pub mod controller;
 pub mod interaction;
 pub mod ragdoll;
 
+pub use controller::FlyModeState;
+
 use bevy::prelude::*;
 
 pub struct PlayerPlugin;
@@ -11,10 +13,12 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<interaction::InteractionState>()
             .init_resource::<camera::CameraShake>()
+            .init_resource::<controller::FlyModeState>()
             .add_systems(Startup, camera::setup_player)
             .add_systems(
                 Update,
                 (
+                    controller::update_fly_mode_cheat,
                     controller::player_movement,
                     controller::player_look,
                     controller::player_camera_effects,

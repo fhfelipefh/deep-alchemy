@@ -3791,4 +3791,211 @@ fn test_unit_fire_potion_impact_near_water_edge_spawns_massive_steam_cloud() {
     );
 }
 
+#[test]
+fn test_unit_hesoyam_cheat_sequence_and_fly_mode_toggle() {
+    let mut fly_mode = deep_alchemy::player::FlyModeState::default();
+    assert!(!fly_mode.enabled);
+
+    let keys = [
+        KeyCode::KeyH,
+        KeyCode::KeyE,
+        KeyCode::KeyS,
+        KeyCode::KeyO,
+        KeyCode::KeyY,
+        KeyCode::KeyA,
+        KeyCode::KeyM,
+    ];
+
+    let mut current_time = 1.0;
+    for (i, &k) in keys.iter().enumerate() {
+        let toggled = fly_mode.handle_key_press(k, current_time);
+        if i < keys.len() - 1 {
+            assert!(!toggled);
+            assert!(!fly_mode.enabled);
+        } else {
+            assert!(toggled);
+            assert!(fly_mode.enabled);
+        }
+        current_time += 0.35;
+    }
+
+    assert!(fly_mode.cheat_buffer.is_empty());
+
+    for (i, &k) in keys.iter().enumerate() {
+        let toggled = fly_mode.handle_key_press(k, current_time);
+        if i < keys.len() - 1 {
+            assert!(!toggled);
+            assert!(fly_mode.enabled);
+        } else {
+            assert!(toggled);
+            assert!(!fly_mode.enabled);
+        }
+        current_time += 0.20;
+    }
+}
+
+#[test]
+fn test_unit_hesoyam_cheat_sequence_timeout_and_mistakes() {
+    let mut fly_mode = deep_alchemy::player::FlyModeState::default();
+
+    fly_mode.handle_key_press(KeyCode::KeyH, 1.0);
+    assert_eq!(fly_mode.cheat_buffer.len(), 1);
+
+    let toggled = fly_mode.handle_key_press(KeyCode::KeyE, 3.5);
+    assert!(!toggled);
+    assert!(!fly_mode.enabled);
+    assert!(fly_mode.cheat_buffer.is_empty());
+
+    fly_mode.handle_key_press(KeyCode::KeyH, 10.0);
+    fly_mode.handle_key_press(KeyCode::KeyE, 10.3);
+    fly_mode.handle_key_press(KeyCode::KeyS, 10.6);
+    assert_eq!(fly_mode.cheat_buffer.len(), 3);
+
+    fly_mode.handle_key_press(KeyCode::KeyX, 10.9);
+    assert!(!fly_mode.enabled);
+    assert!(fly_mode.cheat_buffer.is_empty());
+
+    fly_mode.handle_key_press(KeyCode::KeyH, 20.0);
+    fly_mode.handle_key_press(KeyCode::KeyE, 20.2);
+    fly_mode.handle_key_press(KeyCode::KeyH, 20.4);
+    assert_eq!(fly_mode.cheat_buffer.len(), 1);
+    assert_eq!(fly_mode.cheat_buffer[0], KeyCode::KeyH);
+
+    fly_mode.handle_key_press(KeyCode::KeyE, 20.6);
+    fly_mode.handle_key_press(KeyCode::KeyS, 20.8);
+    fly_mode.handle_key_press(KeyCode::KeyO, 21.0);
+    fly_mode.handle_key_press(KeyCode::KeyY, 21.2);
+    fly_mode.handle_key_press(KeyCode::KeyA, 21.4);
+    let toggled = fly_mode.handle_key_press(KeyCode::KeyM, 21.6);
+    assert!(toggled);
+    assert!(fly_mode.enabled);
+}
+
+#[test]
+fn test_unit_update_fly_mode_cheat_system_in_game_only() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(200),
+    ));
+    app.init_resource::<ButtonInput<KeyCode>>();
+    app.init_resource::<deep_alchemy::player::FlyModeState>();
+    app.init_state::<deep_alchemy::ui::menu::GameState>();
+    app.add_systems(Update, deep_alchemy::player::controller::update_fly_mode_cheat);
+
+    let keys = [
+        KeyCode::KeyH,
+        KeyCode::KeyE,
+        KeyCode::KeyS,
+        KeyCode::KeyO,
+        KeyCode::KeyY,
+        KeyCode::KeyA,
+        KeyCode::KeyM,
+    ];
+
+    for &k in &keys {
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(k);
+        app.update();
+        let mut btn = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        btn.release(k);
+        btn.clear_just_pressed(k);
+    }
+
+    assert!(!app.world().resource::<deep_alchemy::player::FlyModeState>().enabled);
+
+    app.world_mut()
+        .resource_mut::<NextState<deep_alchemy::ui::menu::GameState>>()
+        .set(deep_alchemy::ui::menu::GameState::InGame);
+    app.update();
+
+    for &k in &keys {
+        app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(k);
+        app.update();
+        let mut btn = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        btn.release(k);
+        btn.clear_just_pressed(k);
+    }
+
+    let fm = app.world().resource::<deep_alchemy::player::FlyModeState>();
+    assert!(fm.enabled);
+}
+
+#[test]
+fn test_unit_fly_mode_locomotion_free_movement_and_noclip() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(50),
+    ));
+    app.init_resource::<ButtonInput<KeyCode>>();
+    app.insert_resource(deep_alchemy::player::FlyModeState {
+        enabled: true,
+        cheat_buffer: Vec::new(),
+        last_key_time: 0.0,
+        fly_speed: 10.0,
+        fast_fly_multiplier: 2.0,
+    });
+    app.init_state::<deep_alchemy::ui::menu::GameState>();
+    app.world_mut()
+        .resource_mut::<NextState<deep_alchemy::ui::menu::GameState>>()
+        .set(deep_alchemy::ui::menu::GameState::InGame);
+    app.add_systems(Update, deep_alchemy::player::controller::player_movement);
+    app.update();
+
+    let player = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            deep_alchemy::player::camera::PlayerState::Active,
+            deep_alchemy::player::camera::LocomotionState::default(),
+            Transform::from_xyz(0.0, 15.0, 0.0),
+            Health {
+                current: 100.0,
+                max: 100.0,
+            },
+            Stamina {
+                current: 100.0,
+                max: 100.0,
+            },
+        ))
+        .id();
+
+    app.world_mut().spawn((
+        deep_alchemy::dungeon::modular_kit::CavernObstacle,
+        Transform::from_xyz(0.0, 15.0, -2.0),
+        deep_alchemy::dungeon::modular_kit::ObstacleShape::Cylinder {
+            radius: 1.0,
+            height: 4.0,
+        },
+    ));
+
+    for _ in 0..10 {
+        app.update();
+    }
+
+    let tf_after_idle = *app.world().get::<Transform>(player).unwrap();
+    assert_eq!(tf_after_idle.translation.y, 15.0);
+
+    app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Space);
+    for _ in 0..10 {
+        app.update();
+    }
+    app.world_mut().resource_mut::<ButtonInput<KeyCode>>().clear();
+
+    let tf_after_ascend = *app.world().get::<Transform>(player).unwrap();
+    assert!(tf_after_ascend.translation.y > 15.0);
+
+    app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::KeyW);
+    for _ in 0..30 {
+        app.update();
+    }
+    app.world_mut().resource_mut::<ButtonInput<KeyCode>>().clear();
+
+    let tf_after_noclip = *app.world().get::<Transform>(player).unwrap();
+    assert!(tf_after_noclip.translation.z < -2.0);
+
+    let stamina = app.world().get::<Stamina>(player).unwrap();
+    assert_eq!(stamina.current, 100.0);
+}
+
 

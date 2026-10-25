@@ -28,6 +28,7 @@ impl Plugin for HudPlugin {
                     update_critical_health_pulse,
                     update_hotbar_cooldown_visuals,
                     update_fps_counter,
+                    update_fly_mode_indicator,
                 ),
             );
     }
@@ -44,6 +45,9 @@ impl Default for ActiveHotbarSlot {
 
 #[derive(Component)]
 pub struct HudRoot;
+
+#[derive(Component)]
+pub struct FlyModeIndicatorText;
 
 #[derive(Component)]
 pub struct FpsCounterText;
@@ -209,6 +213,23 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                             ));
                         });
                 });
+
+            root.spawn((
+                FlyModeIndicatorText,
+                Text::new("MODO VOO ATIVADO [HESOYAM]"),
+                TextFont {
+                    font_size: 13.0,
+                    ..default()
+                },
+                TextColor(Color::srgb(0.2, 0.85, 1.0)),
+                Node {
+                    position_type: PositionType::Absolute,
+                    top: Val::Px(56.0),
+                    left: Val::Px(24.0),
+                    ..default()
+                },
+                Visibility::Hidden,
+            ));
 
             root.spawn((
                 CriticalVignette,
@@ -657,6 +678,31 @@ pub fn update_fps_counter(
             *timer = 0.0;
             let fps_val = fps_accum.round() as u32;
             text.0 = format!("{}", fps_val);
+        }
+    }
+}
+
+pub fn update_fly_mode_indicator(
+    fly_mode: Option<Res<crate::player::controller::FlyModeState>>,
+    mut query: Query<(&mut Visibility, &mut TextColor), With<FlyModeIndicatorText>>,
+    time: Option<Res<Time>>,
+) {
+    let is_flying = fly_mode.as_ref().map_or(false, |f| f.enabled);
+    let pulse = time
+        .as_ref()
+        .map(|t| (t.elapsed_secs() * 4.0).sin() * 0.15 + 0.85)
+        .unwrap_or(1.0);
+    for (mut vis, mut color) in query.iter_mut() {
+        let target = if is_flying {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != target {
+            *vis = target;
+        }
+        if is_flying {
+            color.0 = Color::srgb(0.2 * pulse, 0.85 * pulse, 1.0 * pulse);
         }
     }
 }

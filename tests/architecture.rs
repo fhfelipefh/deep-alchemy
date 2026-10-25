@@ -1397,6 +1397,9 @@ fn test_architecture_all_assets_exported_and_developer_editable() {
         "assets/models/tile_corridor_corner.glb",
         "assets/models/tile_corridor_straight.glb",
         "assets/models/tile_solid_pillar.glb",
+        "assets/models/tile_outer_corner.glb",
+        "assets/models/tile_straight_edge.glb",
+        "assets/models/tile_corridor_open.glb",
     ];
 
     let gltf_magic: u32 = 0x46546C67;
@@ -1560,6 +1563,7 @@ fn test_architecture_no_single_use_generator_scripts_in_repository() {
         "scripts/validate_frame.py",
         "scripts/vision_squeezer.py",
         "scripts/visual_diff_blueprint.py",
+        "scripts/blender_gen_dungeon_kit.py",
     ];
 
     for script in &discarded_scripts {

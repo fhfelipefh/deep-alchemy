@@ -665,11 +665,72 @@ pub fn spawn_procedural_dungeon(
             continue;
         }
 
+        if cell.world_pos.x.abs() < 1.0 && (cell.world_pos.z - 28.0).abs() < 1.0 {
+            let handle = registry.load_scene(&asset_server, "tile_corridor_open");
+            commands.spawn((
+                Name::new("DungeonTile_GrandJunction"),
+                SceneRoot(handle),
+                Transform::from_translation(cell.world_pos),
+                RigidBody::Static,
+                Collider::cuboid(config.tile_size, 0.4, config.tile_size),
+            ));
+            commands.spawn((
+                Name::new("Light_Grand_Junction"),
+                Transform::from_translation(cell.world_pos + Vec3::new(0.0, 2.6, 0.0)),
+                PointLight {
+                    color: Color::srgb(1.0, 0.76, 0.42),
+                    intensity: 9500.0,
+                    range: 16.0,
+                    shadows_enabled: false,
+                    ..default()
+                },
+            ));
+            continue;
+        }
+
+        if cell.world_pos.x.abs() < 1.0 && (cell.world_pos.z - 32.0).abs() < 1.0 {
+            let handle = registry.load_scene(&asset_server, "tile_corridor_straight");
+            commands.spawn((
+                Name::new("DungeonTile_NorthCorridor"),
+                SceneRoot(handle),
+                Transform::from_translation(cell.world_pos),
+                RigidBody::Static,
+                Collider::cuboid(config.tile_size, 0.4, config.tile_size),
+            ));
+            continue;
+        }
+
+        if (cell.world_pos.x - 4.0).abs() < 1.0 && (cell.world_pos.z - 28.0).abs() < 1.0 {
+            let handle = registry.load_scene(&asset_server, "tile_corridor_straight");
+            commands.spawn((
+                Name::new("DungeonTile_EastCorridor"),
+                SceneRoot(handle),
+                Transform::from_translation(cell.world_pos)
+                    .with_rotation(Quat::from_rotation_y(90.0_f32.to_radians())),
+                RigidBody::Static,
+                Collider::cuboid(config.tile_size, 0.4, config.tile_size),
+            ));
+            continue;
+        }
+
+        if (cell.world_pos.x - -4.0).abs() < 1.0 && (cell.world_pos.z - 28.0).abs() < 1.0 {
+            let handle = registry.load_scene(&asset_server, "tile_corridor_straight");
+            commands.spawn((
+                Name::new("DungeonTile_WestCorridor"),
+                SceneRoot(handle),
+                Transform::from_translation(cell.world_pos)
+                    .with_rotation(Quat::from_rotation_y(90.0_f32.to_radians())),
+                RigidBody::Static,
+                Collider::cuboid(config.tile_size, 0.4, config.tile_size),
+            ));
+            continue;
+        }
+
         let rot = Quat::from_rotation_y(cell.rotation_y_deg.to_radians());
 
         match cell.piece {
             CanonicalPiece::Empty => {
-                let handle = registry.load_scene(&asset_server, "tile_corridor_straight");
+                let handle = registry.load_scene(&asset_server, "tile_corridor_open");
                 commands.spawn((
                     Name::new("DungeonTile_Empty"),
                     SceneRoot(handle),
@@ -755,17 +816,11 @@ pub fn spawn_procedural_dungeon(
                 }
             }
             CanonicalPiece::StraightEdge => {
-                let handle = registry.load_scene(&asset_server, "tile_corridor_straight");
-                let is_ns = (cell.rotation_y_deg - 90.0).abs() < 1.0 || (cell.rotation_y_deg - 270.0).abs() < 1.0;
-                let mesh_rot = if is_ns {
-                    Quat::IDENTITY
-                } else {
-                    Quat::from_rotation_y(90.0_f32.to_radians())
-                };
+                let handle = registry.load_scene(&asset_server, "tile_straight_edge");
                 commands.spawn((
                     Name::new("DungeonTile_StraightEdge"),
                     SceneRoot(handle),
-                    Transform::from_translation(cell.world_pos).with_rotation(mesh_rot),
+                    Transform::from_translation(cell.world_pos).with_rotation(rot),
                     RigidBody::Static,
                     Collider::cuboid(config.tile_size, 0.4, config.tile_size),
                 ));
@@ -782,10 +837,10 @@ pub fn spawn_procedural_dungeon(
                     Collider::cuboid(config.tile_size, 2.4, 0.75),
                 ));
             }
-            CanonicalPiece::OuterCorner | CanonicalPiece::InnerCorner => {
-                let handle = registry.load_scene(&asset_server, "tile_corridor_corner");
+            CanonicalPiece::OuterCorner => {
+                let handle = registry.load_scene(&asset_server, "tile_outer_corner");
                 commands.spawn((
-                    Name::new("DungeonTile_Corner"),
+                    Name::new("DungeonTile_OuterCorner"),
                     SceneRoot(handle),
                     Transform::from_translation(cell.world_pos).with_rotation(rot),
                     RigidBody::Static,
@@ -802,6 +857,16 @@ pub fn spawn_procedural_dungeon(
                     Transform::from_translation(cell.world_pos + pillar_offset),
                     RigidBody::Static,
                     Collider::cuboid(1.4, 2.8, 1.4),
+                ));
+            }
+            CanonicalPiece::InnerCorner => {
+                let handle = registry.load_scene(&asset_server, "tile_corridor_corner");
+                commands.spawn((
+                    Name::new("DungeonTile_InnerCorner"),
+                    SceneRoot(handle),
+                    Transform::from_translation(cell.world_pos).with_rotation(rot),
+                    RigidBody::Static,
+                    Collider::cuboid(config.tile_size, 0.4, config.tile_size),
                 ));
             }
             CanonicalPiece::SolidPillar => {
@@ -823,7 +888,7 @@ pub fn spawn_procedural_dungeon(
                 ));
             }
             CanonicalPiece::SaddleCrossing => {
-                let handle = registry.load_scene(&asset_server, "tile_corridor_straight");
+                let handle = registry.load_scene(&asset_server, "tile_corridor_open");
                 commands.spawn((
                     Name::new("DungeonTile_SaddleCrossing"),
                     SceneRoot(handle),
@@ -1041,25 +1106,17 @@ mod tests {
     }
 
     #[test]
-    fn test_print_dungeon_corridor_cells() {
+    fn test_modular_kit_canonical_pieces_generated() {
         let config = DungeonConfig::default();
-        let dungeon = DungeonGenerator::generate(config.clone());
-        println!("=== PRIMARY GRID MAP ===");
-        for gz in (8..24).rev() {
-            let mut line = String::new();
-            for gx in 4..22 {
-                let tile = dungeon.get_primary(gx, gz);
-                let ch = match tile {
-                    PrimaryTile::Rock => '#',
-                    PrimaryTile::StartingGrotto => 'G',
-                    PrimaryTile::Corridor => '.',
-                    PrimaryTile::RoomCenter(_) => 'C',
-                    PrimaryTile::RoomPerimeter(_) => 'P',
-                };
-                line.push(ch);
-            }
-            let wz = ((gz as f32 + 0.5) * 4.0) - 50.0;
-            println!("gz={:02} wz={:04.1}: {}", gz, wz, line);
-        }
+        let dungeon = DungeonGenerator::generate(config);
+        assert!(!dungeon.dual_cells.is_empty());
+        let has_outer_corner = dungeon.dual_cells.iter().any(|c| c.piece == CanonicalPiece::OuterCorner);
+        let has_straight = dungeon.dual_cells.iter().any(|c| c.piece == CanonicalPiece::StraightEdge);
+        let has_empty = dungeon.dual_cells.iter().any(|c| c.piece == CanonicalPiece::Empty);
+        let has_solid = dungeon.dual_cells.iter().any(|c| c.piece == CanonicalPiece::SolidPillar);
+        assert!(has_outer_corner);
+        assert!(has_straight);
+        assert!(has_empty);
+        assert!(has_solid);
     }
 }
