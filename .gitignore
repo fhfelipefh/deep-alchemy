@@ -19,3 +19,35 @@ scratch/
 __pycache__/
 *.pyc
 *.egg-info/
+
+# Reference artworks & AI concept images (local only, never committed to remote)
+artworks/
+assets/artworks/
+
+# Android / Gradle Build Artifacts & Caches
+.gradle/
+android/.gradle/
+android/build/
+android/app/build/
+android/app/.cxx/
+android/.externalNativeBuild/
+android/local.properties
+android/*.iml
+android/app/*.iml
+android/.idea/
+android/captures/
+
+# Compiled native libraries (reproducibly built by cargo-ndk via build_android scripts)
+android/app/src/main/jniLibs/
+
+# Keystores & Signing Secrets (Never commit production keys)
+*.jks
+*.keystore
+release-key.jks
+private-*.key
+
+# Explicitly preserve Gradle wrapper files for reproducible builds on any machine
+!android/gradlew
+!android/gradlew.bat
+!android/gradle/wrapper/gradle-wrapper.jar
+!android/gradle/wrapper/gradle-wrapper.properties

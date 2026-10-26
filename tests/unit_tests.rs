@@ -3999,3 +3999,2769 @@ fn test_unit_fly_mode_locomotion_free_movement_and_noclip() {
 }
 
 
+
+#[test]
+fn test_unit_touch_controls_state_defaults_and_sensitivity() {
+    let state = deep_alchemy::player::touch_controls::TouchControlsState::default();
+    assert_eq!(state.move_axis, Vec2::ZERO);
+    assert_eq!(state.look_delta, Vec2::ZERO);
+    assert!(!state.is_sprinting);
+    assert!(!state.jump_pressed);
+    assert!(!state.crouch_pressed);
+    assert!(!state.aim_pressed);
+    assert!(state.sensitivity > 0.001);
+}
+
+#[test]
+fn test_unit_touch_action_button_interactions() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin));
+    app.init_resource::<deep_alchemy::player::touch_controls::TouchControlsState>();
+    app.add_systems(Update, deep_alchemy::player::touch_controls::process_touch_inputs);
+
+    app.world_mut().spawn((
+        deep_alchemy::player::touch_controls::TouchActionButton {
+            action: deep_alchemy::player::touch_controls::TouchAction::Jump,
+        },
+        Interaction::Pressed,
+    ));
+
+    app.update();
+
+    let state = app.world().resource::<deep_alchemy::player::touch_controls::TouchControlsState>();
+    assert!(state.jump_pressed);
+    assert!(state.jump_just_pressed);
+}
+
+#[test]
+fn test_unit_touch_hotbar_slot_tap_selection() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.init_resource::<deep_alchemy::ui::hud::ActiveHotbarSlot>();
+    app.add_event::<bevy::input::mouse::MouseWheel>();
+    app.add_systems(Update, deep_alchemy::ui::hud::handle_hotbar_input);
+
+    assert_eq!(app.world().resource::<deep_alchemy::ui::hud::ActiveHotbarSlot>().0, 1);
+
+    app.world_mut().spawn((
+        deep_alchemy::ui::hud::HotbarSlotUi { slot_index: 4 },
+        Interaction::Pressed,
+    ));
+
+    app.update();
+
+    assert_eq!(app.world().resource::<deep_alchemy::ui::hud::ActiveHotbarSlot>().0, 4);
+}
+
+#[test]
+fn test_unit_touch_menu_pause_toggle() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin));
+    app.init_state::<deep_alchemy::ui::menu::GameState>();
+    app.init_resource::<deep_alchemy::ui::menu::MenuNavigation>();
+    app.init_resource::<deep_alchemy::ui::menu::GameSettings>();
+    app.init_resource::<deep_alchemy::player::touch_controls::TouchControlsState>();
+    app.add_systems(Update, deep_alchemy::ui::menu::handle_global_shortcuts);
+
+    app.world_mut()
+        .resource_mut::<NextState<deep_alchemy::ui::menu::GameState>>()
+        .set(deep_alchemy::ui::menu::GameState::InGame);
+    app.update();
+
+    app.world_mut()
+        .resource_mut::<deep_alchemy::player::touch_controls::TouchControlsState>()
+        .toggle_menu_just_pressed = true;
+
+    app.update();
+
+    let next_state = app.world().resource::<NextState<deep_alchemy::ui::menu::GameState>>();
+    match next_state {
+        NextState::Pending(state) => assert_eq!(*state, deep_alchemy::ui::menu::GameState::MainMenu),
+        _ => panic!("Expected next state to be MainMenu"),
+    }
+}
+#[test]
+fn test_unit_hybrid_tri_modal_locomotion_and_look() {
+    let mut app = App::new();
+    app.init_resource::<Time>();
+    app.add_event::<bevy::input::mouse::MouseMotion>();
+    app.init_resource::<ButtonInput<KeyCode>>();
+    app.init_resource::<deep_alchemy::player::touch_controls::TouchControlsState>();
+
+    let player = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            deep_alchemy::player::camera::PlayerState::Active,
+            deep_alchemy::player::camera::LocomotionState::default(),
+            Transform::from_xyz(0.0, 1.2, 0.0),
+            deep_alchemy::player::camera::Stamina {
+                current: 100.0,
+                max: 100.0,
+            },
+        ))
+        .id();
+
+    let _camera = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::PlayerCamera,
+            Transform::from_xyz(0.0, 1.75, 0.0),
+        ))
+        .id();
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems((
+        deep_alchemy::player::controller::player_movement,
+        deep_alchemy::player::controller::player_look,
+    ));
+
+    app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::KeyW);
+    for _ in 0..5 {
+        app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+        schedule.run(app.world_mut());
+    }
+    app.world_mut().resource_mut::<ButtonInput<KeyCode>>().release(KeyCode::KeyW);
+
+    let tf_after_keyboard = *app.world().get::<Transform>(player).unwrap();
+    assert!(tf_after_keyboard.translation.z < 0.0);
+
+    let mut gamepad = Gamepad::default();
+    gamepad.analog_mut().set(GamepadAxis::LeftStickX, 1.0);
+    app.world_mut().spawn(gamepad);
+
+    for _ in 0..5 {
+        app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+        schedule.run(app.world_mut());
+    }
+
+    let tf_after_gamepad = *app.world().get::<Transform>(player).unwrap();
+    assert!(tf_after_gamepad.translation.x > 0.0);
+
+    app.world_mut()
+        .resource_mut::<deep_alchemy::player::touch_controls::TouchControlsState>()
+        .move_axis = Vec2::new(0.0, 1.0);
+    app.world_mut()
+        .resource_mut::<deep_alchemy::player::touch_controls::TouchControlsState>()
+        .look_delta = Vec2::new(10.0, 5.0);
+
+    for _ in 0..5 {
+        app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(16));
+        schedule.run(app.world_mut());
+    }
+
+    let tf_after_touch = *app.world().get::<Transform>(player).unwrap();
+    assert!(tf_after_touch.translation.z < tf_after_gamepad.translation.z);
+
+    let (yaw, _, _) = tf_after_touch.rotation.to_euler(EulerRot::YXZ);
+    assert!(yaw.abs() > 0.0001);
+}
+
+#[test]
+fn test_unit_rtx_hardware_support_gpu_detection_rules() {
+    use deep_alchemy::ui::menu::check_rtx_hardware_support_custom;
+
+    assert!(!check_rtx_hardware_support_custom("NVIDIA GeForce RTX 4090", true));
+    assert!(!check_rtx_hardware_support_custom("AMD Radeon RX 7900 XTX", true));
+    assert!(!check_rtx_hardware_support_custom("Adreno 740", true));
+    assert!(!check_rtx_hardware_support_custom("Mali-G715 Immortalis", true));
+
+    assert!(check_rtx_hardware_support_custom("NVIDIA GeForce RTX 2070", false));
+    assert!(check_rtx_hardware_support_custom("NVIDIA GeForce RTX 3080", false));
+    assert!(check_rtx_hardware_support_custom("NVIDIA GeForce RTX 4090", false));
+    assert!(check_rtx_hardware_support_custom("NVIDIA RTX A5000", false));
+    assert!(check_rtx_hardware_support_custom("Quadro RTX 6000", false));
+    assert!(check_rtx_hardware_support_custom("RTX 4080 Super", false));
+
+    assert!(check_rtx_hardware_support_custom("AMD Radeon RX 6700 XT", false));
+    assert!(check_rtx_hardware_support_custom("AMD Radeon RX 6800", false));
+    assert!(check_rtx_hardware_support_custom("AMD Radeon RX 7900 XTX", false));
+    assert!(check_rtx_hardware_support_custom("AMD Radeon RX 7600", false));
+    assert!(check_rtx_hardware_support_custom("AMD Radeon RX 8800 XT", false));
+    assert!(check_rtx_hardware_support_custom("AMD Radeon PRO W6800", false));
+    assert!(check_rtx_hardware_support_custom("AMD Radeon PRO W7900", false));
+    assert!(check_rtx_hardware_support_custom("AMD RDNA2 Architecture", false));
+    assert!(check_rtx_hardware_support_custom("AMD RDNA3 Architecture", false));
+
+    assert!(check_rtx_hardware_support_custom("Intel(R) Arc(TM) A770 Graphics", false));
+    assert!(check_rtx_hardware_support_custom("Intel(R) Arc(TM) A750 Graphics", false));
+    assert!(check_rtx_hardware_support_custom("Intel(R) Arc(TM) A380 Graphics", false));
+    assert!(check_rtx_hardware_support_custom("Intel Battlemage B580", false));
+
+    assert!(check_rtx_hardware_support_custom("Apple M3 Max", false));
+    assert!(check_rtx_hardware_support_custom("Apple M4 Pro", false));
+
+    assert!(!check_rtx_hardware_support_custom("NVIDIA GeForce GTX 1060 6GB", false));
+    assert!(!check_rtx_hardware_support_custom("NVIDIA GeForce GTX 1660 Ti", false));
+    assert!(!check_rtx_hardware_support_custom("GeForce GTX 970", false));
+    assert!(!check_rtx_hardware_support_custom("AMD Radeon RX 580 Series", false));
+    assert!(!check_rtx_hardware_support_custom("AMD Radeon RX Vega 64", false));
+    assert!(!check_rtx_hardware_support_custom("AMD Radeon R9 390", false));
+    assert!(!check_rtx_hardware_support_custom("Intel(R) UHD Graphics 630", false));
+    assert!(!check_rtx_hardware_support_custom("Intel(R) Iris(R) Xe Graphics", false));
+    assert!(!check_rtx_hardware_support_custom("Intel HD Graphics 4000", false));
+    assert!(!check_rtx_hardware_support_custom("Qualcomm Adreno (TM) 740", false));
+    assert!(!check_rtx_hardware_support_custom("ARM Mali-G715 Immortalis", false));
+    assert!(!check_rtx_hardware_support_custom("PowerVR Rogue", false));
+    assert!(!check_rtx_hardware_support_custom("", false));
+    assert!(!check_rtx_hardware_support_custom("   ", false));
+}
+
+#[test]
+fn test_unit_rtx_row_display_hidden_on_unsupported_hardware() {
+    use deep_alchemy::ui::menu::{
+        update_rtx_hardware_availability, GameSettings, RtxHardwareSupport, RtxQuality,
+        RtxSettingsRow,
+    };
+
+    let mut app = App::new();
+    let mut settings = GameSettings::default();
+    settings.rtx_enabled = true;
+    settings.rtx_quality = RtxQuality::Ultra;
+    app.insert_resource(settings);
+
+    app.insert_resource(RtxHardwareSupport {
+        supported: false,
+        detected_gpu: "Intel(R) UHD Graphics 630".to_string(),
+    });
+
+    let row_entity = app
+        .world_mut()
+        .spawn((
+            RtxSettingsRow,
+            Node {
+                display: Display::Flex,
+                ..default()
+            },
+        ))
+        .id();
+
+    app.add_systems(Update, update_rtx_hardware_availability);
+    app.update();
+
+    let node = app.world().get::<Node>(row_entity).unwrap();
+    assert_eq!(node.display, Display::None);
+
+    let updated_settings = app.world().resource::<GameSettings>();
+    assert_eq!(updated_settings.rtx_enabled, false);
+    assert_eq!(updated_settings.rtx_quality, RtxQuality::Off);
+}
+
+#[test]
+fn test_unit_rtx_row_display_visible_on_supported_hardware() {
+    use deep_alchemy::ui::menu::{
+        update_rtx_hardware_availability, GameSettings, RtxHardwareSupport, RtxSettingsRow,
+    };
+
+    let mut app = App::new();
+    let settings = GameSettings::default();
+    app.insert_resource(settings);
+
+    app.insert_resource(RtxHardwareSupport {
+        supported: true,
+        detected_gpu: "NVIDIA GeForce RTX 4080".to_string(),
+    });
+
+    let row_entity = app
+        .world_mut()
+        .spawn((
+            RtxSettingsRow,
+            Node {
+                display: Display::None,
+                ..default()
+            },
+        ))
+        .id();
+
+    app.add_systems(Update, update_rtx_hardware_availability);
+    app.update();
+
+    let node = app.world().get::<Node>(row_entity).unwrap();
+    assert_eq!(node.display, Display::Flex);
+}
+
+#[test]
+fn test_unit_rtx_button_interaction_blocked_when_unsupported() {
+    use deep_alchemy::ui::menu::{
+        handle_menu_button_interactions, GameSettings, GameState, MenuButtonAction, MenuNavigation,
+        RtxHardwareSupport, RtxQuality,
+    };
+
+    let mut app = App::new();
+    app.add_plugins(bevy::state::app::StatesPlugin);
+    app.init_state::<GameState>();
+    app.init_resource::<MenuNavigation>();
+    app.init_resource::<GameSettings>();
+    app.insert_resource(RtxHardwareSupport {
+        supported: false,
+        detected_gpu: "Adreno 740".to_string(),
+    });
+    app.add_event::<AppExit>();
+    app.add_systems(Update, handle_menu_button_interactions);
+
+    app.world_mut().spawn((
+        Button,
+        MenuButtonAction::ToggleRtx,
+        Interaction::Pressed,
+        BackgroundColor(Color::BLACK),
+        BorderColor(Color::BLACK),
+    ));
+
+    app.update();
+
+    let settings = app.world().resource::<GameSettings>();
+    assert_eq!(settings.rtx_quality, RtxQuality::Off);
+    assert_eq!(settings.rtx_enabled, false);
+}
+
+#[test]
+fn test_unit_rtx_button_interaction_allowed_when_supported() {
+    use deep_alchemy::ui::menu::{
+        handle_menu_button_interactions, GameSettings, GameState, MenuButtonAction, MenuNavigation,
+        RtxHardwareSupport, RtxQuality,
+    };
+
+    let mut app = App::new();
+    app.add_plugins(bevy::state::app::StatesPlugin);
+    app.init_state::<GameState>();
+    app.init_resource::<MenuNavigation>();
+    app.init_resource::<GameSettings>();
+    app.insert_resource(RtxHardwareSupport {
+        supported: true,
+        detected_gpu: "NVIDIA GeForce RTX 3070".to_string(),
+    });
+    app.add_event::<AppExit>();
+    app.add_systems(Update, handle_menu_button_interactions);
+
+    app.world_mut().spawn((
+        Button,
+        MenuButtonAction::ToggleRtx,
+        Interaction::Pressed,
+        BackgroundColor(Color::BLACK),
+        BorderColor(Color::BLACK),
+    ));
+
+    app.update();
+
+    let settings = app.world().resource::<GameSettings>();
+    assert_eq!(settings.rtx_quality, RtxQuality::Low);
+    assert_eq!(settings.rtx_enabled, true);
+}
+
+
+#[test]
+fn test_unit_ceiling_water_drip_spawning_and_gravity_fall() {
+    use deep_alchemy::dungeon::water_drips::{
+        update_ceiling_drip_points, update_falling_water_drops, CavernWaterPuddle,
+        CeilingDripPoint, FallingWaterDrop, WaterPuddleState,
+    };
+    use deep_alchemy::dungeon::modular_kit::WaterRipple;
+
+    let mut app = App::new();
+    app.init_resource::<Time>();
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+
+    let puddle_entity = app
+        .world_mut()
+        .spawn((
+            CavernWaterPuddle {
+                state: WaterPuddleState::Liquid,
+                radius: 1.2,
+                original_radius: 1.2,
+                base_y: 0.02,
+                freeze_timer: 0.0,
+                boil_timer: 0.0,
+                regen_timer: 0.0,
+                step_ripple_cooldown: 0.0,
+            },
+            Transform::from_xyz(2.0, 0.02, 2.0),
+        ))
+        .id();
+
+    app.world_mut().spawn((
+        CeilingDripPoint {
+            timer: 9.95,
+            drip_interval: 10.0,
+            puddle_entity: Some(puddle_entity),
+            drop_fall_speed: 0.0,
+        },
+        Transform::from_xyz(2.0, 5.0, 2.0),
+    ));
+
+    app.add_systems(
+        Update,
+        (update_ceiling_drip_points, update_falling_water_drops).chain(),
+    );
+
+    app.world_mut()
+        .resource_mut::<Time>()
+        .advance_by(std::time::Duration::from_millis(100));
+    app.update();
+
+    let drops_count = app
+        .world_mut()
+        .query::<&FallingWaterDrop>()
+        .iter(app.world())
+        .count();
+    assert_eq!(drops_count, 1);
+
+    for _ in 0..100 {
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_millis(16));
+        app.update();
+    }
+
+    let remaining_drops = app
+        .world_mut()
+        .query::<&FallingWaterDrop>()
+        .iter(app.world())
+        .count();
+    assert_eq!(remaining_drops, 0);
+
+    let ripples_count = app
+        .world_mut()
+        .query::<&WaterRipple>()
+        .iter(app.world())
+        .count();
+    assert!(ripples_count >= 1);
+}
+
+#[test]
+fn test_unit_water_puddle_player_step_ripple_generation() {
+    use deep_alchemy::dungeon::water_drips::{
+        update_puddle_player_interaction, CavernWaterPuddle, WaterPuddleState,
+    };
+    use deep_alchemy::dungeon::modular_kit::WaterRipple;
+    use deep_alchemy::player::camera::Player;
+
+    let mut app = App::new();
+    app.init_resource::<Time>();
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+
+    app.world_mut().spawn((
+        Player,
+        Transform::from_xyz(0.2, 0.0, 0.1),
+    ));
+
+    app.world_mut().spawn((
+        CavernWaterPuddle {
+            state: WaterPuddleState::Liquid,
+            radius: 1.2,
+            original_radius: 1.2,
+            base_y: 0.02,
+            freeze_timer: 0.0,
+            boil_timer: 0.0,
+            regen_timer: 0.0,
+            step_ripple_cooldown: 0.0,
+        },
+        Transform::from_xyz(0.0, 0.02, 0.0),
+        Visibility::Inherited,
+    ));
+
+    app.add_systems(Update, update_puddle_player_interaction);
+
+    app.world_mut()
+        .resource_mut::<Time>()
+        .advance_by(std::time::Duration::from_millis(16));
+    app.update();
+
+    let ripples = app
+        .world_mut()
+        .query::<(&WaterRipple, &Transform)>()
+        .iter(app.world())
+        .count();
+    assert_eq!(ripples, 1);
+}
+
+#[test]
+fn test_unit_water_puddle_frost_congelation_and_thawing() {
+    use deep_alchemy::alchemy::{ActiveEffect, AlchemicalEffectKind, PotionPuddle};
+    use deep_alchemy::dungeon::water_drips::{
+        update_puddle_temperature_reactions, CavernWaterPuddle, WaterPuddleState,
+    };
+
+    let mut app = App::new();
+    app.init_resource::<Time>();
+    app.init_resource::<Assets<Mesh>>();
+    let mut mats = Assets::<StandardMaterial>::default();
+    let mat_handle = mats.add(StandardMaterial::default());
+    app.insert_resource(mats);
+
+    let puddle_entity = app
+        .world_mut()
+        .spawn((
+            CavernWaterPuddle {
+                state: WaterPuddleState::Liquid,
+                radius: 1.2,
+                original_radius: 1.2,
+                base_y: 0.02,
+                freeze_timer: 0.0,
+                boil_timer: 0.0,
+                regen_timer: 0.0,
+                step_ripple_cooldown: 0.0,
+            },
+            Transform::from_xyz(0.0, 0.02, 0.0),
+            MeshMaterial3d(mat_handle),
+            Visibility::Inherited,
+        ))
+        .id();
+
+    app.world_mut().spawn((
+        PotionPuddle {
+            color: Color::WHITE,
+            elapsed: 0.0,
+            max_lifetime: 20.0,
+            radius: 1.5,
+            effects: vec![ActiveEffect {
+                kind: AlchemicalEffectKind::Frost,
+                duration: 10.0,
+                elapsed: 0.0,
+                magnitude: 1.0,
+            }],
+            is_wall: false,
+        },
+        Transform::from_xyz(0.5, 0.02, 0.0),
+    ));
+
+    app.add_systems(Update, update_puddle_temperature_reactions);
+
+    app.world_mut()
+        .resource_mut::<Time>()
+        .advance_by(std::time::Duration::from_millis(16));
+    app.update();
+
+    let puddle = app.world().get::<CavernWaterPuddle>(puddle_entity).unwrap();
+    assert_eq!(puddle.state, WaterPuddleState::Frozen);
+    assert!(puddle.freeze_timer > 0.0);
+}
+
+#[test]
+fn test_unit_water_puddle_fire_boiling_and_evaporation() {
+    use deep_alchemy::alchemy::{ActiveEffect, AlchemicalEffectKind, PotionPuddle};
+    use deep_alchemy::dungeon::water_drips::{
+        update_puddle_temperature_reactions, CavernWaterPuddle, WaterPuddleState,
+    };
+
+    let mut app = App::new();
+    app.init_resource::<Time>();
+    app.init_resource::<Assets<Mesh>>();
+    let mut mats = Assets::<StandardMaterial>::default();
+    let mat_handle = mats.add(StandardMaterial::default());
+    app.insert_resource(mats);
+
+    let puddle_entity = app
+        .world_mut()
+        .spawn((
+            CavernWaterPuddle {
+                state: WaterPuddleState::Liquid,
+                radius: 1.2,
+                original_radius: 1.2,
+                base_y: 0.02,
+                freeze_timer: 0.0,
+                boil_timer: 0.0,
+                regen_timer: 0.0,
+                step_ripple_cooldown: 0.0,
+            },
+            Transform::from_xyz(0.0, 0.02, 0.0),
+            MeshMaterial3d(mat_handle),
+            Visibility::Inherited,
+        ))
+        .id();
+
+    app.world_mut().spawn((
+        PotionPuddle {
+            color: Color::srgb(1.0, 0.3, 0.0),
+            elapsed: 0.0,
+            max_lifetime: 20.0,
+            radius: 1.5,
+            effects: vec![ActiveEffect {
+                kind: AlchemicalEffectKind::ThermalHeat,
+                duration: 10.0,
+                elapsed: 0.0,
+                magnitude: 1.0,
+            }],
+            is_wall: false,
+        },
+        Transform::from_xyz(0.4, 0.02, 0.0),
+    ));
+
+    app.add_systems(Update, update_puddle_temperature_reactions);
+
+    app.world_mut()
+        .resource_mut::<Time>()
+        .advance_by(std::time::Duration::from_millis(16));
+    app.update();
+
+    let puddle_boiling = app.world().get::<CavernWaterPuddle>(puddle_entity).unwrap();
+    assert_eq!(puddle_boiling.state, WaterPuddleState::Boiling);
+
+    for _ in 0..200 {
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_millis(20));
+        app.update();
+    }
+
+    let puddle_evaporated = app.world().get::<CavernWaterPuddle>(puddle_entity).unwrap();
+    assert_eq!(puddle_evaporated.state, WaterPuddleState::Evaporated);
+
+    let vis = app.world().get::<Visibility>(puddle_entity).unwrap();
+    assert_eq!(*vis, Visibility::Hidden);
+}
+
+#[test]
+fn test_unit_water_puddle_realistic_translucent_material_and_feathered_mesh() {
+    use deep_alchemy::dungeon::water_drips::{
+        create_realistic_cavern_water_mesh, create_wet_stone_underlayer_mesh,
+    };
+
+    let water_mesh = create_realistic_cavern_water_mesh(1.2, 32, Vec3::new(0.0, 0.02, 0.0));
+    let Some(bevy::render::mesh::VertexAttributeValues::Float32x4(ref colors)) =
+        water_mesh.attribute(Mesh::ATTRIBUTE_COLOR)
+    else {
+        panic!("Missing Float32x4 color attribute");
+    };
+
+    assert!(colors[0][3] >= 0.80);
+    assert_eq!(colors.last().unwrap()[3], 0.0);
+
+    let wet_stone_mesh = create_wet_stone_underlayer_mesh(1.2, 32, Vec3::new(0.0, 0.02, 0.0));
+    let Some(bevy::render::mesh::VertexAttributeValues::Float32x4(ref wet_colors)) =
+        wet_stone_mesh.attribute(Mesh::ATTRIBUTE_COLOR)
+    else {
+        panic!("Missing Float32x4 color attribute");
+    };
+
+    assert!(wet_colors[0][3] >= 0.60);
+    assert_eq!(wet_colors.last().unwrap()[3], 0.0);
+}
+
+#[test]
+fn test_unit_water_puddle_ripple_strictly_confined_to_puddle_bounds() {
+    use deep_alchemy::dungeon::modular_kit::WaterRipple;
+    use deep_alchemy::dungeon::water_drips::{
+        update_puddle_player_interaction, CavernWaterPuddle, WaterPuddleState,
+    };
+    use deep_alchemy::player::camera::Player;
+
+    let mut app = App::new();
+    app.init_resource::<Time>();
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+
+    app.world_mut().spawn((
+        Player,
+        Transform::from_xyz(0.75, 0.0, 0.0),
+    ));
+
+    let puddle_radius = 1.25;
+    let puddle_center = Vec3::new(0.0, 0.02, 0.0);
+
+    app.world_mut().spawn((
+        CavernWaterPuddle {
+            state: WaterPuddleState::Liquid,
+            radius: puddle_radius,
+            original_radius: puddle_radius,
+            base_y: 0.02,
+            freeze_timer: 0.0,
+            boil_timer: 0.0,
+            regen_timer: 0.0,
+            step_ripple_cooldown: 0.0,
+        },
+        Transform::from_translation(puddle_center),
+        Visibility::Inherited,
+    ));
+
+    app.add_systems(Update, update_puddle_player_interaction);
+
+    app.world_mut()
+        .resource_mut::<Time>()
+        .advance_by(std::time::Duration::from_millis(16));
+    app.update();
+
+    let mut ripple_query = app.world_mut().query::<(&WaterRipple, &Transform)>();
+    let (ripple, ripple_tf) = ripple_query.iter(app.world()).next().unwrap();
+
+    let dist_center_to_ripple = Vec2::new(
+        ripple_tf.translation.x - puddle_center.x,
+        ripple_tf.translation.z - puddle_center.z,
+    )
+    .length();
+
+    let ripple_reach = dist_center_to_ripple + ripple.max_radius;
+    assert!(
+        ripple_reach < puddle_radius,
+        "Ripple reach {} exceeds puddle radius {}",
+        ripple_reach,
+        puddle_radius
+    );
+}
+
+#[test]
+fn test_unit_water_puddle_edge_step_does_not_spawn_expanding_ripple_onto_dry_ground() {
+    use deep_alchemy::dungeon::modular_kit::WaterRipple;
+    use deep_alchemy::dungeon::water_drips::{
+        update_puddle_player_interaction, CavernWaterPuddle, WaterPuddleState,
+    };
+    use deep_alchemy::player::camera::Player;
+
+    let mut app = App::new();
+    app.init_resource::<Time>();
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+
+    app.world_mut().spawn((
+        Player,
+        Transform::from_xyz(1.18, 0.0, 0.0),
+    ));
+
+    let puddle_radius = 1.20;
+    app.world_mut().spawn((
+        CavernWaterPuddle {
+            state: WaterPuddleState::Liquid,
+            radius: puddle_radius,
+            original_radius: puddle_radius,
+            base_y: 0.02,
+            freeze_timer: 0.0,
+            boil_timer: 0.0,
+            regen_timer: 0.0,
+            step_ripple_cooldown: 0.0,
+        },
+        Transform::from_xyz(0.0, 0.02, 0.0),
+        Visibility::Inherited,
+    ));
+
+    app.add_systems(Update, update_puddle_player_interaction);
+
+    app.world_mut()
+        .resource_mut::<Time>()
+        .advance_by(std::time::Duration::from_millis(16));
+    app.update();
+
+    let ripples = app
+        .world_mut()
+        .query::<&WaterRipple>()
+        .iter(app.world())
+        .count();
+    assert_eq!(ripples, 0);
+}
+
+#[test]
+fn test_unit_ceiling_stalactites_solid_roof_anchor_and_supported_coordinates() {
+    use deep_alchemy::dungeon::water_drips::{
+        spawn_default_cavern_water_drips, CeilingDripPoint,
+    };
+
+    let mut app = App::new();
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+
+    app.add_systems(
+        Startup,
+        |mut commands: Commands,
+         mut meshes: ResMut<Assets<Mesh>>,
+         mut materials: ResMut<Assets<StandardMaterial>>| {
+            spawn_default_cavern_water_drips(&mut commands, &mut meshes, &mut materials);
+        },
+    );
+    app.update();
+
+    let mut drip_query = app.world_mut().query::<(&CeilingDripPoint, &Transform, &Children)>();
+    let drips: Vec<(Transform, Vec<Entity>)> = drip_query
+        .iter(app.world())
+        .map(|(_, tf, children)| (*tf, children.iter().copied().collect()))
+        .collect();
+
+    assert_eq!(drips.len(), 4);
+
+    for (tf, children) in drips {
+        assert!(
+            tf.translation.y <= 4.50 && tf.translation.y >= 4.20,
+            "Stalactite at y={} must be anchored directly into the corridor roof!",
+            tf.translation.y
+        );
+
+        let mut has_anchor = false;
+        let mut has_droplet_tip = false;
+        let mut secondary_count = 0;
+
+        for child in children {
+            if let Some(name) = app.world().get::<Name>(child) {
+                if name.as_str() == "Ceiling_Rock_Anchor" {
+                    has_anchor = true;
+                }
+                if name.as_str() == "Drip_Tip_Droplet" {
+                    has_droplet_tip = true;
+                }
+                if name.as_str().starts_with("Secondary_Stalactite") {
+                    secondary_count += 1;
+                }
+            }
+        }
+
+        assert!(has_anchor, "Stalactite must have Ceiling_Rock_Anchor!");
+        assert!(has_droplet_tip, "Stalactite must have Drip_Tip_Droplet!");
+        assert!(secondary_count >= 2, "Stalactite must have companion formations!");
+    }
+}
+
+#[test]
+fn test_unit_ambient_insects_realistic_dimensions_and_sub_centimeter_scale() {
+    let fly_mesh = deep_alchemy::dungeon::fauna::create_tiny_fly_mesh();
+    let moth_body = deep_alchemy::dungeon::fauna::create_tiny_moth_body_mesh();
+    let moth_wing_l = deep_alchemy::dungeon::fauna::create_tiny_moth_wing_mesh(true);
+    let moth_wing_r = deep_alchemy::dungeon::fauna::create_tiny_moth_wing_mesh(false);
+    let moth_wing_r_positions = moth_wing_r
+        .attribute(bevy::render::mesh::Mesh::ATTRIBUTE_POSITION)
+        .unwrap()
+        .as_float3()
+        .unwrap();
+    assert!(!moth_wing_r_positions.is_empty());
+
+    let fly_positions = fly_mesh
+        .attribute(bevy::render::mesh::Mesh::ATTRIBUTE_POSITION)
+        .unwrap()
+        .as_float3()
+        .unwrap();
+
+    let mut fly_min = Vec3::splat(f32::MAX);
+    let mut fly_max = Vec3::splat(f32::MIN);
+    for &[x, y, z] in fly_positions {
+        fly_min = fly_min.min(Vec3::new(x, y, z));
+        fly_max = fly_max.max(Vec3::new(x, y, z));
+    }
+    let fly_extents = fly_max - fly_min;
+
+    assert!(
+        fly_extents.x <= 0.006,
+        "Fly wingspan must be realistic sub-centimeter size, got {}",
+        fly_extents.x
+    );
+    assert!(
+        fly_extents.z <= 0.005,
+        "Fly body length must be realistic sub-centimeter size, got {}",
+        fly_extents.z
+    );
+    assert!(
+        fly_extents.y <= 0.003,
+        "Fly thickness must be realistic sub-centimeter size, got {}",
+        fly_extents.y
+    );
+
+    let moth_body_positions = moth_body
+        .attribute(bevy::render::mesh::Mesh::ATTRIBUTE_POSITION)
+        .unwrap()
+        .as_float3()
+        .unwrap();
+
+    let mut mb_min = Vec3::splat(f32::MAX);
+    let mut mb_max = Vec3::splat(f32::MIN);
+    for &[x, y, z] in moth_body_positions {
+        mb_min = mb_min.min(Vec3::new(x, y, z));
+        mb_max = mb_max.max(Vec3::new(x, y, z));
+    }
+    let mb_extents = mb_max - mb_min;
+
+    assert!(
+        mb_extents.z <= 0.012,
+        "Moth body length must be small real-life size <= 12mm, got {}",
+        mb_extents.z
+    );
+    assert!(
+        mb_extents.x <= 0.003,
+        "Moth body width must be small real-life size <= 3mm, got {}",
+        mb_extents.x
+    );
+
+    let moth_wing_positions = moth_wing_l
+        .attribute(bevy::render::mesh::Mesh::ATTRIBUTE_POSITION)
+        .unwrap()
+        .as_float3()
+        .unwrap();
+
+    let mut mw_max_span = 0.0f32;
+    for &[x, _, _] in moth_wing_positions {
+        mw_max_span = mw_max_span.max(x.abs());
+    }
+
+    assert!(
+        mw_max_span <= 0.011,
+        "Single moth forewing span must be <= 11mm, got {}",
+        mw_max_span
+    );
+
+    let total_moth_wingspan = (mw_max_span * 2.0) + mb_extents.x;
+    assert!(
+        total_moth_wingspan <= 0.025,
+        "Total moth wingspan must strictly represent small real-world moth <= 2.5cm, got {}",
+        total_moth_wingspan
+    );
+}
+
+#[test]
+fn test_unit_ambient_insects_hovering_and_wing_flutter() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::asset::AssetPlugin::default(),
+    ));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.init_resource::<deep_alchemy::dungeon::fauna::AmbientFaunaSpawner>();
+
+    app.add_systems(
+        Startup,
+        |mut commands: Commands,
+         mut meshes: ResMut<Assets<Mesh>>,
+         mut materials: ResMut<Assets<StandardMaterial>>| {
+            deep_alchemy::dungeon::fauna::setup_ambient_fauna(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+            );
+        },
+    );
+    app.update();
+    let fauna_assets = app
+        .world()
+        .resource::<deep_alchemy::dungeon::fauna::AmbientFaunaAssets>()
+        .clone();
+
+    let moth_pos = Vec3::new(2.0, 1.5, 3.0);
+    let fly_pos = Vec3::new(-1.0, 0.15, 2.0);
+
+    let moth_entity = {
+        let mut commands = app.world_mut().commands();
+        deep_alchemy::dungeon::fauna::spawn_ambient_moth(&mut commands, &fauna_assets, moth_pos, 42)
+    };
+    let fly_entity = {
+        let mut commands = app.world_mut().commands();
+        deep_alchemy::dungeon::fauna::spawn_ambient_water_fly(&mut commands, &fauna_assets, fly_pos, None, 84)
+    };
+    app.update();
+
+    app.add_systems(Update, deep_alchemy::dungeon::fauna::update_ambient_insects);
+
+    let moth_insect = app.world().get::<deep_alchemy::dungeon::fauna::AmbientInsect>(moth_entity).unwrap();
+    assert_eq!(moth_insect.state, deep_alchemy::dungeon::fauna::InsectState::Hovering);
+    assert_eq!(moth_insect.kind, deep_alchemy::dungeon::fauna::InsectKind::Moth);
+
+    let initial_phase = moth_insect.flutter_phase;
+
+    app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(100));
+    app.update();
+
+    let updated_moth = app.world().get::<deep_alchemy::dungeon::fauna::AmbientInsect>(moth_entity).unwrap();
+    assert!(updated_moth.flutter_phase > initial_phase);
+    assert_eq!(updated_moth.state, deep_alchemy::dungeon::fauna::InsectState::Hovering);
+
+    let updated_fly = app.world().get::<deep_alchemy::dungeon::fauna::AmbientInsect>(fly_entity).unwrap();
+    let fly_tf = app.world().get::<Transform>(fly_entity).unwrap();
+    assert_eq!(updated_fly.state, deep_alchemy::dungeon::fauna::InsectState::Hovering);
+    assert!(fly_tf.translation.distance(fly_pos) < 0.40);
+}
+
+#[test]
+fn test_unit_ambient_insects_flee_and_fade_on_player_proximity() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::asset::AssetPlugin::default(),
+    ));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.init_resource::<deep_alchemy::dungeon::fauna::AmbientFaunaSpawner>();
+
+    app.add_systems(
+        Startup,
+        |mut commands: Commands,
+         mut meshes: ResMut<Assets<Mesh>>,
+         mut materials: ResMut<Assets<StandardMaterial>>| {
+            deep_alchemy::dungeon::fauna::setup_ambient_fauna(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+            );
+        },
+    );
+    app.update();
+    let fauna_assets = app
+        .world()
+        .resource::<deep_alchemy::dungeon::fauna::AmbientFaunaAssets>()
+        .clone();
+
+    let player_entity = app.world_mut().spawn((
+        deep_alchemy::player::camera::Player,
+        Transform::from_xyz(10.0, 0.0, 10.0),
+    )).id();
+
+    let insect_pos = Vec3::new(0.0, 1.0, 0.0);
+    let moth_entity = {
+        let mut commands = app.world_mut().commands();
+        deep_alchemy::dungeon::fauna::spawn_ambient_moth(&mut commands, &fauna_assets, insect_pos, 77)
+    };
+    app.update();
+
+    app.add_systems(Update, deep_alchemy::dungeon::fauna::update_ambient_insects);
+
+    app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(50));
+    app.update();
+
+    let moth = app.world().get::<deep_alchemy::dungeon::fauna::AmbientInsect>(moth_entity).unwrap();
+    assert_eq!(moth.state, deep_alchemy::dungeon::fauna::InsectState::Hovering);
+
+    app.world_mut().get_mut::<Transform>(player_entity).unwrap().translation = Vec3::new(0.1, 1.0, 0.1);
+
+    app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(50));
+    app.update();
+
+    let fleeing_moth = app.world().get::<deep_alchemy::dungeon::fauna::AmbientInsect>(moth_entity).unwrap();
+    assert_eq!(fleeing_moth.state, deep_alchemy::dungeon::fauna::InsectState::Fleeing);
+    assert!(fleeing_moth.flee_velocity.y > 0.3);
+
+    let moth_tf = app.world().get::<Transform>(moth_entity).unwrap();
+    assert!(moth_tf.scale.x <= 1.0);
+
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(100),
+    ));
+    for _ in 0..16 {
+        app.update();
+    }
+
+    assert!(app.world().get_entity(moth_entity).is_err());
+}
+
+#[test]
+fn test_unit_ambient_water_flies_scatter_when_puddle_freezes_or_boils() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::asset::AssetPlugin::default(),
+    ));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.init_resource::<deep_alchemy::dungeon::fauna::AmbientFaunaSpawner>();
+
+    app.add_systems(
+        Startup,
+        |mut commands: Commands,
+         mut meshes: ResMut<Assets<Mesh>>,
+         mut materials: ResMut<Assets<StandardMaterial>>| {
+            deep_alchemy::dungeon::fauna::setup_ambient_fauna(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+            );
+        },
+    );
+    app.update();
+    let fauna_assets = app
+        .world()
+        .resource::<deep_alchemy::dungeon::fauna::AmbientFaunaAssets>()
+        .clone();
+
+    let puddle_entity = app.world_mut().spawn((
+        deep_alchemy::dungeon::water_drips::CavernWaterPuddle {
+            state: deep_alchemy::dungeon::water_drips::WaterPuddleState::Liquid,
+            radius: 1.0,
+            original_radius: 1.0,
+            base_y: 0.02,
+            freeze_timer: 0.0,
+            boil_timer: 0.0,
+            regen_timer: 0.0,
+            step_ripple_cooldown: 0.0,
+        },
+        Transform::from_xyz(0.0, 0.02, 5.0),
+    )).id();
+
+    let fly_entity = {
+        let mut commands = app.world_mut().commands();
+        deep_alchemy::dungeon::fauna::spawn_ambient_water_fly(
+            &mut commands,
+            &fauna_assets,
+            Vec3::new(0.0, 0.15, 5.0),
+            Some(puddle_entity),
+            123,
+        )
+    };
+    app.update();
+
+    app.add_systems(Update, deep_alchemy::dungeon::fauna::update_ambient_insects);
+
+    app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(50));
+    app.update();
+
+    let fly = app.world().get::<deep_alchemy::dungeon::fauna::AmbientInsect>(fly_entity).unwrap();
+    assert_eq!(fly.state, deep_alchemy::dungeon::fauna::InsectState::Hovering);
+
+    app.world_mut().get_mut::<deep_alchemy::dungeon::water_drips::CavernWaterPuddle>(puddle_entity).unwrap().state =
+        deep_alchemy::dungeon::water_drips::WaterPuddleState::Frozen;
+
+    app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(50));
+    app.update();
+
+    let fleeing_fly = app.world().get::<deep_alchemy::dungeon::fauna::AmbientInsect>(fly_entity).unwrap();
+    assert_eq!(fleeing_fly.state, deep_alchemy::dungeon::fauna::InsectState::Fleeing);
+    assert!(fleeing_fly.flee_velocity.y > 1.0);
+}
+
+#[test]
+fn test_unit_ambient_fauna_spawner_rare_budget_caps() {
+    let spawner = deep_alchemy::dungeon::fauna::AmbientFaunaSpawner::default();
+    assert_eq!(spawner.max_moths, 10);
+    assert_eq!(spawner.max_flies, 14);
+    assert_eq!(spawner.max_spiders, 6);
+    assert_eq!(spawner.max_webs, 8);
+    assert!(spawner.interval >= 3.0);
+}
+
+#[test]
+fn test_unit_spider_and_web_realistic_dimensions_sub_centimeter_scale() {
+    let spider_body = deep_alchemy::dungeon::fauna::create_tiny_spider_body_mesh();
+    let spider_leg_0 = deep_alchemy::dungeon::fauna::create_spider_leg_mesh(0);
+    let corner_web = deep_alchemy::dungeon::fauna::create_corner_cobweb_mesh(0.8, 0.7, 0.8);
+    let radial_web = deep_alchemy::dungeon::fauna::create_radial_spiderweb_mesh(0.45);
+
+    let sb_positions = spider_body
+        .attribute(bevy::render::mesh::Mesh::ATTRIBUTE_POSITION)
+        .unwrap()
+        .as_float3()
+        .unwrap();
+
+    let mut sb_min = Vec3::splat(f32::MAX);
+    let mut sb_max = Vec3::splat(f32::MIN);
+    for &[x, y, z] in sb_positions {
+        sb_min = sb_min.min(Vec3::new(x, y, z));
+        sb_max = sb_max.max(Vec3::new(x, y, z));
+    }
+    let sb_extents = sb_max - sb_min;
+
+    assert!(
+        sb_extents.z <= 0.010,
+        "Spider body length must be small real-life size <= 10mm, got {}",
+        sb_extents.z
+    );
+    assert!(
+        sb_extents.x <= 0.004,
+        "Spider body width must be small real-life size <= 4mm, got {}",
+        sb_extents.x
+    );
+
+    let leg_positions = spider_leg_0
+        .attribute(bevy::render::mesh::Mesh::ATTRIBUTE_POSITION)
+        .unwrap()
+        .as_float3()
+        .unwrap();
+
+    let mut leg_max_reach = 0.0f32;
+    for &[x, _, z] in leg_positions {
+        let reach = (x * x + z * z).sqrt();
+        leg_max_reach = leg_max_reach.max(reach);
+    }
+
+    assert!(
+        leg_max_reach <= 0.014,
+        "Spider leg reach must be realistic <= 14mm, got {}",
+        leg_max_reach
+    );
+
+    let total_spider_diameter = (leg_max_reach * 2.0) + sb_extents.x;
+    assert!(
+        total_spider_diameter <= 0.030,
+        "Total spider diameter must strictly represent small cellar/crevice spider <= 3cm, got {}",
+        total_spider_diameter
+    );
+
+    let corner_positions = corner_web
+        .attribute(bevy::render::mesh::Mesh::ATTRIBUTE_POSITION)
+        .unwrap()
+        .as_float3()
+        .unwrap();
+    assert!(!corner_positions.is_empty());
+
+    let radial_positions = radial_web
+        .attribute(bevy::render::mesh::Mesh::ATTRIBUTE_POSITION)
+        .unwrap()
+        .as_float3()
+        .unwrap();
+    assert!(!radial_positions.is_empty());
+}
+
+#[test]
+fn test_unit_spider_web_non_blocking_and_player_contact_rupture() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::asset::AssetPlugin::default(),
+    ));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.init_resource::<deep_alchemy::dungeon::fauna::AmbientFaunaSpawner>();
+
+    app.add_systems(
+        Startup,
+        |mut commands: Commands,
+         mut meshes: ResMut<Assets<Mesh>>,
+         mut materials: ResMut<Assets<StandardMaterial>>| {
+            deep_alchemy::dungeon::fauna::setup_ambient_fauna(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+            );
+        },
+    );
+    app.update();
+    let fauna_assets = app
+        .world()
+        .resource::<deep_alchemy::dungeon::fauna::AmbientFaunaAssets>()
+        .clone();
+
+    let web_pos = Vec3::new(0.0, 1.0, 0.0);
+    let web_entity = {
+        let mut commands = app.world_mut().commands();
+        deep_alchemy::dungeon::fauna::spawn_spider_web(
+            &mut commands,
+            &fauna_assets,
+            web_pos,
+            Quat::IDENTITY,
+            0.75,
+            true,
+            55,
+        )
+    };
+    app.update();
+
+    let web_before = app.world().get::<deep_alchemy::dungeon::fauna::SpiderWeb>(web_entity).unwrap();
+    assert!(!web_before.is_ruptured);
+
+    let player_entity = app.world_mut().spawn((
+        deep_alchemy::player::camera::Player,
+        Transform::from_xyz(0.1, 0.1, 0.1),
+    )).id();
+
+    app.add_systems(
+        Update,
+        (
+            deep_alchemy::dungeon::fauna::update_spider_webs,
+            deep_alchemy::dungeon::fauna::update_ambient_insects,
+        ).chain(),
+    );
+
+    app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(50));
+    app.update();
+
+    let web_after = app.world().get::<deep_alchemy::dungeon::fauna::SpiderWeb>(web_entity).unwrap();
+    assert!(web_after.is_ruptured);
+
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(100),
+    ));
+    for _ in 0..10 {
+        app.update();
+    }
+
+    assert!(app.world().get_entity(web_entity).is_err());
+    assert!(app.world().get_entity(player_entity).is_ok());
+}
+
+#[test]
+fn test_unit_spider_web_super_flammable_ignites_and_burns_away() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::asset::AssetPlugin::default(),
+    ));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.init_resource::<deep_alchemy::dungeon::fauna::AmbientFaunaSpawner>();
+
+    app.add_systems(
+        Startup,
+        |mut commands: Commands,
+         mut meshes: ResMut<Assets<Mesh>>,
+         mut materials: ResMut<Assets<StandardMaterial>>| {
+            deep_alchemy::dungeon::fauna::setup_ambient_fauna(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+            );
+        },
+    );
+    app.update();
+    let fauna_assets = app
+        .world()
+        .resource::<deep_alchemy::dungeon::fauna::AmbientFaunaAssets>()
+        .clone();
+
+    let web_entity = {
+        let mut commands = app.world_mut().commands();
+        deep_alchemy::dungeon::fauna::spawn_spider_web(
+            &mut commands,
+            &fauna_assets,
+            Vec3::new(2.0, 3.0, 2.0),
+            Quat::IDENTITY,
+            0.7,
+            true,
+            91,
+        )
+    };
+    app.update();
+
+    let flammable = app.world().get::<deep_alchemy::alchemy::Flammable>(web_entity).unwrap();
+    assert!(
+        flammable.ignition_temperature <= 2.0,
+        "Spiderweb must be super flammable with ignition temp <= 2.0, got {}",
+        flammable.ignition_temperature
+    );
+
+    app.world_mut()
+        .get_mut::<deep_alchemy::alchemy::Flammable>(web_entity)
+        .unwrap()
+        .apply_heat(10.0);
+
+    let flammable_burning = app.world().get::<deep_alchemy::alchemy::Flammable>(web_entity).unwrap();
+    assert!(flammable_burning.is_burning);
+
+    app.add_systems(
+        Update,
+        (
+            deep_alchemy::dungeon::fauna::update_spider_webs,
+            deep_alchemy::dungeon::fauna::update_ambient_insects,
+        ).chain(),
+    );
+
+    app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(50));
+    app.update();
+
+    let web = app.world().get::<deep_alchemy::dungeon::fauna::SpiderWeb>(web_entity).unwrap();
+    assert!(web.is_ruptured);
+}
+
+#[test]
+fn test_unit_spider_web_potion_direct_impact_destruction() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::asset::AssetPlugin::default(),
+    ));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.init_resource::<deep_alchemy::dungeon::fauna::AmbientFaunaSpawner>();
+
+    app.add_systems(
+        Startup,
+        |mut commands: Commands,
+         mut meshes: ResMut<Assets<Mesh>>,
+         mut materials: ResMut<Assets<StandardMaterial>>| {
+            deep_alchemy::dungeon::fauna::setup_ambient_fauna(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+            );
+        },
+    );
+    app.update();
+    let fauna_assets = app
+        .world()
+        .resource::<deep_alchemy::dungeon::fauna::AmbientFaunaAssets>()
+        .clone();
+
+    let web_entity = {
+        let mut commands = app.world_mut().commands();
+        deep_alchemy::dungeon::fauna::spawn_spider_web(
+            &mut commands,
+            &fauna_assets,
+            Vec3::new(1.0, 1.0, 1.0),
+            Quat::IDENTITY,
+            0.6,
+            true,
+            77,
+        )
+    };
+
+    app.world_mut().spawn((
+        deep_alchemy::alchemy::PotionProjectile {
+            velocity: Vec3::ZERO,
+            effects: vec![],
+            lifetime: 0.0,
+            color: Color::WHITE,
+            slot: 2,
+            hitstop_timer: 0.0,
+            entered_water: false,
+        },
+        Transform::from_xyz(1.1, 1.0, 1.0),
+    ));
+    app.update();
+
+    app.add_systems(
+        Update,
+        (
+            deep_alchemy::dungeon::fauna::update_spider_webs,
+            deep_alchemy::dungeon::fauna::update_ambient_insects,
+        ).chain(),
+    );
+
+    app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(50));
+    app.update();
+
+    let web = app.world().get::<deep_alchemy::dungeon::fauna::SpiderWeb>(web_entity).unwrap();
+    assert!(web.is_ruptured);
+}
+
+#[test]
+fn test_unit_spider_high_web_association_and_skitter_flee() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::asset::AssetPlugin::default(),
+    ));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.init_resource::<deep_alchemy::dungeon::fauna::AmbientFaunaSpawner>();
+
+    app.add_systems(
+        Startup,
+        |mut commands: Commands,
+         mut meshes: ResMut<Assets<Mesh>>,
+         mut materials: ResMut<Assets<StandardMaterial>>| {
+            deep_alchemy::dungeon::fauna::setup_ambient_fauna(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+            );
+        },
+    );
+    app.update();
+    let fauna_assets = app
+        .world()
+        .resource::<deep_alchemy::dungeon::fauna::AmbientFaunaAssets>()
+        .clone();
+
+    let mut spider_count = 0;
+    let iterations = 20;
+    for i in 0..iterations {
+        let web_ent = {
+            let mut commands = app.world_mut().commands();
+            deep_alchemy::dungeon::fauna::spawn_spider_web(
+                &mut commands,
+                &fauna_assets,
+                Vec3::new(i as f32 * 2.0, 1.0, 0.0),
+                Quat::IDENTITY,
+                0.5,
+                true,
+                i as u32 * 100 + 7,
+            )
+        };
+        app.update();
+        let web = app.world().get::<deep_alchemy::dungeon::fauna::SpiderWeb>(web_ent).unwrap();
+        if web.attached_spider.is_some() {
+            spider_count += 1;
+        }
+    }
+
+    assert!(
+        spider_count >= 18,
+        "At least 90% of spiderwebs must have an attached spider, got {}/{}",
+        spider_count,
+        iterations
+    );
+
+    let single_spider = {
+        let mut commands = app.world_mut().commands();
+        deep_alchemy::dungeon::fauna::spawn_ambient_spider(
+            &mut commands,
+            &fauna_assets,
+            Vec3::new(0.0, 1.0, 0.0),
+            None,
+            44,
+        )
+    };
+    app.update();
+
+    let spider_data = app.world().get::<deep_alchemy::dungeon::fauna::AmbientInsect>(single_spider).unwrap();
+    assert_eq!(spider_data.kind, deep_alchemy::dungeon::fauna::InsectKind::Spider);
+    assert_eq!(spider_data.state, deep_alchemy::dungeon::fauna::InsectState::Hovering);
+
+    let player_ent = app.world_mut().spawn((
+        deep_alchemy::player::camera::Player,
+        Transform::from_xyz(0.1, 1.0, 0.1),
+    )).id();
+
+    app.add_systems(
+        Update,
+        (
+            deep_alchemy::dungeon::fauna::update_spider_webs,
+            deep_alchemy::dungeon::fauna::update_ambient_insects,
+        ).chain(),
+    );
+
+    app.world_mut().resource_mut::<Time>().advance_by(std::time::Duration::from_millis(50));
+    app.update();
+
+    let fleeing_spider = app.world().get::<deep_alchemy::dungeon::fauna::AmbientInsect>(single_spider).unwrap();
+    assert_eq!(fleeing_spider.state, deep_alchemy::dungeon::fauna::InsectState::Fleeing);
+    assert!(fleeing_spider.flee_velocity.length() > 0.5);
+
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(100),
+    ));
+    for _ in 0..16 {
+        app.update();
+    }
+
+    assert!(app.world().get_entity(single_spider).is_err());
+    assert!(app.world().get_entity(player_ent).is_ok());
+}
+#[test]
+fn test_unit_player_cannot_step_onto_or_climb_dungeon_walls() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_millis(16),
+    ));
+    app.init_resource::<ButtonInput<KeyCode>>();
+    app.init_resource::<deep_alchemy::player::FlyModeState>();
+    app.init_state::<deep_alchemy::ui::menu::GameState>();
+    app.world_mut()
+        .resource_mut::<NextState<deep_alchemy::ui::menu::GameState>>()
+        .set(deep_alchemy::ui::menu::GameState::InGame);
+    app.add_systems(Update, deep_alchemy::player::controller::player_movement);
+    app.update();
+
+    let player = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            deep_alchemy::player::camera::PlayerState::Active,
+            deep_alchemy::player::camera::LocomotionState::default(),
+            Transform::from_xyz(0.0, 1.2, 0.0),
+            deep_alchemy::player::camera::Health {
+                current: 100.0,
+                max: 100.0,
+            },
+            deep_alchemy::player::camera::Stamina {
+                current: 100.0,
+                max: 100.0,
+            },
+        ))
+        .id();
+
+    app.world_mut().spawn((
+        deep_alchemy::dungeon::modular_kit::CavernObstacle,
+        Transform::from_xyz(0.0, 2.5, -1.0),
+        deep_alchemy::dungeon::modular_kit::ObstacleShape::Cuboid {
+            half_extents: Vec3::new(2.0, 2.5, 0.375),
+        },
+    ));
+
+    app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::KeyW);
+    app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Space);
+    for _ in 0..60 {
+        app.update();
+    }
+    app.world_mut().resource_mut::<ButtonInput<KeyCode>>().clear();
+
+    for _ in 0..60 {
+        app.update();
+    }
+
+    let tf = *app.world().get::<Transform>(player).unwrap();
+    assert!(tf.translation.y <= 1.35);
+    assert!(tf.translation.z > -1.0);
+}
+
+#[test]
+fn test_unit_dungeon_pieces_all_have_tall_wall_colliders_and_no_gaps() {
+    let config = deep_alchemy::dungeon::generator::DungeonConfig::default();
+    let dungeon = deep_alchemy::dungeon::generator::DungeonGenerator::generate(config);
+    assert!(!dungeon.dual_cells.is_empty());
+
+    let mut found_straight = false;
+    let mut found_corner = false;
+    let mut found_pillar = false;
+
+    for cell in &dungeon.dual_cells {
+        match cell.piece {
+            deep_alchemy::dungeon::generator::CanonicalPiece::StraightEdge => found_straight = true,
+            deep_alchemy::dungeon::generator::CanonicalPiece::OuterCorner
+            | deep_alchemy::dungeon::generator::CanonicalPiece::InnerCorner => found_corner = true,
+            deep_alchemy::dungeon::generator::CanonicalPiece::SolidPillar => found_pillar = true,
+            _ => {}
+        }
+    }
+
+    assert!(found_straight);
+    assert!(found_corner);
+    assert!(found_pillar);
+
+    let straight_half_extents = Vec3::new(0.375, 2.5, 2.0);
+    assert_eq!(straight_half_extents.y * 2.0, 5.0);
+
+    let corner_half_extents = Vec3::new(0.85, 2.5, 0.85);
+    assert_eq!(corner_half_extents.y * 2.0, 5.0);
+
+    let pillar_half_extents = Vec3::new(2.0, 2.5, 2.0);
+    assert_eq!(pillar_half_extents.y * 2.0, 5.0);
+}
+
+#[test]
+fn test_unit_player_out_of_bounds_rescue_teleport_to_start() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.init_resource::<deep_alchemy::player::FlyModeState>();
+    app.add_systems(Update, deep_alchemy::player::controller::player_out_of_bounds_rescue);
+
+    let p1 = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            Transform::from_xyz(0.0, 5.5, 0.0),
+            deep_alchemy::player::camera::LocomotionState::default(),
+        ))
+        .id();
+
+    let p2 = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            Transform::from_xyz(0.0, -8.0, 0.0),
+            deep_alchemy::player::camera::LocomotionState::default(),
+        ))
+        .id();
+
+    let p3 = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            Transform::from_xyz(75.0, 1.2, 0.0),
+            deep_alchemy::player::camera::LocomotionState::default(),
+        ))
+        .id();
+
+    let p_valid = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            Transform::from_xyz(5.0, 1.2, 5.0),
+            deep_alchemy::player::camera::LocomotionState::default(),
+        ))
+        .id();
+
+    let p_secret = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            Transform::from_xyz(0.0, 1.2, 512.0),
+            deep_alchemy::player::camera::LocomotionState::default(),
+        ))
+        .id();
+
+    app.update();
+
+    let tf1 = *app.world().get::<Transform>(p1).unwrap();
+    let tf2 = *app.world().get::<Transform>(p2).unwrap();
+    let tf3 = *app.world().get::<Transform>(p3).unwrap();
+    let tf_valid = *app.world().get::<Transform>(p_valid).unwrap();
+    let tf_secret = *app.world().get::<Transform>(p_secret).unwrap();
+
+    assert_eq!(tf1.translation, Vec3::new(0.0, 1.2, 0.0));
+    assert_eq!(tf2.translation, Vec3::new(0.0, 1.2, 0.0));
+    assert_eq!(tf3.translation, Vec3::new(0.0, 1.2, 0.0));
+    assert_eq!(tf_valid.translation, Vec3::new(5.0, 1.2, 5.0));
+    assert_eq!(tf_secret.translation, Vec3::new(0.0, 1.2, 512.0));
+}
+
+#[test]
+fn test_unit_complete_dungeon_walkways_are_traversable_and_walls_block() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::state::app::StatesPlugin,
+        bevy::asset::AssetPlugin::default(),
+        bevy::scene::ScenePlugin::default(),
+        avian3d::prelude::PhysicsPlugins::default(),
+    ));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.init_resource::<deep_alchemy::dungeon::asset_loader::SceneAssetRegistry>();
+    app.init_state::<deep_alchemy::ui::menu::GameState>();
+    app.add_systems(OnEnter(deep_alchemy::ui::menu::GameState::InGame), deep_alchemy::dungeon::generator::spawn_procedural_dungeon);
+    app.world_mut()
+        .resource_mut::<NextState<deep_alchemy::ui::menu::GameState>>()
+        .set(deep_alchemy::ui::menu::GameState::InGame);
+    app.finish();
+    app.cleanup();
+    app.update();
+
+    let mut query = app.world_mut().query::<(&Transform, &deep_alchemy::dungeon::modular_kit::ObstacleShape)>();
+    let obstacles: Vec<(Transform, deep_alchemy::dungeon::modular_kit::ObstacleShape)> = query
+        .iter(app.world())
+        .map(|(tf, shape)| (*tf, shape.clone()))
+        .collect();
+
+    assert!(!obstacles.is_empty(), "Obstacles must be spawned");
+
+    let obs_refs: Vec<(&Transform, deep_alchemy::dungeon::modular_kit::ObstacleShape)> = obstacles
+        .iter()
+        .map(|(tf, shape)| (tf, shape.clone()))
+        .collect();
+
+    let config = deep_alchemy::dungeon::generator::DungeonConfig::default();
+    let dungeon = deep_alchemy::dungeon::generator::DungeonGenerator::generate(config.clone());
+    let width = dungeon.config.grid_width;
+    let depth = dungeon.config.grid_depth;
+    let tile_size = dungeon.config.tile_size;
+    let center_offset_x = (width as f32 * 0.5) * tile_size;
+    let center_offset_z = (depth as f32 * 0.5) * tile_size;
+
+    let cx = width / 2;
+    let mut visited = std::collections::HashSet::new();
+    let mut queue = std::collections::VecDeque::new();
+
+    let start_gx = cx;
+    let start_gz = 14;
+    assert!(dungeon.get_primary(start_gx, start_gz).is_walkable());
+    visited.insert((start_gx, start_gz));
+    queue.push_back((start_gx, start_gz));
+
+    let mut traversed_transitions = 0;
+
+    while let Some((gx, gz)) = queue.pop_front() {
+        let from_wx = ((gx as f32 + 0.5) * tile_size) - center_offset_x;
+        let from_wz = ((gz as f32 + 0.5) * tile_size) - center_offset_z;
+        let from_pos = Vec3::new(from_wx, 1.2, from_wz);
+
+        let neighbors = [
+            (gx.wrapping_sub(1), gz),
+            (gx + 1, gz),
+            (gx, gz.wrapping_sub(1)),
+            (gx, gz + 1),
+        ];
+
+        for (nx, nz) in neighbors {
+            if nx < width && nz < depth && dungeon.get_primary(nx, nz).is_walkable() {
+                let to_wx = ((nx as f32 + 0.5) * tile_size) - center_offset_x;
+                let to_wz = ((nz as f32 + 0.5) * tile_size) - center_offset_z;
+                let to_pos = Vec3::new(to_wx, 1.2, to_wz);
+
+                let mut current_sim = from_pos;
+                let dir = (to_pos - from_pos).normalize();
+                let total_dist = (to_pos - from_pos).length();
+                let step_dist: f32 = 0.15;
+                let mut dist_traveled = 0.0;
+
+                while dist_traveled < total_dist {
+                    let next_desired = current_sim + dir * step_dist.min(total_dist - dist_traveled);
+                    let resolved = deep_alchemy::player::controller::resolve_player_collision_sliding(
+                        next_desired,
+                        current_sim,
+                        0.35,
+                        true,
+                        false,
+                        &obs_refs,
+                    );
+                    let actual_progress = (resolved - current_sim).length();
+                    current_sim = resolved;
+                    dist_traveled += step_dist;
+                    if actual_progress < 1e-4 {
+                        break;
+                    }
+                }
+
+                let final_dist = (current_sim - to_pos).length();
+                assert!(
+                    final_dist <= 0.40,
+                    "Player was blocked moving between walkable cells: from ({}, {}) to ({}, {})! Dist remaining: {:.2}m",
+                    gx, gz, nx, nz, final_dist
+                );
+                traversed_transitions += 1;
+
+                if !visited.contains(&(nx, nz)) {
+                    visited.insert((nx, nz));
+                    queue.push_back((nx, nz));
+                }
+            }
+        }
+    }
+
+    assert!(visited.len() >= 20, "Must visit all reachable dungeon cells, visited: {}", visited.len());
+    assert!(traversed_transitions >= 30, "Must traverse all corridor transitions, traversed: {}", traversed_transitions);
+
+    let solid_wall_pos = Vec3::new(0.0, 1.2, 20.0);
+    let desired_into_wall = solid_wall_pos + Vec3::new(-1.5, 0.0, 0.0);
+    let resolved_wall = deep_alchemy::player::controller::resolve_player_collision_sliding(
+        desired_into_wall,
+        solid_wall_pos,
+        0.35,
+        true,
+        false,
+        &obs_refs,
+    );
+    assert!((resolved_wall - desired_into_wall).length() > 0.5, "Solid walls must block player penetration");
+    assert!(resolved_wall.x > -1.0, "Player must remain inside corridor, stopped by wall");
+}
+
+
+#[test]
+fn test_unit_player_cannot_climb_onto_dungeon_walls_or_ceilings() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.init_resource::<deep_alchemy::player::FlyModeState>();
+    app.add_systems(Update, deep_alchemy::player::controller::player_out_of_bounds_rescue);
+
+    let p_roof = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            Transform::from_xyz(0.0, 3.8, 15.0),
+            deep_alchemy::player::camera::LocomotionState::default(),
+        ))
+        .id();
+
+    let p_wall_top = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            Transform::from_xyz(4.0, 2.9, 20.0),
+            deep_alchemy::player::camera::LocomotionState::default(),
+        ))
+        .id();
+
+    let p_valid = app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            Transform::from_xyz(0.0, 1.2, 15.0),
+            deep_alchemy::player::camera::LocomotionState::default(),
+        ))
+        .id();
+
+    app.update();
+
+    let tf_roof = app.world().get::<Transform>(p_roof).unwrap();
+    assert_eq!(tf_roof.translation, Vec3::new(0.0, 1.2, 0.0));
+
+    let tf_wall = app.world().get::<Transform>(p_wall_top).unwrap();
+    assert_eq!(tf_wall.translation, Vec3::new(0.0, 1.2, 0.0));
+
+    let tf_valid = app.world().get::<Transform>(p_valid).unwrap();
+    assert_eq!(tf_valid.translation, Vec3::new(0.0, 1.2, 15.0));
+
+    let simulated_slide = deep_alchemy::player::controller::resolve_player_collision_sliding(
+        Vec3::new(0.0, 3.5, 15.0),
+        Vec3::new(0.0, 1.2, 15.0),
+        0.35,
+        false,
+        true,
+        &[],
+    );
+    assert!(simulated_slide.y <= 2.45);
+}
+
+
+#[test]
+fn test_unit_crystal_geode_variations_and_grounded_placement() {
+    use deep_alchemy::dungeon::asset_loader::SceneAssetRegistry;
+    use deep_alchemy::dungeon::generator::{DungeonConfig, DungeonGenerator, RoomType};
+    use std::fs;
+    use std::path::Path;
+
+    let registry = SceneAssetRegistry::default();
+    assert!(registry.get_path("macro_crystal_cluster").is_some());
+    assert!(registry.get_path("macro_crystal_cluster_b").is_some());
+    assert!(registry.get_path("macro_crystal_cluster_c").is_some());
+
+    let config = DungeonConfig::default();
+    let dungeon = DungeonGenerator::generate(config);
+    let mut found_geode = false;
+    for cell in &dungeon.dual_cells {
+        if let Some(macro_room) = cell.macro_room {
+            if matches!(macro_room, RoomType::CrystalGeode) {
+                found_geode = true;
+                assert_eq!(cell.world_pos.y, 0.0);
+            }
+        }
+    }
+    assert!(found_geode, "Dungeon must contain CrystalGeode macro chamber");
+
+    let crystal_files = [
+        "assets/models/macro_crystal_cluster.glb",
+        "assets/models/macro_crystal_cluster_b.glb",
+        "assets/models/macro_crystal_cluster_c.glb",
+    ];
+    for path_str in &crystal_files {
+        let path = Path::new(path_str);
+        assert!(path.exists(), "Crystal model file must exist: {}", path_str);
+        let bytes = fs::read(path).expect("Failed to read crystal model");
+        assert!(bytes.len() > 1000, "Crystal file is too small");
+        let magic = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        assert_eq!(magic, 0x46546C67, "Must be valid GLB binary");
+    }
+}
+
+#[test]
+fn test_unit_dungeon_wall_torch_ignition_timer_and_ice_extinguishing() {
+    use deep_alchemy::alchemy::{
+        update_dungeon_wall_torches, DungeonWallTorch,
+    };
+    use deep_alchemy::dungeon::generator::spawn_dungeon_wall_sconce;
+    use deep_alchemy::dungeon::asset_loader::SceneAssetRegistry;
+
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::asset::AssetPlugin::default(),
+        bevy::scene::ScenePlugin::default(),
+    ));
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.init_resource::<SceneAssetRegistry>();
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(50)));
+
+    let sconce_pos = Vec3::new(-1.18, 2.05, 12.0);
+    let torch_entity = {
+        let registry = SceneAssetRegistry::default();
+        let asset_server = app.world().resource::<AssetServer>().clone();
+        let mut commands = app.world_mut().commands();
+        spawn_dungeon_wall_sconce(
+            &mut commands,
+            &asset_server,
+            &registry,
+            sconce_pos,
+            Quat::IDENTITY,
+            false,
+        )
+    };
+    app.update();
+
+    {
+        let torch = app.world().get::<DungeonWallTorch>(torch_entity).expect("Torch component must exist");
+        assert!(!torch.is_lit, "Dungeon wall torch must be initially unlit");
+        assert_eq!(torch.burn_timer, 0.0, "Unlit torch must have 0 burn timer");
+        assert_eq!(torch.max_burn_time, 1800.0, "Torch burn time must be 1800s (30 minutes real-world)");
+        assert!(torch.light_entity.is_some(), "Torch must link to a PointLight entity");
+        let light_e = torch.light_entity.unwrap();
+        let point_light = app.world().get::<PointLight>(light_e).expect("Point light must exist");
+        assert_eq!(point_light.intensity, 0.0, "Unlit torch point light intensity must be 0");
+    }
+
+    app.add_systems(Update, update_dungeon_wall_torches);
+
+    let fire_impact_pos = sconce_pos + Vec3::new(0.4, -0.2, 0.5);
+    {
+        let mut query = app.world_mut().query::<(Entity, &Transform, &mut DungeonWallTorch)>();
+        for (ent, tf, mut torch) in query.iter_mut(app.world_mut()) {
+            if ent == torch_entity {
+                assert!(tf.translation.distance(fire_impact_pos) <= 2.8);
+                torch.is_lit = true;
+                torch.burn_timer = torch.max_burn_time;
+                torch.dirty = true;
+            }
+        }
+    }
+    app.update();
+
+    {
+        let torch = app.world().get::<DungeonWallTorch>(torch_entity).unwrap();
+        assert!(torch.is_lit, "Torch must be lit after fire potion impact");
+        assert!(torch.burn_timer <= 1800.0 && torch.burn_timer >= 1799.0, "Torch must burn for 30 minutes (1800.0s)");
+        assert!(torch.flame_entity.is_some(), "Lit torch must spawn a flame particle emitter");
+        let light_e = torch.light_entity.unwrap();
+        let point_light = app.world().get::<PointLight>(light_e).unwrap();
+        assert!(point_light.intensity >= 3000.0, "Lit torch point light must be illuminated");
+    }
+
+    for _ in 0..20 {
+        app.update();
+    }
+
+    {
+        let torch = app.world().get::<DungeonWallTorch>(torch_entity).unwrap();
+        assert!(torch.is_lit, "Torch must remain lit while timer is active");
+        assert!(torch.burn_timer <= 1799.0 && torch.burn_timer >= 1798.0);
+    }
+
+    let frost_impact_pos = sconce_pos + Vec3::new(0.2, 0.1, -0.3);
+    {
+        let mut query = app.world_mut().query::<(Entity, &Transform, &mut DungeonWallTorch)>();
+        for (ent, tf, mut torch) in query.iter_mut(app.world_mut()) {
+            if ent == torch_entity {
+                assert!(tf.translation.distance(frost_impact_pos) <= 2.8);
+                torch.is_lit = false;
+                torch.burn_timer = 0.0;
+                torch.dirty = true;
+            }
+        }
+    }
+    app.update();
+
+    {
+        let torch = app.world().get::<DungeonWallTorch>(torch_entity).unwrap();
+        assert!(!torch.is_lit, "Torch must be extinguished by frost potion");
+        assert_eq!(torch.burn_timer, 0.0, "Extinguished torch timer must be 0");
+        assert!(torch.flame_entity.is_none(), "Flame emitter must be despawned when extinguished");
+        let light_e = torch.light_entity.unwrap();
+        let point_light = app.world().get::<PointLight>(light_e).unwrap();
+        assert_eq!(point_light.intensity, 0.0, "Point light intensity must be 0 after being extinguished");
+    }
+
+    {
+        let mut query = app.world_mut().query::<(Entity, &Transform, &mut DungeonWallTorch)>();
+        for (ent, _, mut torch) in query.iter_mut(app.world_mut()) {
+            if ent == torch_entity {
+                torch.is_lit = true;
+                torch.burn_timer = torch.max_burn_time;
+                torch.dirty = true;
+            }
+        }
+    }
+    app.update();
+
+    {
+        let torch = app.world().get::<DungeonWallTorch>(torch_entity).unwrap();
+        assert!(torch.is_lit, "Torch must reignite when hit by fire potion again");
+        assert!(torch.burn_timer <= 1800.0 && torch.burn_timer >= 1799.0);
+    }
+
+    {
+        let mut query = app.world_mut().query::<(Entity, &Transform, &mut DungeonWallTorch)>();
+        for (ent, _, mut torch) in query.iter_mut(app.world_mut()) {
+            if ent == torch_entity {
+                torch.burn_timer = 0.04;
+            }
+        }
+    }
+    app.update();
+
+    {
+        let torch = app.world().get::<DungeonWallTorch>(torch_entity).unwrap();
+        assert!(!torch.is_lit, "Torch must extinguish after 30 minutes (1800s)");
+        assert_eq!(torch.burn_timer, 0.0);
+        let light_e = torch.light_entity.unwrap();
+        let point_light = app.world().get::<PointLight>(light_e).unwrap();
+        assert_eq!(point_light.intensity, 0.0);
+        assert!(torch.flame_entity.is_none());
+    }
+}
+
+#[test]
+fn test_unit_dungeon_procedural_generation_spawns_unlit_wall_sconces() {
+    use deep_alchemy::alchemy::DungeonWallTorch;
+    use deep_alchemy::dungeon::asset_loader::SceneAssetRegistry;
+    use deep_alchemy::dungeon::generator::spawn_procedural_dungeon;
+
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::asset::AssetPlugin::default(),
+        bevy::scene::ScenePlugin::default(),
+    ));
+    app.init_resource::<SceneAssetRegistry>();
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.add_systems(Startup, spawn_procedural_dungeon);
+    app.update();
+
+    let mut torch_count = 0;
+    let mut lit_torch_count = 0;
+    let mut query = app.world_mut().query::<&DungeonWallTorch>();
+    for torch in query.iter(app.world()) {
+        torch_count += 1;
+        if torch.is_lit {
+            lit_torch_count += 1;
+        }
+        assert_eq!(torch.max_burn_time, 1800.0);
+    }
+
+    assert!(torch_count >= 10, "Procedural dungeon must spawn multiple wall sconces on dungeon walls, found {}", torch_count);
+    assert_eq!(lit_torch_count, 0, "All spawned wall sconces must be initially unlit as per requirements");
+}
+
+#[test]
+fn test_unit_creature_patrol_hop_and_procedural_squash() {
+    use avian3d::prelude::*;
+    use deep_alchemy::dungeon::creatures::{
+        update_creature_patrol_and_movement, CreatureSpecies, DungeonCreature,
+    };
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_systems(Update, update_creature_patrol_and_movement);
+
+    let waypoints = vec![Vec3::new(0.0, 0.0, 0.0), Vec3::new(10.0, 0.0, 0.0)];
+    let creature = DungeonCreature::new(CreatureSpecies::Sproutling, waypoints, 15.0);
+    let entity = app
+        .world_mut()
+        .spawn((
+            creature,
+            Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
+            LinearVelocity::default(),
+        ))
+        .id();
+
+    app.update();
+    app.update();
+
+    let c = app.world().get::<DungeonCreature>(entity).unwrap();
+    let tf = app.world().get::<Transform>(entity).unwrap();
+    let vel = app.world().get::<LinearVelocity>(entity).unwrap();
+
+    assert_eq!(c.species, CreatureSpecies::Sproutling);
+    assert_eq!(c.current_waypoint_idx, 1);
+    assert!(vel.x > 0.0);
+    assert!(tf.scale.y > 0.0);
+    assert!(tf.scale.x > 0.0);
+}
+
+#[test]
+fn test_unit_creature_adaptive_threat_learning_and_camera_aim_dodge() {
+    use deep_alchemy::dungeon::creatures::{
+        update_creature_ai_perception_and_aim_dodge, CreatureSpecies, CreatureState,
+        DungeonCreature,
+    };
+    use deep_alchemy::player::camera::Player;
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_systems(Update, update_creature_ai_perception_and_aim_dodge);
+
+    let _player_ent = app
+        .world_mut()
+        .spawn((
+            Player,
+            Transform::from_xyz(0.0, 1.5, 0.0).looking_to(-Vec3::Z, Vec3::Y),
+        ))
+        .id();
+
+    let waypoints = vec![Vec3::new(0.0, 0.0, -6.0)];
+    let mut untrained_creature =
+        DungeonCreature::new(CreatureSpecies::Sproutling, waypoints.clone(), 10.0);
+    untrained_creature.learned_player_threat = false;
+
+    let untrained_ent = app
+        .world_mut()
+        .spawn((
+            untrained_creature,
+            Transform::from_xyz(0.0, 0.0, -6.0),
+        ))
+        .id();
+
+    let mut trained_creature =
+        DungeonCreature::new(CreatureSpecies::Sproutling, waypoints, 10.0);
+    trained_creature.learned_player_threat = true;
+    trained_creature.dodge_cooldown = 0.0;
+
+    let trained_ent = app
+        .world_mut()
+        .spawn((
+            trained_creature,
+            Transform::from_xyz(0.0, 0.0, -5.0),
+        ))
+        .id();
+
+    app.update();
+
+    let untrained = app.world().get::<DungeonCreature>(untrained_ent).unwrap();
+    let trained = app.world().get::<DungeonCreature>(trained_ent).unwrap();
+
+    assert_ne!(untrained.state, CreatureState::Dodging);
+    assert_eq!(untrained.learned_player_threat, false);
+
+    assert_eq!(trained.state, CreatureState::Dodging);
+    assert!(trained.dodge_velocity.length() > 5.0);
+    assert!(trained.dodge_cooldown > 1.0);
+}
+
+#[test]
+fn test_unit_creature_species_elemental_potion_reactions() {
+    use deep_alchemy::alchemy::{AlchemicalEffectKind, PotionProjectile};
+    use deep_alchemy::dungeon::creatures::{
+        update_creature_potion_interactions, CreatureSpecies, CreatureState, DungeonCreature,
+    };
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_systems(Update, update_creature_potion_interactions);
+
+    let sproutling_ent = app
+        .world_mut()
+        .spawn((
+            DungeonCreature::new(CreatureSpecies::Sproutling, vec![Vec3::ZERO], 10.0),
+            Transform::from_xyz(0.0, 0.0, 0.0),
+        ))
+        .id();
+
+    let emberling_ent = app
+        .world_mut()
+        .spawn((
+            DungeonCreature::new(CreatureSpecies::Emberling, vec![Vec3::ZERO], 10.0),
+            Transform::from_xyz(20.0, 0.0, 0.0),
+        ))
+        .id();
+
+    let glaceling_ent = app
+        .world_mut()
+        .spawn((
+            DungeonCreature::new(CreatureSpecies::Glaceling, vec![Vec3::ZERO], 10.0),
+            Transform::from_xyz(40.0, 0.0, 0.0),
+        ))
+        .id();
+
+    let _fire_proj_ent = app
+        .world_mut()
+        .spawn((
+            PotionProjectile {
+                velocity: Vec3::ZERO,
+                lifetime: 10.0,
+                color: Color::srgb(1.0, 0.4, 0.1),
+                hitstop_timer: 0.0,
+                entered_water: false,
+                effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                    kind: AlchemicalEffectKind::ThermalHeat,
+                    duration: 5.0,
+                    magnitude: 20.0,
+                    elapsed: 0.0,
+                }],
+                slot: 2,
+            },
+            Transform::from_xyz(0.5, 0.0, 0.0),
+        ))
+        .id();
+
+    let _frost_proj_ent = app
+        .world_mut()
+        .spawn((
+            PotionProjectile {
+                velocity: Vec3::ZERO,
+                lifetime: 10.0,
+                color: Color::srgb(0.2, 0.8, 1.0),
+                hitstop_timer: 0.0,
+                entered_water: false,
+                effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                    kind: AlchemicalEffectKind::Frost,
+                    duration: 5.0,
+                    magnitude: 20.0,
+                    elapsed: 0.0,
+                }],
+                slot: 1,
+            },
+            Transform::from_xyz(20.5, 0.0, 0.0),
+        ))
+        .id();
+
+    let _fire_glace_proj_ent = app
+        .world_mut()
+        .spawn((
+            PotionProjectile {
+                velocity: Vec3::ZERO,
+                lifetime: 10.0,
+                color: Color::srgb(1.0, 0.4, 0.1),
+                hitstop_timer: 0.0,
+                entered_water: false,
+                effects: vec![deep_alchemy::alchemy::ActiveEffect {
+                    kind: AlchemicalEffectKind::ThermalHeat,
+                    duration: 5.0,
+                    magnitude: 20.0,
+                    elapsed: 0.0,
+                }],
+                slot: 2,
+            },
+            Transform::from_xyz(40.5, 0.0, 0.0),
+        ))
+        .id();
+
+    app.update();
+
+    let sproutling = app.world().get::<DungeonCreature>(sproutling_ent).unwrap();
+    let emberling = app.world().get::<DungeonCreature>(emberling_ent).unwrap();
+    let glaceling = app.world().get::<DungeonCreature>(glaceling_ent).unwrap();
+
+    assert_eq!(sproutling.state, CreatureState::Fleeing);
+    assert!(sproutling.learned_player_threat);
+    assert_eq!(sproutling.hit_count, 1);
+
+    assert_eq!(emberling.state, CreatureState::Exhausted);
+    assert!(emberling.learned_player_threat);
+
+    assert_eq!(glaceling.state, CreatureState::Melting);
+    assert!(glaceling.learned_player_threat);
+}
+
+#[test]
+fn test_unit_dungeon_procedural_generation_creature_density_progression() {
+    use deep_alchemy::dungeon::asset_loader::SceneAssetRegistry;
+    use deep_alchemy::dungeon::creatures::DungeonCreature;
+    use deep_alchemy::dungeon::generator::spawn_procedural_dungeon;
+
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::asset::AssetPlugin::default(),
+        bevy::scene::ScenePlugin::default(),
+    ));
+    app.init_resource::<SceneAssetRegistry>();
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.add_systems(Startup, spawn_procedural_dungeon);
+    app.update();
+
+    let mut entrance_creatures = 0;
+    let mut exit_creatures = 0;
+    let mut total_creatures = 0;
+
+    let mut query = app.world_mut().query::<(&Transform, &DungeonCreature)>();
+    for (tf, _) in query.iter(app.world()) {
+        total_creatures += 1;
+        if tf.translation.z > 2.0 {
+            exit_creatures += 1;
+        } else {
+            entrance_creatures += 1;
+        }
+    }
+
+    assert!(total_creatures >= 14, "Dungeon must spawn creatures progressively along dungeon path, found {}", total_creatures);
+    assert!(exit_creatures >= entrance_creatures, "Creatures density must be higher towards the exit than entrance");
+}
+
+#[test]
+fn test_unit_forest_exit_trigger_and_victory_menu_transition() {
+    use deep_alchemy::dungeon::generator::{update_forest_victory_trigger, ForestVictoryExitTrigger};
+    use deep_alchemy::player::camera::Player;
+    use deep_alchemy::ui::menu::{GameRunStats, GameState, MenuNavigation, MenuView};
+
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin));
+    app.init_state::<GameState>();
+    app.insert_resource(MenuNavigation {
+        current_view: MenuView::Main,
+        has_started: true,
+    });
+    app.insert_resource(GameRunStats::default());
+    app.add_systems(Update, update_forest_victory_trigger);
+
+    let player_ent = app
+        .world_mut()
+        .spawn((
+            Player,
+            Transform::from_xyz(0.0, 0.0, 100.0),
+        ))
+        .id();
+
+    let _trigger_ent = app
+        .world_mut()
+        .spawn((
+            ForestVictoryExitTrigger,
+            Transform::from_xyz(0.0, 0.0, 0.0),
+        ))
+        .id();
+
+    app.update();
+
+    {
+        let nav = app.world().resource::<MenuNavigation>();
+        let stats = app.world().resource::<GameRunStats>();
+        assert_eq!(nav.current_view, MenuView::Main);
+        assert!(!stats.has_won);
+    }
+
+    {
+        let mut tf = app.world_mut().get_mut::<Transform>(player_ent).unwrap();
+        tf.translation = Vec3::new(0.0, 0.0, 2.0);
+    }
+
+    app.update();
+
+    {
+        let nav = app.world().resource::<MenuNavigation>();
+        let stats = app.world().resource::<GameRunStats>();
+        assert_eq!(nav.current_view, MenuView::Victory);
+        assert!(stats.has_won);
+    }
+}
+
+#[test]
+fn test_unit_intro_comic_state_and_panel_navigation() {
+    use deep_alchemy::ui::menu::{
+        handle_intro_comic_keyboard_input, ComicCutsceneState, GameState, MenuNavigation, MenuView,
+    };
+
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin));
+    app.init_state::<GameState>();
+    app.insert_resource(MenuNavigation {
+        current_view: MenuView::IntroComic,
+        has_started: false,
+    });
+    app.insert_resource(ComicCutsceneState::default());
+    app.init_resource::<ButtonInput<KeyCode>>();
+    app.add_systems(Update, handle_intro_comic_keyboard_input);
+
+    app.update();
+
+    {
+        let state = app.world().resource::<ComicCutsceneState>();
+        assert_eq!(state.active_panel, 0);
+    }
+
+    {
+        let mut input = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        input.reset_all();
+        input.press(KeyCode::Space);
+    }
+    app.update();
+
+    {
+        let state = app.world().resource::<ComicCutsceneState>();
+        assert_eq!(state.active_panel, 1);
+    }
+
+    {
+        let mut input = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        input.reset_all();
+        input.press(KeyCode::Space);
+    }
+    app.update();
+
+    {
+        let state = app.world().resource::<ComicCutsceneState>();
+        assert_eq!(state.active_panel, 2);
+    }
+
+    {
+        let mut input = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        input.reset_all();
+        input.press(KeyCode::ArrowLeft);
+    }
+    app.update();
+
+    {
+        let state = app.world().resource::<ComicCutsceneState>();
+        assert_eq!(state.active_panel, 1);
+    }
+
+    {
+        let mut input = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        input.reset_all();
+        input.press(KeyCode::Space);
+    }
+    app.update();
+
+    {
+        let mut input = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        input.reset_all();
+        input.press(KeyCode::Space);
+    }
+    app.update();
+
+    {
+        let nav = app.world().resource::<MenuNavigation>();
+        assert!(nav.has_started);
+    }
+}
+
+#[test]
+fn test_unit_intro_comic_subview_visibility_toggle() {
+    use deep_alchemy::ui::menu::{
+        update_menu_subview_visibility, ControlsViewNode, IntroComicViewNode, MainViewNode,
+        MenuCardContainer, MenuNavigation, MenuView, SettingsViewNode, StartResumeButtonText,
+        VictoryViewNode,
+    };
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.insert_resource(MenuNavigation {
+        current_view: MenuView::IntroComic,
+        has_started: false,
+    });
+    app.add_systems(Update, update_menu_subview_visibility);
+
+    let card_ent = app.world_mut().spawn((MenuCardContainer, Node::default())).id();
+    let comic_ent = app.world_mut().spawn((IntroComicViewNode, Node::default())).id();
+    let _main_ent = app.world_mut().spawn((MainViewNode, Node::default())).id();
+    let _settings_ent = app.world_mut().spawn((SettingsViewNode, Node::default())).id();
+    let _controls_ent = app.world_mut().spawn((ControlsViewNode, Node::default())).id();
+    let _victory_ent = app.world_mut().spawn((VictoryViewNode, Node::default())).id();
+    let _txt_ent = app.world_mut().spawn((StartResumeButtonText, Text::new("INICIAR"))).id();
+
+    app.update();
+
+    {
+        let card_node = app.world().get::<Node>(card_ent).unwrap();
+        let comic_node = app.world().get::<Node>(comic_ent).unwrap();
+        assert_eq!(card_node.display, Display::None);
+        assert_eq!(comic_node.display, Display::Flex);
+    }
+
+    {
+        let mut nav = app.world_mut().resource_mut::<MenuNavigation>();
+        nav.current_view = MenuView::Main;
+    }
+
+    app.update();
+
+    {
+        let card_node = app.world().get::<Node>(card_ent).unwrap();
+        let comic_node = app.world().get::<Node>(comic_ent).unwrap();
+        assert_eq!(card_node.display, Display::Flex);
+        assert_eq!(comic_node.display, Display::None);
+    }
+}
+
+#[test]
+fn test_unit_audio_procedural_synthesis_and_wav_generation() {
+    use deep_alchemy::audio::synth::{
+        ensure_procedural_audio_assets, generate_wav_bytes, synthesize_potion_throw,
+    };
+    use std::fs;
+    use std::path::Path;
+
+    let pcm = synthesize_potion_throw(44100);
+    assert!(!pcm.is_empty());
+    let bytes = generate_wav_bytes(&pcm, 44100);
+    assert!(bytes.len() > 44);
+    assert_eq!(&bytes[0..4], b"RIFF");
+    assert_eq!(&bytes[8..12], b"WAVE");
+    assert_eq!(&bytes[12..16], b"fmt ");
+
+    ensure_procedural_audio_assets();
+
+    let expected_files = [
+        "assets/audio/potion_throw.wav",
+        "assets/audio/potion_shatter.wav",
+        "assets/audio/water_splash.wav",
+        "assets/audio/torch_ignite.wav",
+        "assets/audio/ice_freeze.wav",
+        "assets/audio/creature_chirp.wav",
+        "assets/audio/ui_click.wav",
+        "assets/audio/water_drop.wav",
+    ];
+
+    for file in expected_files {
+        let p = Path::new(file);
+        assert!(p.exists(), "Audio file must exist: {}", file);
+        let data = fs::read(p).expect("Failed to read audio file");
+        assert!(data.len() > 44);
+        assert_eq!(&data[0..4], b"RIFF");
+        assert_eq!(&data[8..12], b"WAVE");
+    }
+}
+
+#[test]
+fn test_unit_audio_sound_effect_events_dispatch_and_volume() {
+    use deep_alchemy::audio::{
+        handle_sound_effect_events, AudioAssets, SoundEffectEvent, SoundEffectKind,
+    };
+    use deep_alchemy::ui::menu::GameSettings;
+    use bevy::audio::{AudioPlayer, AudioSource, PlaybackSettings};
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_plugins(bevy::asset::AssetPlugin::default());
+    app.init_asset::<AudioSource>();
+    app.add_event::<SoundEffectEvent>();
+
+    let dummy_source = AudioSource {
+        bytes: std::sync::Arc::from(deep_alchemy::audio::synth::generate_wav_bytes(&[0; 100], 44100).into_boxed_slice()),
+    };
+    let mut sources = app.world_mut().resource_mut::<Assets<AudioSource>>();
+    let handle = sources.add(dummy_source);
+
+    app.insert_resource(AudioAssets {
+        potion_throw: handle.clone(),
+        potion_shatter: handle.clone(),
+        water_splash: handle.clone(),
+        torch_ignite: handle.clone(),
+        ice_freeze: handle.clone(),
+        creature_chirp: handle.clone(),
+        ui_click: handle.clone(),
+        water_drop: handle.clone(),
+    });
+
+    let mut settings = GameSettings::default();
+    settings.master_volume = 0.65;
+    app.insert_resource(settings);
+
+    app.add_systems(Update, handle_sound_effect_events);
+
+    app.world_mut().send_event(SoundEffectEvent::new(SoundEffectKind::PotionThrow));
+    app.update();
+
+    let mut audio_players = app.world_mut().query::<(&AudioPlayer, &PlaybackSettings)>();
+    let count = audio_players.iter(app.world()).count();
+    assert_eq!(count, 1);
+    for (_player, settings) in audio_players.iter(app.world()) {
+        assert!((*settings.volume - 0.65).abs() < 0.001);
+    }
+}
+
+#[test]
+fn test_unit_cracked_wall_nest_snake_scorpion_trigger_and_neutralization() {
+    use deep_alchemy::dungeon::traps::{
+        update_cracked_wall_nests, update_potion_traps_and_nests_interactions,
+        CrackedWallNest, WallNestKind, WallNestState,
+    };
+    use deep_alchemy::player::camera::{Health, Player};
+    use deep_alchemy::alchemy::{AlchemicalEffectKind, ActiveEffect, PotionProjectile};
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.init_resource::<Assets<Mesh>>();
+    app.init_resource::<Assets<StandardMaterial>>();
+    app.add_event::<deep_alchemy::audio::SoundEffectEvent>();
+
+    let player_ent = app.world_mut().spawn((
+        Player,
+        Transform::from_xyz(0.0, 1.0, 0.0),
+        Health { current: 100.0, max: 100.0 },
+    )).id();
+
+    let nest_intact_ent = app.world_mut().spawn((
+        Transform::from_xyz(1.5, 1.0, 0.0),
+        CrackedWallNest::new(WallNestKind::Snakes, Vec3::X),
+    )).id();
+
+    let nest_pre_neutralized_ent = app.world_mut().spawn((
+        Transform::from_xyz(20.0, 1.0, 0.0),
+        CrackedWallNest::new(WallNestKind::Scorpions, Vec3::Z),
+    )).id();
+
+    app.world_mut().spawn((
+        Transform::from_xyz(20.0, 1.0, 0.0),
+        PotionProjectile {
+            velocity: Vec3::ZERO,
+            effects: vec![ActiveEffect {
+                kind: AlchemicalEffectKind::ThermalHeat,
+                duration: 5.0,
+                elapsed: 0.0,
+                magnitude: 25.0,
+            }],
+            lifetime: 5.0,
+            color: Color::WHITE,
+            slot: 2,
+            hitstop_timer: 0.0,
+            entered_water: false,
+        },
+    ));
+
+    app.add_systems(Update, (
+        update_potion_traps_and_nests_interactions,
+        update_cracked_wall_nests,
+    ).chain());
+
+    app.update();
+
+    let pre_nest = app.world().get::<CrackedWallNest>(nest_pre_neutralized_ent).unwrap();
+    assert_eq!(pre_nest.state, WallNestState::Neutralized);
+
+    let intact_nest = app.world().get::<CrackedWallNest>(nest_intact_ent).unwrap();
+    assert_eq!(intact_nest.state, WallNestState::Triggered);
+
+    let player_health = app.world().get::<Health>(player_ent).unwrap();
+    assert_eq!(player_health.current, 78.0);
+}
+
+#[test]
+fn test_unit_dungeon_corridor_traps_wood_and_metal_alchemical_interactions() {
+    use deep_alchemy::dungeon::traps::{
+        DungeonTrap, TrapKind, TrapMaterial, TrapState,
+    };
+
+    let mut wood_trap = DungeonTrap::new(
+        TrapMaterial::Wood,
+        TrapKind::SpinningWheel,
+        Vec3::ZERO,
+        Vec3::Z,
+    );
+    assert!(wood_trap.is_operational());
+    assert!(!wood_trap.can_pass());
+
+    let burned = wood_trap.apply_alchemical_effect(true, false, false);
+    assert!(burned);
+    assert_eq!(wood_trap.state, TrapState::Burned);
+    assert!(wood_trap.can_pass());
+    assert!(!wood_trap.is_operational());
+
+    let mut wood_trap_freeze = DungeonTrap::new(
+        TrapMaterial::Wood,
+        TrapKind::SpinningWheel,
+        Vec3::ZERO,
+        Vec3::Z,
+    );
+    let frozen = wood_trap_freeze.apply_alchemical_effect(false, true, false);
+    assert!(frozen);
+    assert!(matches!(wood_trap_freeze.state, TrapState::Frozen { .. }));
+    assert!(wood_trap_freeze.can_pass());
+
+    let mut wood_trap_glue = DungeonTrap::new(
+        TrapMaterial::Wood,
+        TrapKind::SpinningWheel,
+        Vec3::ZERO,
+        Vec3::Z,
+    );
+    let glued = wood_trap_glue.apply_alchemical_effect(false, false, true);
+    assert!(glued);
+    assert!(matches!(wood_trap_glue.state, TrapState::Glued { .. }));
+    assert!(wood_trap_glue.can_pass());
+
+    let mut metal_trap = DungeonTrap::new(
+        TrapMaterial::Metal,
+        TrapKind::CrushingMechanism,
+        Vec3::ZERO,
+        Vec3::Y,
+    );
+    assert!(metal_trap.is_operational());
+    let fire_on_metal = metal_trap.apply_alchemical_effect(true, false, false);
+    assert!(!fire_on_metal);
+    assert_eq!(metal_trap.state, TrapState::Active);
+
+    let freeze_on_metal = metal_trap.apply_alchemical_effect(false, true, false);
+    assert!(freeze_on_metal);
+    assert!(matches!(metal_trap.state, TrapState::Frozen { .. }));
+    assert!(metal_trap.can_pass());
+}
+
+#[test]
+fn test_unit_monsters_trap_avoidance_and_elimination_tactics() {
+    use avian3d::prelude::LinearVelocity;
+    use deep_alchemy::dungeon::creatures::{CreatureSpecies, CreatureState, DungeonCreature};
+    use deep_alchemy::dungeon::traps::{
+        update_creatures_trap_tactics, DungeonTrap, TrapKind, TrapMaterial,
+    };
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_event::<deep_alchemy::audio::SoundEffectEvent>();
+
+    let _trap_ent = app.world_mut().spawn((
+        Transform::from_xyz(0.0, 1.0, 0.0),
+        DungeonTrap::new(TrapMaterial::Wood, TrapKind::SpinningWheel, Vec3::new(0.0, 1.0, 0.0), Vec3::Z),
+    )).id();
+
+    let approaching_creature_ent = app.world_mut().spawn((
+        Transform::from_xyz(0.0, 1.0, 2.5),
+        LinearVelocity(Vec3::new(0.0, 0.0, -2.0)),
+        DungeonCreature::new(CreatureSpecies::Sproutling, vec![], 50.0),
+    )).id();
+
+    let caught_creature_ent = app.world_mut().spawn((
+        Transform::from_xyz(0.0, 1.0, 0.2),
+        LinearVelocity(Vec3::ZERO),
+        DungeonCreature::new(CreatureSpecies::Emberling, vec![], 50.0),
+    )).id();
+
+    app.add_systems(Update, update_creatures_trap_tactics);
+    app.update();
+
+    let approaching = app.world().get::<DungeonCreature>(approaching_creature_ent).unwrap();
+    assert_eq!(approaching.state, CreatureState::Cautious);
+    let approaching_vel = app.world().get::<LinearVelocity>(approaching_creature_ent).unwrap();
+    assert!(approaching_vel.z > 0.0);
+
+    assert!(app.world().get_entity(caught_creature_ent).is_err());
+}
+
+

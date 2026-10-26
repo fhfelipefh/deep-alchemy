@@ -1372,6 +1372,11 @@ fn test_architecture_all_assets_exported_and_developer_editable() {
         "assets/models/source_blend/alchemy_props.blend",
         "assets/models/source_blend/dungeon_kit.blend",
         "assets/models/source_blend/faceted_rocks_kit.blend",
+        "assets/models/source_blend/prop_wall_sconce.blend",
+        "assets/models/source_blend/creature_sproutling.blend",
+        "assets/models/source_blend/creature_emberling.blend",
+        "assets/models/source_blend/creature_glaceling.blend",
+        "assets/models/source_blend/prop_forest_tree.blend",
     ];
 
     for path_str in &source_blends {
@@ -1391,9 +1396,16 @@ fn test_architecture_all_assets_exported_and_developer_editable() {
         "assets/models/faceted_rocks_kit.glb",
         "assets/models/macro_alchemical_shrine.glb",
         "assets/models/macro_crystal_cluster.glb",
+        "assets/models/macro_crystal_cluster_b.glb",
+        "assets/models/macro_crystal_cluster_c.glb",
         "assets/models/prop_faceted_rock.glb",
         "assets/models/prop_mushroom_cyan.glb",
         "assets/models/prop_wooden_bench.glb",
+        "assets/models/prop_wall_sconce.glb",
+        "assets/models/creature_sproutling.glb",
+        "assets/models/creature_emberling.glb",
+        "assets/models/creature_glaceling.glb",
+        "assets/models/prop_forest_tree.glb",
         "assets/models/tile_corridor_corner.glb",
         "assets/models/tile_corridor_straight.glb",
         "assets/models/tile_solid_pillar.glb",

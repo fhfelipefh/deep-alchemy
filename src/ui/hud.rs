@@ -325,6 +325,8 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 slot_index: slot_num,
                             },
                             HotbarPopAnimation::default(),
+                            Button,
+                            Interaction::default(),
                             Node {
                                 width: Val::Px(54.0),
                                 height: Val::Px(54.0),
@@ -435,6 +437,7 @@ pub fn handle_hotbar_input(
     keys: Option<Res<ButtonInput<KeyCode>>>,
     mut mouse_wheel: EventReader<MouseWheel>,
     mut active_slot: ResMut<ActiveHotbarSlot>,
+    slot_interactions: Query<(&Interaction, &HotbarSlotUi), Changed<Interaction>>,
     gamepads: Query<&Gamepad>,
 ) {
     if let Some(state) = game_state {
@@ -443,6 +446,11 @@ pub fn handle_hotbar_input(
         }
     }
 
+    for (interaction, slot_ui) in slot_interactions.iter() {
+        if *interaction == Interaction::Pressed {
+            active_slot.0 = slot_ui.slot_index;
+        }
+    }
     if let Some(ref k) = keys {
         if k.just_pressed(KeyCode::Digit1) {
             active_slot.0 = 1;

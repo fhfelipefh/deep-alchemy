@@ -2,8 +2,10 @@ pub mod camera;
 pub mod controller;
 pub mod interaction;
 pub mod ragdoll;
+pub mod touch_controls;
 
 pub use controller::FlyModeState;
+pub use touch_controls::{TouchControlsPlugin, TouchControlsState};
 
 use bevy::prelude::*;
 
@@ -14,11 +16,13 @@ impl Plugin for PlayerPlugin {
         app.init_resource::<interaction::InteractionState>()
             .init_resource::<camera::CameraShake>()
             .init_resource::<controller::FlyModeState>()
+            .add_plugins(touch_controls::TouchControlsPlugin)
             .add_systems(Startup, camera::setup_player)
             .add_systems(
                 Update,
                 (
                     controller::update_fly_mode_cheat,
+                    controller::player_out_of_bounds_rescue,
                     controller::player_movement,
                     controller::player_look,
                     controller::player_camera_effects,

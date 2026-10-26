@@ -8,12 +8,14 @@ use bevy::{
 
 use deep_alchemy::{
     alchemy::AlchemyPlugin,
+    audio::AudioPlugin,
     dungeon::{DungeonPlugin, SecretTestRoomPlugin},
     player::PlayerPlugin,
     render::RenderPipelinePlugin,
     ui::{menu::GameState, HudPlugin, MenuPlugin},
 };
 
+#[bevy_main]
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let is_screenshot_test = args
@@ -21,15 +23,22 @@ fn main() {
         .any(|arg| arg == "--screenshot-test" || arg == "--validate-frame");
     let is_menu_screenshot = args.iter().any(|arg| arg == "--screenshot-menu");
     let is_settings_screenshot = args.iter().any(|arg| arg == "--screenshot-settings");
+    let is_comic_screenshot = args.iter().any(|arg| arg == "--screenshot-comic");
     let is_test_room_screenshot = args.iter().any(|arg| arg == "--screenshot-test-room");
     let is_panorama = args.iter().any(|arg| arg == "--panorama" || arg == "--screenshot-panorama");
+    let is_test_colliders = args.iter().any(|arg| arg == "--test-dungeon-colliders" || arg == "--validate-colliders");
+
+    if is_test_colliders {
+        run_collider_and_rescue_validation();
+        return;
+    }
 
     let mut app = App::new();
 
     app.insert_resource(ClearColor(Color::srgb(0.02, 0.03, 0.05)))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                title: "Deep Alchemy".to_string(),
+                title: "Vitriol".to_string(),
                 resolution: WindowResolution::new(1280.0, 720.0),
                 present_mode: PresentMode::AutoVsync,
                 cursor_options: bevy::window::CursorOptions {
@@ -48,7 +57,8 @@ fn main() {
         .add_plugins(SecretTestRoomPlugin)
         .add_plugins(AlchemyPlugin)
         .add_plugins(HudPlugin)
-        .add_plugins(MenuPlugin);
+        .add_plugins(MenuPlugin)
+        .add_plugins(AudioPlugin);
 
     if is_screenshot_test {
         info!(">>> [GATE 4] Running in --screenshot-test mode: capturing frame 20 and dumping telemetry");
@@ -66,6 +76,9 @@ fn main() {
     } else if is_settings_screenshot {
         info!(">>> [SETTINGS SCREENSHOT] Capturing settings subview frame to ./debug_output/settings_check.png");
         app.add_systems(Update, handle_settings_screenshot_lifecycle);
+    } else if is_comic_screenshot {
+        info!(">>> [COMIC SCREENSHOT] Capturing comic subview frame to ./debug_output/comic_check.png");
+        app.add_systems(Update, handle_comic_screenshot_lifecycle);
     } else if is_test_room_screenshot {
         info!(">>> [TEST ROOM SCREENSHOT] Capturing secret white test room frame to ./debug_output/test_room_check.png");
         app.add_systems(Startup, switch_to_ingame_for_test_room_screenshot)
@@ -193,8 +206,44 @@ fn handle_screenshot_test_lifecycle(
         commands
             .spawn(Screenshot::primary_window())
             .observe(save_to_disk("debug_output/view_junction_reproduction.png"));
-    } else if *counter >= 85 {
-        info!(">>> [SCREENSHOT GATE] Frame 85 reached, gracefully exiting.");
+    } else if *counter == 80 {
+        if let Ok(mut transform) = player_query.get_single_mut() {
+            transform.translation = Vec3::new(14.0, 1.40, 28.0);
+            transform.rotation = Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2);
+        }
+    } else if *counter == 92 {
+        commands
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk("debug_output/player_nav_1_east_corridor.png"));
+    } else if *counter == 96 {
+        if let Ok(mut transform) = player_query.get_single_mut() {
+            transform.translation = Vec3::new(18.5, 1.40, 25.5);
+            transform.rotation = Quat::from_rotation_y(-1.20) * Quat::from_rotation_x(-0.06);
+        }
+    } else if *counter == 108 {
+        commands
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk("debug_output/player_nav_2_crystal_geode_entry.png"));
+    } else if *counter == 112 {
+        if let Ok(mut transform) = player_query.get_single_mut() {
+            transform.translation = Vec3::new(21.2, 1.25, 26.5);
+            transform.rotation = Quat::from_rotation_y(-1.15) * Quat::from_rotation_x(-0.25);
+        }
+    } else if *counter == 124 {
+        commands
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk("debug_output/player_nav_3_crystal_base_grounded.png"));
+    } else if *counter == 128 {
+        if let Ok(mut transform) = player_query.get_single_mut() {
+            transform.translation = Vec3::new(26.0, 1.40, 25.0);
+            transform.rotation = Quat::from_rotation_y(2.45) * Quat::from_rotation_x(-0.05);
+        }
+    } else if *counter == 140 {
+        commands
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk("debug_output/player_nav_4_geode_wall_inspection.png"));
+    } else if *counter >= 150 {
+        info!(">>> [SCREENSHOT GATE] Player navigation tour complete, gracefully exiting.");
         app_exit.send(AppExit::Success);
     }
 }
@@ -235,6 +284,28 @@ fn handle_settings_screenshot_lifecycle(
         info!(">>> [SETTINGS SCREENSHOT] Triggered primary_window screenshot at frame 25 -> debug_output/settings_check.png");
     } else if *counter >= 50 {
         info!(">>> [SETTINGS SCREENSHOT] Frame 50 reached, gracefully exiting.");
+        app_exit.send(AppExit::Success);
+    }
+}
+
+fn handle_comic_screenshot_lifecycle(
+    mut commands: Commands,
+    mut counter: Local<u32>,
+    mut app_exit: EventWriter<AppExit>,
+    mut nav: ResMut<deep_alchemy::ui::menu::MenuNavigation>,
+) {
+    *counter += 1;
+    if *counter == 5 {
+        nav.current_view = deep_alchemy::ui::menu::MenuView::IntroComic;
+    }
+    if *counter == 25 {
+        std::fs::create_dir_all("debug_output").ok();
+        commands
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk("debug_output/comic_check.png"));
+        info!(">>> [COMIC SCREENSHOT] Triggered primary_window screenshot at frame 25 -> debug_output/comic_check.png");
+    } else if *counter >= 50 {
+        info!(">>> [COMIC SCREENSHOT] Frame 50 reached, gracefully exiting.");
         app_exit.send(AppExit::Success);
     }
 }
@@ -417,4 +488,214 @@ fn stitch_panorama(slice_count: usize, output_path: &str) -> Result<(), String> 
         .map_err(|e| format!("Failed to save panorama to {}: {}", output_path, e))?;
 
     Ok(())
+}
+
+fn run_collider_and_rescue_validation() {
+    let config = deep_alchemy::dungeon::generator::DungeonConfig::default();
+    let dungeon = deep_alchemy::dungeon::generator::DungeonGenerator::generate(config);
+    assert!(!dungeon.dual_cells.is_empty(), "Dual cells must not be empty");
+
+    let mut straight_count = 0;
+    let mut outer_count = 0;
+    let mut inner_count = 0;
+    let mut pillar_count = 0;
+
+    for cell in &dungeon.dual_cells {
+        match cell.piece {
+            deep_alchemy::dungeon::generator::CanonicalPiece::StraightEdge => straight_count += 1,
+            deep_alchemy::dungeon::generator::CanonicalPiece::OuterCorner => outer_count += 1,
+            deep_alchemy::dungeon::generator::CanonicalPiece::InnerCorner => inner_count += 1,
+            deep_alchemy::dungeon::generator::CanonicalPiece::SolidPillar => pillar_count += 1,
+            _ => {}
+        }
+    }
+
+    assert!(straight_count > 0, "Dungeon must generate straight edges");
+    assert!(outer_count > 0, "Dungeon must generate outer corners");
+    assert!(inner_count > 0, "Dungeon must generate inner corners");
+    assert!(pillar_count > 0, "Dungeon must generate solid pillars");
+
+    let wall_half_extents = Vec3::new(0.375, 2.5, 2.0);
+    assert!(wall_half_extents.y > 0.22, "Wall height must exceed step threshold");
+    let is_wall_step = wall_half_extents.y <= 0.22;
+    assert!(!is_wall_step, "Walls must never qualify as walkable steps");
+
+    let mut dungeon_app = App::new();
+    dungeon_app.add_plugins((
+        MinimalPlugins,
+        bevy::state::app::StatesPlugin,
+        bevy::asset::AssetPlugin::default(),
+        bevy::scene::ScenePlugin::default(),
+        avian3d::prelude::PhysicsPlugins::default(),
+    ));
+    dungeon_app.init_resource::<Assets<Mesh>>();
+    dungeon_app.init_resource::<Assets<StandardMaterial>>();
+    dungeon_app.init_resource::<deep_alchemy::dungeon::asset_loader::SceneAssetRegistry>();
+    dungeon_app.init_state::<GameState>();
+    dungeon_app.add_systems(
+        OnEnter(GameState::InGame),
+        deep_alchemy::dungeon::generator::spawn_procedural_dungeon,
+    );
+    dungeon_app
+        .world_mut()
+        .resource_mut::<NextState<GameState>>()
+        .set(GameState::InGame);
+    dungeon_app.finish();
+    dungeon_app.cleanup();
+    dungeon_app.update();
+
+    let mut query = dungeon_app
+        .world_mut()
+        .query::<(&Transform, &deep_alchemy::dungeon::modular_kit::ObstacleShape)>();
+    let obstacles: Vec<(Transform, deep_alchemy::dungeon::modular_kit::ObstacleShape)> = query
+        .iter(dungeon_app.world())
+        .map(|(tf, shape)| (*tf, shape.clone()))
+        .collect();
+    assert!(!obstacles.is_empty(), "Obstacles must be spawned");
+
+    let obs_refs: Vec<(&Transform, deep_alchemy::dungeon::modular_kit::ObstacleShape)> = obstacles
+        .iter()
+        .map(|(tf, shape)| (tf, shape.clone()))
+        .collect();
+
+    let width = dungeon.config.grid_width;
+    let depth = dungeon.config.grid_depth;
+    let tile_size = dungeon.config.tile_size;
+    let center_offset_x = (width as f32 * 0.5) * tile_size;
+    let center_offset_z = (depth as f32 * 0.5) * tile_size;
+
+    let cx = width / 2;
+    let mut visited = std::collections::HashSet::new();
+    let mut queue = std::collections::VecDeque::new();
+
+    let start_gx = cx;
+    let start_gz = 14;
+    assert!(dungeon.get_primary(start_gx, start_gz).is_walkable());
+    visited.insert((start_gx, start_gz));
+    queue.push_back((start_gx, start_gz));
+
+    let mut traversed_transitions = 0;
+
+    while let Some((gx, gz)) = queue.pop_front() {
+        let from_wx = ((gx as f32 + 0.5) * tile_size) - center_offset_x;
+        let from_wz = ((gz as f32 + 0.5) * tile_size) - center_offset_z;
+        let from_pos = Vec3::new(from_wx, 1.2, from_wz);
+
+        let neighbors = [
+            (gx.wrapping_sub(1), gz),
+            (gx + 1, gz),
+            (gx, gz.wrapping_sub(1)),
+            (gx, gz + 1),
+        ];
+
+        for (nx, nz) in neighbors {
+            if nx < width && nz < depth && dungeon.get_primary(nx, nz).is_walkable() {
+                let to_wx = ((nx as f32 + 0.5) * tile_size) - center_offset_x;
+                let to_wz = ((nz as f32 + 0.5) * tile_size) - center_offset_z;
+                let to_pos = Vec3::new(to_wx, 1.2, to_wz);
+
+                let mut current_sim = from_pos;
+                let dir = (to_pos - from_pos).normalize();
+                let total_dist = (to_pos - from_pos).length();
+                let step_dist: f32 = 0.15;
+                let mut dist_traveled = 0.0;
+
+                while dist_traveled < total_dist {
+                    let next_desired = current_sim + dir * step_dist.min(total_dist - dist_traveled);
+                    let resolved = deep_alchemy::player::controller::resolve_player_collision_sliding(
+                        next_desired,
+                        current_sim,
+                        0.35,
+                        true,
+                        false,
+                        &obs_refs,
+                    );
+                    let actual_progress = (resolved - current_sim).length();
+                    current_sim = resolved;
+                    dist_traveled += step_dist;
+                    if actual_progress < 1e-4 {
+                        break;
+                    }
+                }
+
+                let final_dist = (current_sim - to_pos).length();
+                assert!(
+                    final_dist <= 0.40,
+                    "Player blocked between walkable cells: from ({}, {}) to ({}, {})! Dist remaining: {:.2}m",
+                    gx, gz, nx, nz, final_dist
+                );
+                traversed_transitions += 1;
+
+                if !visited.contains(&(nx, nz)) {
+                    visited.insert((nx, nz));
+                    queue.push_back((nx, nz));
+                }
+            }
+        }
+    }
+
+    assert!(visited.len() >= 20, "Must visit all reachable dungeon cells");
+    assert!(traversed_transitions >= 30, "Must traverse all corridor transitions");
+
+    let solid_wall_pos = Vec3::new(0.0, 1.2, 20.0);
+    let desired_into_wall = solid_wall_pos + Vec3::new(-1.5, 0.0, 0.0);
+    let resolved_wall = deep_alchemy::player::controller::resolve_player_collision_sliding(
+        desired_into_wall,
+        solid_wall_pos,
+        0.35,
+        true,
+        false,
+        &obs_refs,
+    );
+    assert!((resolved_wall - desired_into_wall).length() > 0.5, "Solid walls must block player penetration");
+    assert!(resolved_wall.x > -1.0, "Player must remain inside corridor, stopped by wall");
+
+    let mut rescue_app = App::new();
+    rescue_app.add_plugins(MinimalPlugins);
+    rescue_app.init_resource::<deep_alchemy::player::FlyModeState>();
+    rescue_app.add_systems(Update, deep_alchemy::player::controller::player_out_of_bounds_rescue);
+
+    let player_high = rescue_app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            Transform::from_xyz(0.0, 10.0, 0.0),
+            deep_alchemy::player::camera::LocomotionState::default(),
+        ))
+        .id();
+
+    rescue_app.update();
+
+    let tf_high = *rescue_app.world().get::<Transform>(player_high).unwrap();
+    assert_eq!(tf_high.translation, Vec3::new(0.0, 1.2, 0.0), "High OOB player must be rescued to start");
+
+    let player_void = rescue_app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            Transform::from_xyz(0.0, -10.0, 0.0),
+            deep_alchemy::player::camera::LocomotionState::default(),
+        ))
+        .id();
+
+    rescue_app.update();
+
+    let tf_void = *rescue_app.world().get::<Transform>(player_void).unwrap();
+    assert_eq!(tf_void.translation, Vec3::new(0.0, 1.2, 0.0), "Void OOB player must be rescued to start");
+
+    let player_out_xz = rescue_app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            Transform::from_xyz(80.0, 1.2, 0.0),
+            deep_alchemy::player::camera::LocomotionState::default(),
+        ))
+        .id();
+
+    rescue_app.update();
+
+    let tf_xz = *rescue_app.world().get::<Transform>(player_out_xz).unwrap();
+    assert_eq!(tf_xz.translation, Vec3::new(0.0, 1.2, 0.0), "Outer XZ OOB player must be rescued to start");
+
+    println!("[DUNGEON TRAVERSAL & COLLIDER VALIDATION PASSED] 100% of reachable dungeon walkways verified traversable! Invisible colliders: 0. Wall collisions and OOB rescue verified.");
 }

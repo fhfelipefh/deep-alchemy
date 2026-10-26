@@ -31,6 +31,7 @@ pub fn player_raycast_interaction(
         With<Interactable>,
     >,
     mut interaction_state: ResMut<InteractionState>,
+    touch_controls: Option<Res<crate::player::touch_controls::TouchControlsState>>,
     mut commands: Commands,
 ) {
     if let Some(state) = game_state {
@@ -81,7 +82,8 @@ pub fn player_raycast_interaction(
     interaction_state.hovered_entity = found_target;
 
     let interact_pressed = keys.as_ref().map(|k| k.just_pressed(KeyCode::KeyE)).unwrap_or(false)
-        || gamepads.iter().any(|g| g.just_pressed(GamepadButton::West));
+        || gamepads.iter().any(|g| g.just_pressed(GamepadButton::West))
+        || touch_controls.as_ref().map_or(false, |t| t.interact_just_pressed);
 
     if interact_pressed {
         if let Some(target) = found_target {

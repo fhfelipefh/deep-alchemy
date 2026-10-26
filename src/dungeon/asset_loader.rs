@@ -22,12 +22,19 @@ impl Default for SceneAssetRegistry {
         assets.insert("tile_solid_pillar".to_string(), "models/tile_solid_pillar.glb#Scene0".to_string());
         assets.insert("macro_alchemical_shrine".to_string(), "models/macro_alchemical_shrine.glb#Scene0".to_string());
         assets.insert("macro_crystal_cluster".to_string(), "models/macro_crystal_cluster.glb#Scene0".to_string());
+        assets.insert("macro_crystal_cluster_b".to_string(), "models/macro_crystal_cluster_b.glb#Scene0".to_string());
+        assets.insert("macro_crystal_cluster_c".to_string(), "models/macro_crystal_cluster_c.glb#Scene0".to_string());
         assets.insert("cavern_grotto".to_string(), "models/cavern_kit.glb#Scene0".to_string());
         assets.insert("alchemy_props".to_string(), "models/alchemy_props.glb#Scene0".to_string());
         assets.insert("faceted_rocks_kit".to_string(), "models/faceted_rocks_kit.glb#Scene0".to_string());
         assets.insert("dungeon_kit".to_string(), "models/dungeon_kit.glb#Scene0".to_string());
         assets.insert("secret_white_test_room".to_string(), "models/secret_white_test_room.glb#Scene0".to_string());
         assets.insert("tile_grotto_connector".to_string(), "models/tile_grotto_connector.glb#Scene0".to_string());
+        assets.insert("prop_wall_sconce".to_string(), "models/prop_wall_sconce.glb#Scene0".to_string());
+        assets.insert("creature_sproutling".to_string(), "models/creature_sproutling.glb#Scene0".to_string());
+        assets.insert("creature_emberling".to_string(), "models/creature_emberling.glb#Scene0".to_string());
+        assets.insert("creature_glaceling".to_string(), "models/creature_glaceling.glb#Scene0".to_string());
+        assets.insert("prop_forest_tree".to_string(), "models/prop_forest_tree.glb#Scene0".to_string());
         Self { assets }
     }
 }
@@ -110,8 +117,15 @@ mod tests {
         assert!(registry.get_path("tile_solid_pillar").is_some());
         assert!(registry.get_path("macro_alchemical_shrine").is_some());
         assert!(registry.get_path("macro_crystal_cluster").is_some());
+        assert!(registry.get_path("macro_crystal_cluster_b").is_some());
+        assert!(registry.get_path("macro_crystal_cluster_c").is_some());
         assert!(registry.get_path("cavern_grotto").is_some());
         assert!(registry.get_path("secret_white_test_room").is_some());
+        assert!(registry.get_path("prop_wall_sconce").is_some());
+        assert!(registry.get_path("creature_sproutling").is_some());
+        assert!(registry.get_path("creature_emberling").is_some());
+        assert!(registry.get_path("creature_glaceling").is_some());
+        assert!(registry.get_path("prop_forest_tree").is_some());
     }
 
     #[test]

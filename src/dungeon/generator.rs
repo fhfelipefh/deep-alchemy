@@ -37,6 +37,7 @@ pub enum RoomType {
     CrystalGeode,
     AncientBridge,
     SporeSanctuary,
+    SunlitForestExit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,7 +132,7 @@ impl DungeonGenerator {
         let cz = depth / 2;
         let grotto_half_size = 2;
 
-        for dz in -grotto_half_size..=grotto_half_size {
+        for dz in -grotto_half_size..=0 {
             for dx in -grotto_half_size..=grotto_half_size {
                 let gx = (cx as isize + dx) as usize;
                 let gz = (cz as isize + dz) as usize;
@@ -140,36 +141,29 @@ impl DungeonGenerator {
                 }
             }
         }
+        grid[(cz + 1) * width + cx] = PrimaryTile::StartingGrotto;
 
         let mut exits = Vec::new();
-        let starting_exits = [
-            IVec2::new(cx as i32, (cz - grotto_half_size as usize - 1) as i32),
-            IVec2::new(cx as i32, (cz + grotto_half_size as usize + 1) as i32),
-            IVec2::new((cx - grotto_half_size as usize - 1) as i32, cz as i32),
-            IVec2::new((cx + grotto_half_size as usize + 1) as i32, cz as i32),
-        ];
-
-        for &exit_pos in &starting_exits {
-            if exit_pos.x >= 1
-                && exit_pos.x < (width as i32 - 1)
-                && exit_pos.y >= 1
-                && exit_pos.y < (depth as i32 - 1)
-            {
-                exits.push(exit_pos);
-                grid[exit_pos.y as usize * width + exit_pos.x as usize] = PrimaryTile::Corridor;
-            }
-        }
+        let north_exit = IVec2::new(cx as i32, (cz + 2) as i32);
+        exits.push(north_exit);
+        grid[north_exit.y as usize * width + north_exit.x as usize] = PrimaryTile::Corridor;
 
         let junction_z = 19.min(depth - 3);
-        for gz in (cz + grotto_half_size as usize)..=junction_z {
+        for gz in (cz + 2)..=junction_z {
             grid[gz * width + cx] = PrimaryTile::Corridor;
         }
 
-        let north_room_z = (depth - 3).min(junction_z + 3);
+        let north_room_z = 21.min(depth - 4);
         for gz in (junction_z + 1)..=north_room_z {
             grid[gz * width + cx] = PrimaryTile::Corridor;
         }
         Self::carve_macro_chamber(&mut grid, width, depth, cx, north_room_z, RoomType::AncientBridge);
+
+        let forest_exit_z = depth - 2;
+        for gz in (north_room_z + 1)..=forest_exit_z {
+            grid[gz * width + cx] = PrimaryTile::Corridor;
+        }
+        Self::carve_macro_chamber(&mut grid, width, depth, cx, forest_exit_z, RoomType::SunlitForestExit);
 
         let east_room_x = (width - 4).min(cx + 6);
         for gx in (cx + 1)..=east_room_x {
@@ -194,9 +188,9 @@ impl DungeonGenerator {
             IVec2::new(cx as i32, junction_z as i32),
             IVec2::new(west_room_x as i32, junction_z as i32),
             IVec2::new(east_room_x as i32, junction_z as i32),
-            starting_exits[0],
-            starting_exits[2],
-            starting_exits[3],
+            IVec2::new(cx as i32, north_room_z as i32),
+            IVec2::new(cx as i32, forest_exit_z as i32),
+            IVec2::new(shrine_x as i32, shrine_z as i32),
         ];
 
         let steps_per_walker = config.min_corridor_steps / walker_starts.len().max(1);
@@ -220,7 +214,7 @@ impl DungeonGenerator {
                 let next_pos = curr + dir;
                 if next_pos.x < 2
                     || next_pos.x >= (width as i32 - 2)
-                    || next_pos.y < 2
+                    || next_pos.y < (cz as i32 + 2)
                     || next_pos.y >= (depth as i32 - 2)
                 {
                     dir = -dir;
@@ -475,10 +469,10 @@ impl DungeonGenerator {
             4 => (CanonicalPiece::OuterCorner, 180.0),
             8 => (CanonicalPiece::OuterCorner, 90.0),
 
-            3 => (CanonicalPiece::StraightEdge, 0.0),
-            6 => (CanonicalPiece::StraightEdge, 270.0),
-            12 => (CanonicalPiece::StraightEdge, 180.0),
-            9 => (CanonicalPiece::StraightEdge, 90.0),
+            9 => (CanonicalPiece::StraightEdge, 0.0),
+            3 => (CanonicalPiece::StraightEdge, 270.0),
+            6 => (CanonicalPiece::StraightEdge, 180.0),
+            12 => (CanonicalPiece::StraightEdge, 90.0),
 
             5 => (CanonicalPiece::SaddleCrossing, 0.0),
             10 => (CanonicalPiece::SaddleCrossing, 90.0),
@@ -536,10 +530,71 @@ impl DungeonGenerator {
     }
 }
 
+pub fn spawn_dungeon_wall_sconce(
+    commands: &mut Commands,
+    asset_server: &AssetServer,
+    registry: &SceneAssetRegistry,
+    position: Vec3,
+    rotation: Quat,
+    is_initially_lit: bool,
+) -> Entity {
+    let light_offset = rotation * Vec3::new(0.0, 0.28, 0.22);
+    let light_entity = commands
+        .spawn((
+            Name::new("PointLight_Dungeon_Wall_Torch"),
+            Transform::from_translation(position + light_offset),
+            PointLight {
+                color: Color::srgb(1.0, 0.74, 0.38),
+                intensity: if is_initially_lit { 3200.0 } else { 0.0 },
+                range: 10.0,
+                shadows_enabled: false,
+                ..default()
+            },
+        ))
+        .id();
+
+    let flame_entity = if is_initially_lit {
+        Some(
+            commands
+                .spawn((
+                    Transform::from_translation(position + light_offset),
+                    crate::render::particles::ParticleEmitter {
+                        spawn_timer: 0.0,
+                        spawn_rate: 0.04,
+                        particle_type: crate::render::particles::ParticleType::FireFlame,
+                    },
+                ))
+                .id(),
+        )
+    } else {
+        None
+    };
+
+    let handle = registry.load_scene(asset_server, "prop_wall_sconce");
+    commands
+        .spawn((
+            Name::new("Prop_Wall_Sconce"),
+            SceneRoot(handle),
+            Transform::from_translation(position).with_rotation(rotation),
+            crate::alchemy::DungeonWallTorch {
+                is_lit: is_initially_lit,
+                burn_timer: if is_initially_lit { 1800.0 } else { 0.0 },
+                max_burn_time: 1800.0,
+                initial_light_intensity: 3200.0,
+                light_entity: Some(light_entity),
+                flame_entity,
+                dirty: false,
+            },
+        ))
+        .id()
+}
+
 pub fn spawn_procedural_dungeon(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     registry: Res<SceneAssetRegistry>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let config = DungeonConfig::default();
     let dungeon = DungeonGenerator::generate(config.clone());
@@ -583,11 +638,11 @@ pub fn spawn_procedural_dungeon(
             ));
             commands.spawn((
                 Name::new("Light_Connector_Vault"),
-                Transform::from_xyz(0.0, 2.5, 6.0),
+                Transform::from_xyz(0.0, 3.2, 6.0),
                 PointLight {
                     color: Color::srgb(1.0, 0.78, 0.42),
-                    intensity: 7500.0,
-                    range: 12.0,
+                    intensity: 1800.0,
+                    range: 8.5,
                     shadows_enabled: false,
                     ..default()
                 },
@@ -607,22 +662,33 @@ pub fn spawn_procedural_dungeon(
                 Collider::cuboid(config.tile_size, 0.4, config.tile_size),
             ));
 
-            if ((cell.world_pos.z - 8.0).abs() < 1.0)
-                || ((cell.world_pos.z - 16.0).abs() < 1.0)
-                || ((cell.world_pos.z - 24.0).abs() < 1.0)
-            {
-                commands.spawn((
-                    Name::new("Light_Corridor_Vault"),
-                    Transform::from_translation(cell.world_pos + Vec3::new(0.0, 2.6, 0.0)),
-                    PointLight {
-                        color: Color::srgb(1.0, 0.76, 0.42),
-                        intensity: 6500.0,
-                        range: 12.0,
-                        shadows_enabled: false,
-                        ..default()
-                    },
-                ));
-            }
+            spawn_dungeon_wall_sconce(
+                &mut commands,
+                &asset_server,
+                &registry,
+                cell.world_pos + Vec3::new(-1.18, 2.05, 0.0),
+                Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
+                false,
+            );
+            spawn_dungeon_wall_sconce(
+                &mut commands,
+                &asset_server,
+                &registry,
+                cell.world_pos + Vec3::new(1.18, 2.05, 0.0),
+                Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2),
+                false,
+            );
+            commands.spawn((
+                Name::new("Light_Corridor_Vault"),
+                Transform::from_translation(cell.world_pos + Vec3::new(0.0, 3.2, 0.0)),
+                PointLight {
+                    color: Color::srgb(1.0, 0.78, 0.44),
+                    intensity: 1800.0,
+                    range: 9.0,
+                    shadows_enabled: false,
+                    ..default()
+                },
+            ));
 
             let cx = config.grid_width / 2;
             let center_offset_z = (config.grid_depth as f32 * 0.5) * config.tile_size;
@@ -632,30 +698,30 @@ pub fn spawn_procedural_dungeon(
             let east_solid = (cx + 1 < config.grid_width) && dungeon.get_primary(cx + 1, gz).is_solid();
 
             if west_solid {
-                let wall_offset_left = Vec3::new(-half_tile + 0.35, 1.2, 0.0);
+                let wall_offset_left = Vec3::new(-half_tile + 0.425, 2.5, 0.0);
                 commands.spawn((
                     Name::new("Collider_Dungeon_Wall_Straight_L"),
                     CavernObstacle,
                     ObstacleShape::Cuboid {
-                        half_extents: Vec3::new(0.375, 1.2, config.tile_size * 0.5),
+                        half_extents: Vec3::new(0.425, 2.5, config.tile_size * 0.5),
                     },
                     Transform::from_translation(cell.world_pos + wall_offset_left),
                     RigidBody::Static,
-                    Collider::cuboid(0.75, 2.4, config.tile_size),
+                    Collider::cuboid(0.85, 5.0, config.tile_size),
                 ));
             }
 
             if east_solid {
-                let wall_offset_right = Vec3::new(half_tile - 0.35, 1.2, 0.0);
+                let wall_offset_right = Vec3::new(half_tile - 0.425, 2.5, 0.0);
                 commands.spawn((
                     Name::new("Collider_Dungeon_Wall_Straight_R"),
                     CavernObstacle,
                     ObstacleShape::Cuboid {
-                        half_extents: Vec3::new(0.375, 1.2, config.tile_size * 0.5),
+                        half_extents: Vec3::new(0.425, 2.5, config.tile_size * 0.5),
                     },
                     Transform::from_translation(cell.world_pos + wall_offset_right),
                     RigidBody::Static,
-                    Collider::cuboid(0.75, 2.4, config.tile_size),
+                    Collider::cuboid(0.85, 5.0, config.tile_size),
                 ));
             }
             continue;
@@ -676,55 +742,47 @@ pub fn spawn_procedural_dungeon(
             ));
             commands.spawn((
                 Name::new("Light_Grand_Junction"),
-                Transform::from_translation(cell.world_pos + Vec3::new(0.0, 2.6, 0.0)),
+                Transform::from_translation(cell.world_pos + Vec3::new(0.0, 3.3, 0.0)),
                 PointLight {
-                    color: Color::srgb(1.0, 0.76, 0.42),
+                    color: Color::srgb(1.0, 0.78, 0.42),
                     intensity: 9500.0,
-                    range: 16.0,
+                    range: 24.0,
                     shadows_enabled: false,
                     ..default()
                 },
             ));
+            let corner_sconces = [
+                (Vec3::new(-1.62, 2.05, -1.2), Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
+                (Vec3::new(1.62, 2.05, -1.2), Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2)),
+                (Vec3::new(-1.62, 2.05, 1.2), Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
+                (Vec3::new(1.62, 2.05, 1.2), Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2)),
+            ];
+            for (offset, rot) in corner_sconces {
+                spawn_dungeon_wall_sconce(
+                    &mut commands,
+                    &asset_server,
+                    &registry,
+                    cell.world_pos + offset,
+                    rot,
+                    false,
+                );
+            }
+            for (cx_sign, cz_sign) in [(-1.0f32, -1.0f32), (1.0f32, -1.0f32), (-1.0f32, 1.0f32), (1.0f32, 1.0f32)] {
+                let pillar_pos = cell.world_pos + Vec3::new(cx_sign * (half_tile - 0.425), 2.5, cz_sign * (half_tile - 0.425));
+                commands.spawn((
+                    Name::new("Collider_Dungeon_GrandJunction_Corner"),
+                    CavernObstacle,
+                    ObstacleShape::Cuboid {
+                        half_extents: Vec3::new(0.425, 2.5, 0.425),
+                    },
+                    Transform::from_translation(pillar_pos),
+                    RigidBody::Static,
+                    Collider::cuboid(0.85, 5.0, 0.85),
+                ));
+            }
             continue;
         }
 
-        if cell.world_pos.x.abs() < 1.0 && (cell.world_pos.z - 32.0).abs() < 1.0 {
-            let handle = registry.load_scene(&asset_server, "tile_corridor_straight");
-            commands.spawn((
-                Name::new("DungeonTile_NorthCorridor"),
-                SceneRoot(handle),
-                Transform::from_translation(cell.world_pos),
-                RigidBody::Static,
-                Collider::cuboid(config.tile_size, 0.4, config.tile_size),
-            ));
-            continue;
-        }
-
-        if (cell.world_pos.x - 4.0).abs() < 1.0 && (cell.world_pos.z - 28.0).abs() < 1.0 {
-            let handle = registry.load_scene(&asset_server, "tile_corridor_straight");
-            commands.spawn((
-                Name::new("DungeonTile_EastCorridor"),
-                SceneRoot(handle),
-                Transform::from_translation(cell.world_pos)
-                    .with_rotation(Quat::from_rotation_y(90.0_f32.to_radians())),
-                RigidBody::Static,
-                Collider::cuboid(config.tile_size, 0.4, config.tile_size),
-            ));
-            continue;
-        }
-
-        if (cell.world_pos.x - -4.0).abs() < 1.0 && (cell.world_pos.z - 28.0).abs() < 1.0 {
-            let handle = registry.load_scene(&asset_server, "tile_corridor_straight");
-            commands.spawn((
-                Name::new("DungeonTile_WestCorridor"),
-                SceneRoot(handle),
-                Transform::from_translation(cell.world_pos)
-                    .with_rotation(Quat::from_rotation_y(90.0_f32.to_radians())),
-                RigidBody::Static,
-                Collider::cuboid(config.tile_size, 0.4, config.tile_size),
-            ));
-            continue;
-        }
 
         let rot = Quat::from_rotation_y(cell.rotation_y_deg.to_radians());
 
@@ -742,14 +800,24 @@ pub fn spawn_procedural_dungeon(
                 if let Some(macro_type) = cell.macro_room {
                     match macro_type {
                         RoomType::CrystalGeode => {
-                            let crystal_handle =
-                                registry.load_scene(&asset_server, "macro_crystal_cluster");
+                            let coord_seed = (cell.world_pos.x.abs() as u32).wrapping_mul(73856093)
+                                ^ (cell.world_pos.z.abs() as u32).wrapping_mul(19349663);
+                            let variant_keys = [
+                                "macro_crystal_cluster",
+                                "macro_crystal_cluster_b",
+                                "macro_crystal_cluster_c",
+                            ];
+                            let primary_key = variant_keys[(coord_seed % 3) as usize];
+                            let primary_scale = 0.88 + ((coord_seed % 38) as f32) * 0.01;
+                            let primary_yaw = ((coord_seed % 360) as f32).to_radians();
+
+                            let primary_handle = registry.load_scene(&asset_server, primary_key);
                             commands.spawn((
                                 Name::new("MacroRoom_CrystalGeode"),
-                                SceneRoot(crystal_handle),
-                                Transform::from_translation(
-                                    cell.world_pos + Vec3::new(0.0, 0.5, 0.0),
-                                ),
+                                SceneRoot(primary_handle),
+                                Transform::from_translation(cell.world_pos)
+                                    .with_rotation(Quat::from_rotation_y(primary_yaw))
+                                    .with_scale(Vec3::splat(primary_scale)),
                                 PointLight {
                                     color: Color::srgb(0.17, 0.91, 0.85),
                                     intensity: 22000.0,
@@ -758,6 +826,24 @@ pub fn spawn_procedural_dungeon(
                                     ..default()
                                 },
                             ));
+
+                            let satellite_offsets = [
+                                (Vec3::new(1.35, 0.0, 1.25), 1usize, 0.48, 1.25),
+                                (Vec3::new(-1.25, 0.0, 1.35), 2usize, 0.42, 2.65),
+                                (Vec3::new(1.20, 0.0, -1.30), 0usize, 0.38, 4.10),
+                            ];
+                            for (offset, v_idx_offset, base_scale, yaw_offset) in satellite_offsets {
+                                let sat_key = variant_keys[(coord_seed as usize + v_idx_offset) % 3];
+                                let sat_handle = registry.load_scene(&asset_server, sat_key);
+                                let sat_scale = base_scale + (((coord_seed >> (v_idx_offset * 3)) % 18) as f32) * 0.01;
+                                commands.spawn((
+                                    Name::new("MacroRoom_CrystalGeode_Cluster"),
+                                    SceneRoot(sat_handle),
+                                    Transform::from_translation(cell.world_pos + offset)
+                                        .with_rotation(Quat::from_rotation_y(primary_yaw + yaw_offset))
+                                        .with_scale(Vec3::splat(sat_scale)),
+                                ));
+                            }
                         }
                         RoomType::AlchemicalShrine => {
                             let shrine_handle =
@@ -812,7 +898,58 @@ pub fn spawn_procedural_dungeon(
                                 },
                             ));
                         }
+                        RoomType::SunlitForestExit => {
+                            let tree_handle = registry.load_scene(&asset_server, "prop_forest_tree");
+                            let offsets = [
+                                Vec3::new(-4.2, 0.0, -3.2),
+                                Vec3::new(4.2, 0.0, -3.2),
+                                Vec3::new(-4.8, 0.0, 3.8),
+                                Vec3::new(4.8, 0.0, 3.8),
+                                Vec3::new(0.0, 0.0, 5.2),
+                            ];
+                            for (i, offset) in offsets.iter().enumerate() {
+                                commands.spawn((
+                                    Name::new(format!("ForestTree_{}", i)),
+                                    SceneRoot(tree_handle.clone()),
+                                    Transform::from_translation(cell.world_pos + *offset),
+                                    RigidBody::Static,
+                                    Collider::cylinder(0.28, 2.8),
+                                ));
+                            }
+
+                            commands.spawn((
+                                Name::new("MacroRoom_SunlitForestExit_SunLight"),
+                                Transform::from_translation(cell.world_pos + Vec3::new(0.0, 6.0, 1.0)),
+                                PointLight {
+                                    color: Color::srgb(1.0, 0.95, 0.78),
+                                    intensity: 65000.0,
+                                    range: 36.0,
+                                    shadows_enabled: false,
+                                    ..default()
+                                },
+                            ));
+
+                            commands.spawn((
+                                Name::new("ForestVictoryExitTrigger"),
+                                ForestVictoryExitTrigger,
+                                Transform::from_translation(cell.world_pos + Vec3::new(0.0, 1.0, 1.0)),
+                                Collider::cuboid(6.0, 4.0, 6.0),
+                                Sensor,
+                            ));
+                        }
                     }
+                } else {
+                    commands.spawn((
+                        Name::new("Light_Dungeon_Corridor_Open"),
+                        Transform::from_translation(cell.world_pos + Vec3::new(0.0, 3.2, 0.0)),
+                        PointLight {
+                            color: Color::srgb(1.0, 0.76, 0.42),
+                            intensity: 2400.0,
+                            range: 11.0,
+                            shadows_enabled: false,
+                            ..default()
+                        },
+                    ));
                 }
             }
             CanonicalPiece::StraightEdge => {
@@ -825,17 +962,28 @@ pub fn spawn_procedural_dungeon(
                     Collider::cuboid(config.tile_size, 0.4, config.tile_size),
                 ));
 
-                let wall_offset = rot * Vec3::new(0.0, 1.2, -half_tile + 0.35);
+                let wall_offset = rot * Vec3::new(-half_tile + 0.425, 2.5, 0.0);
                 commands.spawn((
                     Name::new("Collider_Dungeon_Wall_Straight"),
                     CavernObstacle,
                     ObstacleShape::Cuboid {
-                        half_extents: Vec3::new(config.tile_size * 0.5, 1.2, 0.375),
+                        half_extents: Vec3::new(0.425, 2.5, config.tile_size * 0.5),
                     },
                     Transform::from_translation(cell.world_pos + wall_offset).with_rotation(rot),
                     RigidBody::Static,
-                    Collider::cuboid(config.tile_size, 2.4, 0.75),
+                    Collider::cuboid(0.85, 5.0, config.tile_size),
                 ));
+
+                let torch_offset = rot * Vec3::new(-half_tile + 0.45, 2.05, 0.0);
+                let torch_rot = rot * Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
+                spawn_dungeon_wall_sconce(
+                    &mut commands,
+                    &asset_server,
+                    &registry,
+                    cell.world_pos + torch_offset,
+                    torch_rot,
+                    false,
+                );
             }
             CanonicalPiece::OuterCorner => {
                 let handle = registry.load_scene(&asset_server, "tile_outer_corner");
@@ -847,17 +995,28 @@ pub fn spawn_procedural_dungeon(
                     Collider::cuboid(config.tile_size, 0.4, config.tile_size),
                 ));
 
-                let pillar_offset = rot * Vec3::new(-half_tile + 0.6, 1.4, -half_tile + 0.6);
+                let pillar_offset = rot * Vec3::new(-half_tile + 0.425, 2.5, half_tile - 0.425);
                 commands.spawn((
                     Name::new("Collider_Dungeon_Pillar_Corner"),
                     CavernObstacle,
                     ObstacleShape::Cuboid {
-                        half_extents: Vec3::new(0.7, 1.4, 0.7),
+                        half_extents: Vec3::new(0.425, 2.5, 0.425),
                     },
-                    Transform::from_translation(cell.world_pos + pillar_offset),
+                    Transform::from_translation(cell.world_pos + pillar_offset).with_rotation(rot),
                     RigidBody::Static,
-                    Collider::cuboid(1.4, 2.8, 1.4),
+                    Collider::cuboid(0.85, 5.0, 0.85),
                 ));
+
+                let torch_offset = rot * Vec3::new(-half_tile + 0.45, 2.05, half_tile - 0.45);
+                let torch_rot = rot * Quat::from_rotation_y(std::f32::consts::FRAC_PI_4);
+                spawn_dungeon_wall_sconce(
+                    &mut commands,
+                    &asset_server,
+                    &registry,
+                    cell.world_pos + torch_offset,
+                    torch_rot,
+                    false,
+                );
             }
             CanonicalPiece::InnerCorner => {
                 let handle = registry.load_scene(&asset_server, "tile_corridor_corner");
@@ -868,6 +1027,53 @@ pub fn spawn_procedural_dungeon(
                     RigidBody::Static,
                     Collider::cuboid(config.tile_size, 0.4, config.tile_size),
                 ));
+
+                let wall_right_offset = rot * Vec3::new(half_tile - 0.425, 2.5, 0.0);
+                commands.spawn((
+                    Name::new("Collider_Dungeon_Wall_InnerCorner_R"),
+                    CavernObstacle,
+                    ObstacleShape::Cuboid {
+                        half_extents: Vec3::new(0.425, 2.5, config.tile_size * 0.5),
+                    },
+                    Transform::from_translation(cell.world_pos + wall_right_offset).with_rotation(rot),
+                    RigidBody::Static,
+                    Collider::cuboid(0.85, 5.0, config.tile_size),
+                ));
+
+                let wall_back_offset = rot * Vec3::new(0.0, 2.5, half_tile - 0.425);
+                commands.spawn((
+                    Name::new("Collider_Dungeon_Wall_InnerCorner_B"),
+                    CavernObstacle,
+                    ObstacleShape::Cuboid {
+                        half_extents: Vec3::new(config.tile_size * 0.5, 2.5, 0.425),
+                    },
+                    Transform::from_translation(cell.world_pos + wall_back_offset).with_rotation(rot),
+                    RigidBody::Static,
+                    Collider::cuboid(config.tile_size, 5.0, 0.85),
+                ));
+
+                let corner_rock_offset = rot * Vec3::new(half_tile - 0.5, 2.5, half_tile - 0.5);
+                commands.spawn((
+                    Name::new("Collider_Dungeon_Corner_Rock"),
+                    CavernObstacle,
+                    ObstacleShape::Cuboid {
+                        half_extents: Vec3::new(0.5, 2.5, 0.5),
+                    },
+                    Transform::from_translation(cell.world_pos + corner_rock_offset).with_rotation(rot),
+                    RigidBody::Static,
+                    Collider::cuboid(1.0, 5.0, 1.0),
+                ));
+
+                let torch_offset = rot * Vec3::new(half_tile - 0.45, 2.05, half_tile - 0.45);
+                let torch_rot = rot * Quat::from_rotation_y(-3.0 * std::f32::consts::FRAC_PI_4);
+                spawn_dungeon_wall_sconce(
+                    &mut commands,
+                    &asset_server,
+                    &registry,
+                    cell.world_pos + torch_offset,
+                    torch_rot,
+                    false,
+                );
             }
             CanonicalPiece::SolidPillar => {
                 let handle = registry.load_scene(&asset_server, "tile_solid_pillar");
@@ -875,16 +1081,23 @@ pub fn spawn_procedural_dungeon(
                     Name::new("DungeonTile_SolidPillar"),
                     SceneRoot(handle),
                     Transform::from_translation(cell.world_pos),
+                    RigidBody::Static,
+                    Collider::cuboid(config.tile_size, 0.4, config.tile_size),
+                ));
+
+                commands.spawn((
+                    Name::new("DungeonTile_BedrockObstacle"),
+                    Transform::from_translation(cell.world_pos + Vec3::new(0.0, 2.5, 0.0)),
                     CavernObstacle,
                     ObstacleShape::Cuboid {
                         half_extents: Vec3::new(
                             config.tile_size * 0.5,
-                            1.6,
+                            2.5,
                             config.tile_size * 0.5,
                         ),
                     },
                     RigidBody::Static,
-                    Collider::cuboid(config.tile_size, 3.2, config.tile_size),
+                    Collider::cuboid(config.tile_size, 5.0, config.tile_size),
                 ));
             }
             CanonicalPiece::SaddleCrossing => {
@@ -896,15 +1109,164 @@ pub fn spawn_procedural_dungeon(
                     RigidBody::Static,
                     Collider::cuboid(config.tile_size, 0.4, config.tile_size),
                 ));
+
+                for (sx, sz) in [(-1.0f32, -1.0f32), (1.0f32, 1.0f32)] {
+                    let pillar_offset = rot * Vec3::new(
+                        sx * (half_tile - 0.425),
+                        2.5,
+                        sz * (half_tile - 0.425),
+                    );
+                    commands.spawn((
+                        Name::new("Collider_Dungeon_Pillar_Saddle"),
+                        CavernObstacle,
+                        ObstacleShape::Cuboid {
+                            half_extents: Vec3::new(0.425, 2.5, 0.425),
+                        },
+                        Transform::from_translation(cell.world_pos + pillar_offset).with_rotation(rot),
+                        RigidBody::Static,
+                        Collider::cuboid(0.85, 5.0, 0.85),
+                    ));
+                }
             }
         }
     }
+
+    spawn_dungeon_creatures_along_path(&mut commands, &asset_server, &registry, &dungeon);
+    crate::dungeon::traps::spawn_dungeon_puzzles_and_traps(&mut commands, &mut meshes, &mut materials, &dungeon);
 
     info!(
         "Procedural Dungeon dynamically generated: {} dual cells, {} exits linked to Starting Grotto!",
         dungeon.dual_cells.len(),
         dungeon.exits.len()
     );
+}
+
+#[derive(Component)]
+pub struct ForestVictoryExitTrigger;
+
+pub fn update_forest_victory_trigger(
+    player_query: Query<&Transform, With<crate::player::camera::Player>>,
+    trigger_query: Query<&Transform, With<ForestVictoryExitTrigger>>,
+    mut stats: ResMut<crate::ui::menu::GameRunStats>,
+    mut nav: ResMut<crate::ui::menu::MenuNavigation>,
+    mut next_state: ResMut<NextState<crate::ui::menu::GameState>>,
+) {
+    if stats.has_won {
+        return;
+    }
+    let Ok(player_tf) = player_query.get_single() else {
+        return;
+    };
+    for trigger_tf in trigger_query.iter() {
+        let dist = (player_tf.translation - trigger_tf.translation).length();
+        if dist < 6.5 {
+            stats.has_won = true;
+            nav.current_view = crate::ui::menu::MenuView::Victory;
+            next_state.set(crate::ui::menu::GameState::MainMenu);
+            break;
+        }
+    }
+}
+
+pub fn spawn_dungeon_creatures_along_path(
+    commands: &mut Commands,
+    asset_server: &AssetServer,
+    registry: &SceneAssetRegistry,
+    dungeon: &ProceduralDungeon,
+) {
+    use crate::dungeon::creatures::{spawn_dungeon_creature_instance, CreatureSpecies};
+
+    let width = dungeon.config.grid_width;
+    let depth = dungeon.config.grid_depth;
+    let cz = depth / 2;
+    let exit_z = depth - 2;
+
+    let mut south_cells = Vec::new();
+    let mut mid_cells = Vec::new();
+    let mut north_cells = Vec::new();
+
+    for gz in (cz + 2)..depth {
+        for gx in 2..(width - 2) {
+            let primary = dungeon.get_primary(gx, gz);
+            if primary.is_walkable() {
+                let world_pos = dungeon.grid_to_world(gx, gz);
+                if gz <= cz + 3 {
+                    south_cells.push(world_pos);
+                } else if gz <= 18 {
+                    mid_cells.push(world_pos);
+                } else {
+                    north_cells.push(world_pos);
+                }
+            }
+        }
+    }
+
+    if !south_cells.is_empty() {
+        for i in 0..2.min(south_cells.len()) {
+            let pos = south_cells[i * (south_cells.len() / 2)];
+            let waypoints = vec![pos + Vec3::new(1.5, 0.0, 0.0), pos + Vec3::new(-1.5, 0.0, 0.0)];
+            spawn_dungeon_creature_instance(
+                commands,
+                asset_server,
+                registry,
+                CreatureSpecies::Sproutling,
+                pos + Vec3::new(0.0, 0.2, 0.0),
+                waypoints,
+                (exit_z as f32 - (cz + 2) as f32) * dungeon.config.tile_size,
+            );
+        }
+    }
+
+    if !mid_cells.is_empty() {
+        let step = mid_cells.len() / 4;
+        for i in 0..4.min(mid_cells.len()) {
+            let pos = mid_cells[i * step];
+            let species = if i % 2 == 0 {
+                CreatureSpecies::Sproutling
+            } else {
+                CreatureSpecies::Emberling
+            };
+            let waypoints = vec![
+                pos + Vec3::new(2.0, 0.0, 1.0),
+                pos + Vec3::new(-2.0, 0.0, -1.0),
+            ];
+            spawn_dungeon_creature_instance(
+                commands,
+                asset_server,
+                registry,
+                species,
+                pos + Vec3::new(0.0, 0.2, 0.0),
+                waypoints,
+                (exit_z as f32 - 17.0) * dungeon.config.tile_size,
+            );
+        }
+    }
+
+    if !north_cells.is_empty() {
+        let count = 8.min(north_cells.len());
+        let step = north_cells.len() / count.max(1);
+        for i in 0..count {
+            let pos = north_cells[i * step];
+            let species = match i % 3 {
+                0 => CreatureSpecies::Glaceling,
+                1 => CreatureSpecies::Emberling,
+                _ => CreatureSpecies::Sproutling,
+            };
+            let waypoints = vec![
+                pos + Vec3::new(1.8, 0.0, 1.8),
+                pos + Vec3::new(-1.8, 0.0, -1.8),
+            ];
+            spawn_dungeon_creature_instance(
+                commands,
+                asset_server,
+                registry,
+                species,
+                pos + Vec3::new(0.0, 0.2, 0.0),
+                waypoints,
+                (exit_z as f32 - 21.0) * dungeon.config.tile_size,
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1052,6 +1414,7 @@ mod tests {
         let mut has_alchemical_shrine = false;
         let mut has_ancient_bridge = false;
         let mut has_spore_sanctuary = false;
+        let mut has_sunlit_forest_exit = false;
 
         for &tile in &dungeon.primary_grid {
             match tile {
@@ -1059,6 +1422,7 @@ mod tests {
                 PrimaryTile::RoomCenter(RoomType::AlchemicalShrine) => has_alchemical_shrine = true,
                 PrimaryTile::RoomCenter(RoomType::AncientBridge) => has_ancient_bridge = true,
                 PrimaryTile::RoomCenter(RoomType::SporeSanctuary) => has_spore_sanctuary = true,
+                PrimaryTile::RoomCenter(RoomType::SunlitForestExit) => has_sunlit_forest_exit = true,
                 _ => {}
             }
         }
@@ -1067,6 +1431,7 @@ mod tests {
         assert!(has_alchemical_shrine, "AlchemicalShrine chamber must be generated!");
         assert!(has_ancient_bridge, "AncientBridge chamber must be generated!");
         assert!(has_spore_sanctuary, "SporeSanctuary chamber must be generated!");
+        assert!(has_sunlit_forest_exit, "SunlitForestExit chamber must be generated!");
     }
 
     #[test]

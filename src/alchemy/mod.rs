@@ -262,6 +262,31 @@ impl Default for Flammable {
     }
 }
 
+#[derive(Component, Debug, Clone)]
+pub struct DungeonWallTorch {
+    pub is_lit: bool,
+    pub burn_timer: f32,
+    pub max_burn_time: f32,
+    pub initial_light_intensity: f32,
+    pub light_entity: Option<Entity>,
+    pub flame_entity: Option<Entity>,
+    pub dirty: bool,
+}
+
+impl Default for DungeonWallTorch {
+    fn default() -> Self {
+        Self {
+            is_lit: false,
+            burn_timer: 0.0,
+            max_burn_time: 1800.0,
+            initial_light_intensity: 3200.0,
+            light_entity: None,
+            flame_entity: None,
+            dirty: false,
+        }
+    }
+}
+
 #[derive(Resource, Debug, Clone)]
 pub struct PotionCooldowns {
     pub timers: [f32; 6],
@@ -356,6 +381,7 @@ impl Plugin for AlchemyPlugin {
                         .run_if(resource_exists::<Assets<StandardMaterial>>),
                     update_ice_footprints,
                     update_flammable_combustion,
+                    update_dungeon_wall_torches.after(update_flammable_combustion),
                 ),
             );
     }
@@ -533,6 +559,7 @@ pub fn update_potion_aiming(
     time: Res<Time>,
     mouse: Res<ButtonInput<MouseButton>>,
     gamepads: Query<&Gamepad>,
+    touch_controls: Option<Res<crate::player::touch_controls::TouchControlsState>>,
     slot: Option<Res<ActiveHotbarSlot>>,
     cooldowns: Option<Res<PotionCooldowns>>,
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
@@ -557,7 +584,8 @@ pub fn update_potion_aiming(
         g.pressed(GamepadButton::LeftTrigger2)
             || g.get(GamepadButton::LeftTrigger2).unwrap_or(0.0) > 0.15
     });
-    let is_aiming = (mouse.pressed(MouseButton::Right) || gamepad_aiming)
+    let touch_aiming = touch_controls.as_ref().map_or(false, |t| t.aim_pressed);
+    let is_aiming = (mouse.pressed(MouseButton::Right) || gamepad_aiming || touch_aiming)
         && player_query
             .iter()
             .all(|(_, s, _)| *s == PlayerState::Active);
@@ -685,12 +713,15 @@ pub fn spawn_potion_projectile(
     time: Res<Time>,
     mouse: Res<ButtonInput<MouseButton>>,
     gamepads: Query<&Gamepad>,
+    touch_controls: Option<Res<crate::player::touch_controls::TouchControlsState>>,
     slot: Option<Res<ActiveHotbarSlot>>,
     mut cooldowns_opt: Option<ResMut<PotionCooldowns>>,
     camera: Query<&GlobalTransform, With<PlayerCamera>>,
     mut player_query: Query<(&PlayerState, Option<&mut LocomotionState>), With<Player>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut stats_opt: Option<ResMut<crate::ui::menu::GameRunStats>>,
+    mut sound_events: Option<ResMut<Events<crate::audio::SoundEffectEvent>>>,
     mut commands: Commands,
 ) {
     if let Some(state) = game_state {
@@ -701,7 +732,8 @@ pub fn spawn_potion_projectile(
     let gamepad_throw = gamepads.iter().any(|g| {
         g.just_pressed(GamepadButton::RightTrigger2)
     });
-    if !mouse.just_pressed(MouseButton::Left) && !gamepad_throw {
+    let touch_throw = touch_controls.as_ref().map_or(false, |t| t.throw_just_pressed);
+    if !mouse.just_pressed(MouseButton::Left) && !gamepad_throw && !touch_throw {
         return;
     }
     let slot_index = slot.as_deref().map(|s| s.0).unwrap_or(1);
@@ -722,6 +754,10 @@ pub fn spawn_potion_projectile(
 
     if let Some(ref mut cooldowns) = cooldowns_opt {
         cooldowns.trigger_cooldown(slot_index);
+    }
+
+    if let Some(ref mut stats) = stats_opt {
+        stats.potions_thrown += 1;
     }
 
     if let Some(ref mut loco) = locomotion_opt {
@@ -772,6 +808,10 @@ pub fn spawn_potion_projectile(
             entered_water: false,
         },
     ));
+
+    if let Some(ref mut events) = sound_events {
+        events.send(crate::audio::SoundEffectEvent::new(crate::audio::SoundEffectKind::PotionThrow));
+    }
 }
 
 fn apply_splash_effects(
@@ -870,6 +910,50 @@ fn extinguish_nearby_flammables(
                 ));
             } else if flammable.temperature > 0.0 {
                 flammable.temperature = 0.0;
+            }
+        }
+    }
+}
+
+pub fn ignite_nearby_dungeon_torches(
+    torches: &mut Query<
+        (Entity, &Transform, &mut DungeonWallTorch),
+        (
+            Without<PotionProjectile>,
+            Without<PotionPuddle>,
+            Without<Player>,
+        ),
+    >,
+    impact_point: Vec3,
+    radius: f32,
+) {
+    for (_entity, transform, mut torch) in torches.iter_mut() {
+        if transform.translation.distance(impact_point) <= radius {
+            torch.is_lit = true;
+            torch.burn_timer = torch.max_burn_time;
+            torch.dirty = true;
+        }
+    }
+}
+
+pub fn extinguish_nearby_dungeon_torches(
+    torches: &mut Query<
+        (Entity, &Transform, &mut DungeonWallTorch),
+        (
+            Without<PotionProjectile>,
+            Without<PotionPuddle>,
+            Without<Player>,
+        ),
+    >,
+    impact_point: Vec3,
+    radius: f32,
+) {
+    for (_entity, transform, mut torch) in torches.iter_mut() {
+        if transform.translation.distance(impact_point) <= radius {
+            if torch.is_lit {
+                torch.is_lit = false;
+                torch.burn_timer = 0.0;
+                torch.dirty = true;
             }
         }
     }
@@ -1280,12 +1364,20 @@ pub fn update_potion_projectiles(
         ),
     >,
     mut dynamic_props: Query<(Entity, &Transform, &RigidBody, Option<&mut LinearVelocity>, Option<&mut AngularVelocity>), (Without<PotionProjectile>, Without<Player>)>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut wall_torches: Query<
+        (Entity, &Transform, &mut DungeonWallTorch),
+        (
+            Without<PotionProjectile>,
+            Without<PotionPuddle>,
+            Without<Player>,
+        ),
+    >,
+    (mut meshes, mut materials): (ResMut<Assets<Mesh>>, ResMut<Assets<StandardMaterial>>),
     mut fluid_materials: Option<ResMut<Assets<crate::render::surface_fluid_material::SurfaceFluidMaterial>>>,
     mut freeze_simulation: Option<ResMut<ice_simulation::LakeFreezeSimulation>>,
     mut commands: Commands,
     mut shake: Option<ResMut<CameraShake>>,
+    mut sound_events: Option<ResMut<Events<crate::audio::SoundEffectEvent>>>,
 ) {
     let dt = time.delta_secs();
     let gravity = Vec3::new(0.0, -9.8, 0.0);
@@ -1309,12 +1401,28 @@ pub fn update_potion_projectiles(
             let (impact_point, impact_normal) = resolve_surface_impact_normal(raw_point, raw_normal);
             let impact_host = impact_surface.map(|impact| impact.host);
 
+            if let Some(ref mut events) = sound_events {
+                let is_frost_local = projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::Frost);
+                let is_fire_local = projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::ThermalHeat) || projectile.slot == 2;
+                let sfx = if crate::dungeon::modular_kit::is_in_lake_water(impact_point) {
+                    crate::audio::SoundEffectKind::WaterSplash
+                } else if is_frost_local {
+                    crate::audio::SoundEffectKind::IceFreeze
+                } else if is_fire_local {
+                    crate::audio::SoundEffectKind::TorchIgnite
+                } else {
+                    crate::audio::SoundEffectKind::PotionShatter
+                };
+                events.send(crate::audio::SoundEffectEvent::new(sfx));
+            }
+
             apply_splash_effects(&mut receivers, &mut player_query, impact_point, &projectile.effects, entity, 2.8);
             apply_radial_kinetic_impulse(&mut dynamic_props, &mut player_query, &mut commands, impact_point, 14.0, 3.8);
 
             let is_frost = projectile.effects.iter().any(|e| e.kind == AlchemicalEffectKind::Frost);
             if is_frost {
                 extinguish_nearby_flammables(&mut flammables, &mut commands, impact_point, 2.8);
+                extinguish_nearby_dungeon_torches(&mut wall_torches, impact_point, 2.8);
                 if crate::dungeon::modular_kit::is_in_lake_water(impact_point) {
                     if let Some(simulation) = freeze_simulation.as_deref_mut() {
                         let intensity = projectile
@@ -1342,6 +1450,7 @@ pub fn update_potion_projectiles(
                     .map(|e| e.magnitude)
                     .unwrap_or(25.0);
                 ignite_nearby_flammables(&mut flammables, impact_point, 2.8, heat_magnitude);
+                ignite_nearby_dungeon_torches(&mut wall_torches, impact_point, 2.8);
 
                 let dx = impact_point.x;
                 let dz = impact_point.z - (-8.5);
@@ -1507,6 +1616,7 @@ pub fn update_potion_projectiles(
 
                 if is_frost {
                     extinguish_nearby_flammables(&mut flammables, &mut commands, impact_point, 2.8);
+                    extinguish_nearby_dungeon_torches(&mut wall_torches, impact_point, 2.8);
                     if let Some(simulation) = freeze_simulation.as_deref_mut() {
                         let intensity = projectile
                             .effects
@@ -1534,6 +1644,7 @@ pub fn update_potion_projectiles(
                         .map(|e| e.magnitude)
                         .unwrap_or(25.0);
                     ignite_nearby_flammables(&mut flammables, impact_point, 2.8, heat_magnitude);
+                    ignite_nearby_dungeon_torches(&mut wall_torches, impact_point, 2.8);
 
                     let dx = impact_point.x;
                     let dz = impact_point.z - (-8.5);
@@ -2333,6 +2444,83 @@ pub fn update_flammable_combustion(
                     ent_cmd.despawn_recursive();
                 }
             });
+        }
+    }
+}
+
+pub fn update_dungeon_wall_torches(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut torches: Query<(Entity, &Transform, &mut DungeonWallTorch)>,
+    mut point_lights: Query<&mut PointLight>,
+) {
+    let dt = time.delta_secs();
+    let elapsed = time.elapsed_secs();
+
+    for (_entity, transform, mut torch) in torches.iter_mut() {
+        if torch.is_lit {
+            torch.burn_timer -= dt;
+            if torch.burn_timer <= 0.0 {
+                torch.burn_timer = 0.0;
+                torch.is_lit = false;
+                torch.dirty = true;
+            }
+        }
+
+        if torch.dirty {
+            torch.dirty = false;
+            if torch.is_lit {
+                if let Some(light_ent) = torch.light_entity {
+                    if let Ok(mut light) = point_lights.get_mut(light_ent) {
+                        light.intensity = torch.initial_light_intensity;
+                    }
+                }
+                if torch.flame_entity.is_none() {
+                    let flame_pos = transform.translation + transform.rotation * Vec3::new(0.0, 0.28, 0.22);
+                    let flame_ent = commands
+                        .spawn((
+                            Transform::from_translation(flame_pos),
+                            crate::render::particles::ParticleEmitter {
+                                spawn_timer: 0.0,
+                                spawn_rate: 0.04,
+                                particle_type: crate::render::particles::ParticleType::FireFlame,
+                            },
+                        ))
+                        .id();
+                    torch.flame_entity = Some(flame_ent);
+                }
+            } else {
+                if let Some(light_ent) = torch.light_entity {
+                    if let Ok(mut light) = point_lights.get_mut(light_ent) {
+                        light.intensity = 0.0;
+                    }
+                }
+                if let Some(flame_ent) = torch.flame_entity.take() {
+                    commands.entity(flame_ent).despawn();
+                }
+                let steam_pos = transform.translation + transform.rotation * Vec3::new(0.0, 0.28, 0.22);
+                commands.spawn((
+                    Transform::from_translation(steam_pos),
+                    crate::render::particles::ParticleEmitter {
+                        spawn_timer: 0.0,
+                        spawn_rate: 0.02,
+                        particle_type: crate::render::particles::ParticleType::Steam,
+                    },
+                    AlchemyTransientEmitter {
+                        elapsed: 0.0,
+                        max_lifetime: 1.2,
+                    },
+                ));
+            }
+        }
+
+        if torch.is_lit {
+            if let Some(light_ent) = torch.light_entity {
+                if let Ok(mut light) = point_lights.get_mut(light_ent) {
+                    let flicker = (elapsed * 11.0).sin() * 120.0 + (elapsed * 23.0).cos() * 80.0;
+                    light.intensity = (torch.initial_light_intensity + flicker).max(400.0);
+                }
+            }
         }
     }
 }

@@ -92,6 +92,7 @@ impl Plugin for DungeonPlugin {
         );
         app.insert_resource(anim_config)
             .init_resource::<SceneAssetRegistry>()
+            .init_resource::<crate::dungeon::fauna::AmbientFaunaSpawner>()
             .add_systems(
                 Startup,
                 (
@@ -109,8 +110,36 @@ impl Plugin for DungeonPlugin {
                 mark_imported_lake_features,
                 update_water_ripples,
                 update_bioluminescent_mushrooms,
+                (
+                    crate::dungeon::fauna::update_spider_webs,
+                    crate::dungeon::fauna::update_ambient_insects,
+                ).chain(),
+                crate::dungeon::fauna::update_ambient_fauna_spawner,
+                (
+                    crate::dungeon::water_drips::update_ceiling_drip_points,
+                    crate::dungeon::water_drips::update_falling_water_drops,
+                    crate::dungeon::water_drips::update_puddle_player_interaction,
+                    crate::dungeon::water_drips::update_puddle_temperature_reactions,
+                    crate::dungeon::water_drips::update_puddle_boiling_visuals,
+                ).chain(),
                 crate::dungeon::flora::animate_dandelions,
                 crate::dungeon::vegetation_animation::update_vegetation_foliage_animation,
+                (
+                    crate::dungeon::creatures::update_creature_patrol_and_movement,
+                    crate::dungeon::creatures::update_creature_ai_perception_and_aim_dodge,
+                    crate::dungeon::creatures::update_creature_potion_interactions,
+                ).chain(),
+                crate::dungeon::generator::update_forest_victory_trigger,
+            ),
+        )
+        .add_systems(
+            Update,
+            (
+                crate::dungeon::traps::update_cracked_wall_nests,
+                crate::dungeon::traps::update_emergent_creatures,
+                crate::dungeon::traps::update_dungeon_traps,
+                crate::dungeon::traps::update_creatures_trap_tactics,
+                crate::dungeon::traps::update_potion_traps_and_nests_interactions,
             ),
         );
     }
@@ -373,11 +402,13 @@ pub fn update_grass_bending(
 
 pub fn create_water_ring_mesh(radius: f32, inner_ratio: f32, segments: usize) -> Mesh {
     let inner_radius = radius * inner_ratio;
-    let num_verts = (segments + 1) * 2;
+    let mid_radius = (radius + inner_radius) * 0.5;
+    let num_verts = (segments + 1) * 3;
     let mut positions: Vec<[f32; 3]> = Vec::with_capacity(num_verts);
     let mut normals: Vec<[f32; 3]> = Vec::with_capacity(num_verts);
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(num_verts);
-    let mut indices: Vec<u32> = Vec::with_capacity(segments * 6);
+    let mut colors: Vec<[f32; 4]> = Vec::with_capacity(num_verts);
+    let mut indices: Vec<u32> = Vec::with_capacity(segments * 12);
 
     for i in 0..=segments {
         let angle = (i as f32 / segments as f32) * std::f32::consts::TAU;
@@ -387,36 +418,60 @@ pub fn create_water_ring_mesh(radius: f32, inner_ratio: f32, segments: usize) ->
         positions.push([cos_a * radius, 0.0, sin_a * radius]);
         normals.push([0.0, 1.0, 0.0]);
         uvs.push([0.5 + 0.5 * cos_a, 0.5 + 0.5 * sin_a]);
+        colors.push([0.65, 0.85, 0.98, 0.0]);
+
+        positions.push([cos_a * mid_radius, 0.003, sin_a * mid_radius]);
+        normals.push([0.0, 1.0, 0.0]);
+        uvs.push([
+            0.5 + 0.5 * (mid_radius / radius) * cos_a,
+            0.5 + 0.5 * (mid_radius / radius) * sin_a,
+        ]);
+        colors.push([0.80, 0.94, 1.0, 1.0]);
 
         positions.push([cos_a * inner_radius, 0.0, sin_a * inner_radius]);
         normals.push([0.0, 1.0, 0.0]);
-        uvs.push([0.5 + 0.5 * inner_ratio * cos_a, 0.5 + 0.5 * inner_ratio * sin_a]);
+        uvs.push([
+            0.5 + 0.5 * inner_ratio * cos_a,
+            0.5 + 0.5 * inner_ratio * sin_a,
+        ]);
+        colors.push([0.65, 0.85, 0.98, 0.0]);
     }
 
     for i in 0..segments as u32 {
-        let o1 = i * 2;
-        let i1 = i * 2 + 1;
-        let o2 = (i + 1) * 2;
-        let i2 = (i + 1) * 2 + 1;
+        let o1 = i * 3;
+        let m1 = i * 3 + 1;
+        let i1 = i * 3 + 2;
+
+        let o2 = (i + 1) * 3;
+        let m2 = (i + 1) * 3 + 1;
+        let i2 = (i + 1) * 3 + 2;
 
         indices.push(o1);
         indices.push(o2);
+        indices.push(m1);
+
+        indices.push(m1);
+        indices.push(o2);
+        indices.push(m2);
+
+        indices.push(m1);
+        indices.push(m2);
         indices.push(i1);
 
         indices.push(i1);
-        indices.push(o2);
+        indices.push(m2);
         indices.push(i2);
     }
 
-    let mut mesh = Mesh::new(
+    Mesh::new(
         PrimitiveTopology::TriangleList,
         RenderAssetUsages::default(),
-    );
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
-    mesh.insert_indices(Indices::U32(indices));
-    mesh
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
+    .with_inserted_indices(Indices::U32(indices))
 }
 
 pub fn spawn_water_ripple(
@@ -429,13 +484,15 @@ pub fn spawn_water_ripple(
     lifetime: f32,
     alpha: f32,
 ) {
-    let ring_mesh = meshes.add(create_water_ring_mesh(1.0, 0.80, 32));
+    let ring_mesh = meshes.add(create_water_ring_mesh(1.0, 0.70, 32));
     let ring_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.85, 0.96, 1.0, alpha),
-        emissive: LinearRgba::new(0.20, 0.65, 0.85, alpha * 0.45),
-        unlit: true,
+        base_color: Color::srgba(0.50, 0.78, 0.95, alpha * 0.60),
+        emissive: LinearRgba::new(0.01, 0.04, 0.06, alpha * 0.12),
+        unlit: false,
+        perceptual_roughness: 0.03,
+        reflectance: 0.98,
         alpha_mode: AlphaMode::Blend,
-        depth_bias: 450.0,
+        depth_bias: 575.0,
         cull_mode: None,
         ..default()
     });
@@ -481,8 +538,10 @@ pub fn update_water_ripples(
         tf.scale = Vec3::new(current_radius, 1.0, current_radius);
 
         if let Some(mat) = materials.get_mut(&mat_handle.0) {
-            let alpha = ripple.initial_alpha * (1.0 - progress);
-            mat.base_color = Color::srgba(0.85, 0.96, 1.0, alpha);
+            let fade = (1.0 - progress).powi(2);
+            let alpha = ripple.initial_alpha * fade;
+            mat.base_color = Color::srgba(0.50, 0.78, 0.95, alpha * 0.60);
+            mat.emissive = LinearRgba::new(0.01, 0.04, 0.06, alpha * 0.12);
         }
     }
 }
@@ -1449,6 +1508,40 @@ pub fn setup_cavern_world(
         ));
     }
 
+    crate::dungeon::water_drips::spawn_default_cavern_water_drips(
+        &mut commands,
+        &mut meshes,
+        &mut standard_materials,
+    );
+
+    let fauna_assets = crate::dungeon::fauna::setup_ambient_fauna(
+        &mut commands,
+        &mut meshes,
+        &mut standard_materials,
+    );
+
+    let initial_mushrooms = [
+        Vec3::new(-3.4, 2.4, -2.8),
+        Vec3::new(4.1, 2.4, -3.3),
+    ];
+    let initial_puddles = [
+        (Vec3::new(1.05, 0.02, 6.40), None),
+        (Vec3::new(-1.05, 0.02, 9.50), None),
+    ];
+    let initial_webs = [
+        (Vec3::new(1.85, 4.10, 5.50), Quat::from_rotation_y(0.0), 0.75, true),
+        (Vec3::new(-1.85, 0.35, 8.20), Quat::from_rotation_y(std::f32::consts::PI), 0.65, true),
+        (Vec3::new(-1.85, 4.15, 12.00), Quat::from_rotation_y(std::f32::consts::PI), 0.70, true),
+        (Vec3::new(3.80, 0.40, -1.20), Quat::from_rotation_y(1.57), 0.60, false),
+    ];
+    crate::dungeon::fauna::spawn_initial_ambient_fauna(
+        &mut commands,
+        &fauna_assets,
+        &initial_mushrooms,
+        &initial_puddles,
+        &initial_webs,
+    );
+
     info!("Masterwork Cel-Shaded Cavern Grotto initialized with Volumetric Waterfall, Organic Mushrooms, and Sobel Outlines!");
 }
 
@@ -1761,7 +1854,7 @@ pub fn get_grotto_terrain_height(x: f32, z: f32) -> f32 {
         0.04
     };
 
-    let lateral_ramp = if x.abs() > 2.5 {
+    let lateral_ramp = if x.abs() > 2.5 && z <= 4.0 {
         let x_abs = x.abs();
         let lateral_rise = if x_abs < 5.5 {
             ((x_abs - 2.5) / 3.0) * 1.05
@@ -1770,7 +1863,8 @@ pub fn get_grotto_terrain_height(x: f32, z: f32) -> f32 {
         };
 
         if z > -4.0 {
-            lateral_rise
+            let fade = ((4.0 - z) / 2.0).clamp(0.0, 1.0);
+            lateral_rise * fade
         } else if z > -7.5 {
             let t = (z - (-7.5)) / 3.5;
             lateral_rise * t.clamp(0.2, 1.0)

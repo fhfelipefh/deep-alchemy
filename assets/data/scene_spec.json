@@ -6,7 +6,6 @@
   "scenes": {
     "starting_waterfall_grotto": {
       "name": "Gruta da Cachoeira Inicial",
-      "reference_artwork": "assets/artworks/concept_waterfall_grotto.png",
       "palette": {
         "water_deep": "#05385c",
         "water_shallow": "#1cd2ea",
@@ -104,7 +103,6 @@
     },
     "cave_exit_forest": {
       "name": "Saída da Caverna para a Floresta",
-      "reference_artwork": "assets/artworks/concept_cave_exit.png",
       "palette": {
         "foliage_green": "#4a7c32",
         "sunlight_beam": "#d4e89c",
@@ -114,7 +112,6 @@
     },
     "deep_cavern_tunnels": {
       "name": "Túneis e Galerias da Caverna Profunda",
-      "reference_artwork": "assets/artworks/concept_deep_cavern.png",
       "palette": {
         "deep_shadow": "#0a1c24",
         "wall_spore_cyan": "#18f0d8",

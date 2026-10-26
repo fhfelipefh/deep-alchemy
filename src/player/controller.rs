@@ -22,7 +22,9 @@ pub fn resolve_player_collision_sliding(
     const PLAYER_BASE_HEIGHT: f32 = 1.2;
 
     let in_test_room = resolved.z > 200.0;
-    let terrain_h = if has_grotto_terrain && !in_test_room {
+    let in_dungeon = resolved.z > 4.0 && !in_test_room;
+    let effective_grotto = has_grotto_terrain && !in_dungeon && !in_test_room;
+    let terrain_h = if effective_grotto {
         crate::dungeon::modular_kit::get_grotto_terrain_height(resolved.x, resolved.z)
     } else {
         0.0
@@ -33,7 +35,7 @@ pub fn resolve_player_collision_sliding(
     let min_wade_floor = terrain_h.max(-1.1);
     let mut highest_support_y = min_wade_floor + PLAYER_BASE_HEIGHT;
 
-    for _ in 0..3 {
+    for iteration in 0..4 {
         for (tf, shape) in obstacles {
             match shape {
                 ObstacleShape::Cylinder { radius, height } => {
@@ -57,9 +59,10 @@ pub fn resolve_player_collision_sliding(
                     }
 
                     let dist = diff.length();
-                    let can_step_onto = obs_top <= step_max_feet
-                        || (has_grotto_terrain && obs_top <= player_feet + 0.55)
-                        || (is_ice && player_feet >= -1.15);
+                    let is_step = *height <= 0.30 || is_ice;
+                    let can_step_onto = is_step && (obs_top <= step_max_feet
+                        || (effective_grotto && obs_top <= player_feet + 0.55)
+                        || (is_ice && player_feet >= -1.15));
 
                     if dist < min_dist {
                         if can_step_onto {
@@ -110,13 +113,18 @@ pub fn resolve_player_collision_sliding(
                         continue;
                     }
 
-                    let (_, rot_y, _) = tf.rotation.to_euler(EulerRot::YXZ);
+                    let (rot_y, _, _) = tf.rotation.to_euler(EulerRot::YXZ);
                     let diff_world =
                         Vec2::new(resolved.x - tf.translation.x, resolved.z - tf.translation.z);
                     let cos_r = (-rot_y).cos();
                     let sin_r = (-rot_y).sin();
                     let local_x = diff_world.x * cos_r - diff_world.y * sin_r;
                     let local_z = diff_world.x * sin_r + diff_world.y * cos_r;
+
+                    let prev_diff_world =
+                        Vec2::new(prev_pos.x - tf.translation.x, prev_pos.z - tf.translation.z);
+                    let prev_local_x = prev_diff_world.x * cos_r - prev_diff_world.y * sin_r;
+                    let prev_local_z = prev_diff_world.x * sin_r + prev_diff_world.y * cos_r;
 
                     let hx = half_extents.x;
                     let hz = half_extents.z;
@@ -128,7 +136,8 @@ pub fn resolve_player_collision_sliding(
                     let to_player = Vec2::new(local_x - clamped_x, local_z - clamped_z);
                     let dist = to_player.length();
 
-                    let can_step_onto = obs_top <= step_max_feet || (has_grotto_terrain && obs_top <= player_feet + 0.55);
+                    let is_step = half_extents.y <= 0.22;
+                    let can_step_onto = is_step && (obs_top <= step_max_feet || (effective_grotto && obs_top <= player_feet + 0.55));
 
                     if inside_box || dist < player_radius {
                         if can_step_onto {
@@ -136,44 +145,87 @@ pub fn resolve_player_collision_sliding(
                             if support > highest_support_y {
                                 highest_support_y = support;
                             }
-                        } else if inside_box {
-                            let d_px = hx - local_x;
-                            let d_nx = local_x - (-hx);
-                            let d_pz = hz - local_z;
-                            let d_nz = local_z - (-hz);
-
-                            let min_d = d_px.min(d_nx).min(d_pz).min(d_nz);
+                        } else {
                             let mut push_local = Vec2::new(local_x, local_z);
+                            let local_norm;
 
-                            if min_d == d_px {
-                                push_local.x = hx + player_radius;
-                            } else if min_d == d_nx {
-                                push_local.x = -hx - player_radius;
-                            } else if min_d == d_pz {
-                                push_local.y = hz + player_radius;
+                            if inside_box {
+                                let from_px = prev_local_x >= hx;
+                                let from_nx = prev_local_x <= -hx;
+                                let from_pz = prev_local_z >= hz;
+                                let from_nz = prev_local_z <= -hz;
+
+                                if from_px {
+                                    push_local.x = hx + player_radius;
+                                    local_norm = Vec2::new(1.0, 0.0);
+                                } else if from_nx {
+                                    push_local.x = -hx - player_radius;
+                                    local_norm = Vec2::new(-1.0, 0.0);
+                                } else if from_pz {
+                                    push_local.y = hz + player_radius;
+                                    local_norm = Vec2::new(0.0, 1.0);
+                                } else if from_nz {
+                                    push_local.y = -hz - player_radius;
+                                    local_norm = Vec2::new(0.0, -1.0);
+                                } else {
+                                    let ratio_x = prev_local_x.abs() / hx.max(1e-4);
+                                    let ratio_z = prev_local_z.abs() / hz.max(1e-4);
+                                    if ratio_x >= ratio_z {
+                                        if prev_local_x >= 0.0 {
+                                            push_local.x = hx + player_radius;
+                                            local_norm = Vec2::new(1.0, 0.0);
+                                        } else {
+                                            push_local.x = -hx - player_radius;
+                                            local_norm = Vec2::new(-1.0, 0.0);
+                                        }
+                                    } else {
+                                        if prev_local_z >= 0.0 {
+                                            push_local.y = hz + player_radius;
+                                            local_norm = Vec2::new(0.0, 1.0);
+                                        } else {
+                                            push_local.y = -hz - player_radius;
+                                            local_norm = Vec2::new(0.0, -1.0);
+                                        }
+                                    }
+                                }
                             } else {
-                                push_local.y = -hz - player_radius;
+                                local_norm = if dist > 1e-4 {
+                                    to_player / dist
+                                } else {
+                                    Vec2::new(1.0, 0.0)
+                                };
+                                push_local =
+                                    Vec2::new(clamped_x, clamped_z) + local_norm * player_radius;
                             }
 
                             let cos_b = rot_y.cos();
                             let sin_b = rot_y.sin();
                             resolved.x = tf.translation.x + push_local.x * cos_b - push_local.y * sin_b;
                             resolved.z = tf.translation.z + push_local.x * sin_b + push_local.y * cos_b;
-                        } else {
-                            let local_norm = if dist > 1e-4 {
-                                to_player / dist
-                            } else {
-                                Vec2::new(1.0, 0.0)
-                            };
-                            let push_local =
-                                Vec2::new(clamped_x, clamped_z) + local_norm * player_radius;
 
-                            let cos_b = rot_y.cos();
-                            let sin_b = rot_y.sin();
-                            resolved.x =
-                                tf.translation.x + push_local.x * cos_b - push_local.y * sin_b;
-                            resolved.z =
-                                tf.translation.z + push_local.x * sin_b + push_local.y * cos_b;
+                            let normal_world = Vec2::new(
+                                local_norm.x * cos_b - local_norm.y * sin_b,
+                                local_norm.x * sin_b + local_norm.y * cos_b,
+                            );
+
+                            if is_moving && normal_world.length_squared() > 0.5 && iteration < 3 {
+                                let dot = attempted_move.dot(normal_world);
+                                if dot < 0.0 {
+                                    let slide = attempted_move - normal_world * dot;
+                                    let slid_target = Vec2::new(prev_pos.x, prev_pos.z) + slide;
+                                    let st_diff = Vec2::new(slid_target.x - tf.translation.x, slid_target.y - tf.translation.z);
+                                    let st_lx = st_diff.x * cos_r - st_diff.y * sin_r;
+                                    let st_lz = st_diff.x * sin_r + st_diff.y * cos_r;
+                                    let st_cx = st_lx.clamp(-hx, hx);
+                                    let st_cz = st_lz.clamp(-hz, hz);
+                                    let st_dist = Vec2::new(st_lx - st_cx, st_lz - st_cz).length();
+                                    let st_inside = st_lx.abs() < hx && st_lz.abs() < hz;
+                                    if !st_inside && st_dist >= player_radius - 1e-3 {
+                                        resolved.x = slid_target.x;
+                                        resolved.z = slid_target.y;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -182,7 +234,7 @@ pub fn resolve_player_collision_sliding(
 
     }
 
-    if is_grounded || (has_grotto_terrain && highest_support_y >= 0.20 + PLAYER_BASE_HEIGHT) {
+    if is_grounded || (effective_grotto && highest_support_y >= 0.20 + PLAYER_BASE_HEIGHT) {
         if highest_support_y > resolved.y {
             resolved.y = highest_support_y;
         } else if resolved.y > highest_support_y && (resolved.y - highest_support_y) <= STEP_OFFSET {
@@ -197,6 +249,14 @@ pub fn resolve_player_collision_sliding(
         let max_z = crate::dungeon::test_room::SECRET_TEST_ROOM_ORIGIN.z + 40.0 - player_radius;
         resolved.x = resolved.x.clamp(min_x, max_x);
         resolved.z = resolved.z.clamp(min_z, max_z);
+    } else if in_dungeon {
+        resolved.y = resolved.y.clamp(0.0, 2.45);
+        if resolved.z >= 6.5 && resolved.z <= 25.5 && prev_pos.x.abs() < 1.0 {
+            resolved.x = resolved.x.clamp(-0.76, 0.76);
+        }
+    } else if effective_grotto {
+        resolved.x = resolved.x.clamp(-7.8, 7.8);
+        resolved.z = resolved.z.clamp(-13.0, 4.0);
     }
 
     resolved
@@ -208,6 +268,7 @@ pub fn player_look(
     time: Option<Res<Time>>,
     mut mouse_motion_events: EventReader<MouseMotion>,
     gamepads: Query<&Gamepad>,
+    touch_controls: Option<Res<crate::player::touch_controls::TouchControlsState>>,
     mut player_query: Query<(&PlayerState, &mut Transform, Option<&mut LocomotionState>), (With<Player>, Without<PlayerCamera>)>,
     mut camera_query: Query<&mut Transform, (With<PlayerCamera>, Without<Player>)>,
 ) {
@@ -241,7 +302,12 @@ pub fn player_look(
         }
     }
 
-    let total_delta = mouse_delta + stick_delta;
+    let touch_look = touch_controls
+        .as_ref()
+        .map(|t| t.look_delta * t.sensitivity * 260.0)
+        .unwrap_or(Vec2::ZERO);
+
+    let total_delta = mouse_delta + stick_delta + touch_look;
 
     let sensitivity = settings
         .as_ref()
@@ -310,6 +376,7 @@ fn compute_player_locomotion_input(
     forward: Vec3,
     right: Vec3,
     is_frozen: bool,
+    touch_move: Vec2,
 ) -> (Vec3, Vec2, bool, f32) {
     let mut move_dir = Vec3::ZERO;
     let mut strafe_target_roll: f32 = 0.0;
@@ -329,6 +396,12 @@ fn compute_player_locomotion_input(
                 move_dir -= right;
                 strafe_target_roll -= 0.020;
             }
+        }
+
+        if touch_move.length_squared() > 1e-4 {
+            move_dir += forward * touch_move.y;
+            move_dir += right * touch_move.x;
+            strafe_target_roll += touch_move.x * 0.020;
         }
 
         for gamepad in gamepads.iter() {
@@ -389,7 +462,8 @@ fn calculate_landing_elevation(
     has_lake: bool,
 ) -> f32 {
     let in_test_room = pos.z > 200.0;
-    let floor_y = if has_lake && !in_test_room {
+    let in_dungeon = pos.z > 4.0 && !in_test_room;
+    let floor_y = if has_lake && !in_test_room && !in_dungeon {
         crate::dungeon::modular_kit::get_grotto_terrain_height(pos.x, pos.z)
     } else {
         0.0
@@ -402,29 +476,34 @@ fn calculate_landing_elevation(
             ObstacleShape::Cylinder { radius, height } => {
                 let center = Vec2::new(obs_tf.translation.x, obs_tf.translation.z);
                 if (p_xz - center).length() <= *radius + 0.38 {
+                    let is_step = *height <= 0.35;
                     let top = obs_tf.translation.y + height * 0.5 + 1.2;
-                    let can_land = top <= pos.y + 0.45 || (has_lake && obs_tf.translation.y >= 0.15 && obs_tf.translation.y <= 0.35 && pos.y >= min_wade_floor + 0.95);
+                    let can_land = is_step && (top <= pos.y + 0.45 || (has_lake && obs_tf.translation.y >= 0.15 && obs_tf.translation.y <= 0.35 && pos.y >= min_wade_floor + 0.95));
                     if can_land && top > landing_y {
                         landing_y = top;
                     }
                 }
             }
             ObstacleShape::Cuboid { half_extents } => {
-                let (_, rot_y, _) = obs_tf.rotation.to_euler(EulerRot::YXZ);
+                let (rot_y, _, _) = obs_tf.rotation.to_euler(EulerRot::YXZ);
                 let diff_world = p_xz - Vec2::new(obs_tf.translation.x, obs_tf.translation.z);
                 let cos_r = (-rot_y).cos();
                 let sin_r = (-rot_y).sin();
                 let lx = diff_world.x * cos_r - diff_world.y * sin_r;
                 let lz = diff_world.x * sin_r + diff_world.y * cos_r;
                 if lx.abs() <= half_extents.x + 0.38 && lz.abs() <= half_extents.z + 0.38 {
+                    let is_step = half_extents.y <= 0.22;
                     let top = obs_tf.translation.y + half_extents.y + 1.2;
-                    let can_land = top <= pos.y + 0.50 || (has_lake && pos.y >= top - 0.40);
+                    let can_land = is_step && (top <= pos.y + 0.50 || (!in_dungeon && has_lake && pos.y >= top - 0.40));
                     if can_land && top > landing_y {
                         landing_y = top;
                     }
                 }
             }
         }
+    }
+    if in_dungeon {
+        landing_y = landing_y.clamp(0.0, 2.45);
     }
     landing_y
 }
@@ -527,6 +606,12 @@ fn update_airborne_and_landing(
 
     if tf.translation.z > 200.0 {
         let max_ceiling = crate::dungeon::test_room::SECRET_TEST_ROOM_ORIGIN.y + 14.0 - 0.40;
+        if tf.translation.y > max_ceiling {
+            tf.translation.y = max_ceiling;
+            locomotion.vertical_velocity = 0.0;
+        }
+    } else if tf.translation.z > 4.0 {
+        let max_ceiling = 2.45;
         if tf.translation.y > max_ceiling {
             tf.translation.y = max_ceiling;
             locomotion.vertical_velocity = 0.0;
@@ -852,6 +937,37 @@ pub fn update_fly_mode_cheat(
     }
 }
 
+pub fn player_out_of_bounds_rescue(
+    fly_mode: Option<Res<FlyModeState>>,
+    mut query: Query<(&mut Transform, Option<&mut LocomotionState>), With<Player>>,
+) {
+    if let Some(fm) = fly_mode {
+        if fm.enabled {
+            return;
+        }
+    }
+    for (mut tf, mut loco_opt) in query.iter_mut() {
+        let p = tf.translation;
+        if p.z > 200.0 {
+            continue;
+        }
+        let in_dungeon = p.z > 4.0;
+        let is_oob = if in_dungeon {
+            p.y > 2.85 || p.y < -1.0 || p.x.abs() > 55.0 || p.z.abs() > 55.0 || (p.z >= 6.5 && p.z <= 25.5 && p.x.abs() > 2.0)
+        } else {
+            p.y > 4.2 || p.y < -5.0 || p.x.abs() > 60.0 || p.z.abs() > 60.0
+        };
+        if is_oob {
+            tf.translation = Vec3::new(0.0, 1.2, 0.0);
+            if let Some(ref mut loco) = loco_opt {
+                loco.vertical_velocity = 0.0;
+                loco.horizontal_velocity = Vec2::ZERO;
+                loco.is_grounded = true;
+            }
+        }
+    }
+}
+
 fn update_player_fly_mode(
     tf: &mut Transform,
     locomotion: &mut LocomotionState,
@@ -984,6 +1100,7 @@ pub fn player_movement(
     mut shake: Option<ResMut<CameraShake>>,
     fly_mode: Option<Res<FlyModeState>>,
     camera_query: Query<&Transform, (With<PlayerCamera>, Without<Player>)>,
+    touch_controls: Option<Res<crate::player::touch_controls::TouchControlsState>>,
 ) {
     if let Some(state) = game_state {
         if *state.get() != GameState::InGame {
@@ -1097,12 +1214,18 @@ pub fn player_movement(
         let forward = tf.forward();
         let right = tf.right();
 
+        let touch_move = touch_controls
+            .as_ref()
+            .map(|t| t.move_axis)
+            .unwrap_or(Vec2::ZERO);
+
         let (move_dir, wish_dir, is_moving, strafe_target_roll) = compute_player_locomotion_input(
             keys.as_deref(),
             &gamepads,
             *forward,
             *right,
             is_frozen,
+            touch_move,
         );
 
         if strafe_target_roll.abs() > 1e-4 {
@@ -1113,16 +1236,18 @@ pub fn player_movement(
         locomotion.target_camera_roll = locomotion.target_camera_roll.lerp(0.0, (8.0 * dt).min(1.0));
         locomotion.throw_recoil = (locomotion.throw_recoil - 6.0 * dt).max(0.0);
 
+        let touch_crouch = touch_controls.as_ref().map_or(false, |t| t.crouch_pressed);
         let gamepad_crouch = gamepads.iter().any(|g| {
             g.pressed(GamepadButton::RightThumb) || g.pressed(GamepadButton::DPadDown)
         });
-        locomotion.is_crouching = keys.as_ref().map(|k| k.pressed(KeyCode::ControlLeft)).unwrap_or(false) || gamepad_crouch;
+        locomotion.is_crouching = keys.as_ref().map(|k| k.pressed(KeyCode::ControlLeft)).unwrap_or(false) || gamepad_crouch || touch_crouch;
 
+        let touch_sprint = touch_controls.as_ref().map_or(false, |t| t.is_sprinting);
         let gamepad_sprint = gamepads.iter().any(|g| {
             g.pressed(GamepadButton::LeftThumb) || g.pressed(GamepadButton::East)
         });
         let can_sprint = !locomotion.is_crouching && stamina.current > 5.0 && is_moving && !is_frozen;
-        let is_sprinting = (keys.as_ref().map(|k| k.pressed(KeyCode::ShiftLeft)).unwrap_or(false) || gamepad_sprint) && can_sprint;
+        let is_sprinting = (keys.as_ref().map(|k| k.pressed(KeyCode::ShiftLeft)).unwrap_or(false) || gamepad_sprint || touch_sprint) && can_sprint;
         locomotion.is_sprinting = is_sprinting;
 
         if is_frozen {
@@ -1166,10 +1291,11 @@ pub fn player_movement(
             locomotion.coyote_timer = (locomotion.coyote_timer - dt).max(0.0);
         }
 
+        let touch_jump = touch_controls.as_ref().map_or(false, |t| t.jump_just_pressed);
         let gamepad_jump = gamepads.iter().any(|g| {
             g.just_pressed(GamepadButton::South)
         });
-        if (keys.as_ref().map(|k| k.just_pressed(KeyCode::Space)).unwrap_or(false) || gamepad_jump) && !locomotion.is_crouching && !is_frozen {
+        if (keys.as_ref().map(|k| k.just_pressed(KeyCode::Space)).unwrap_or(false) || gamepad_jump || touch_jump) && !locomotion.is_crouching && !is_frozen {
             locomotion.jump_buffer_timer = 0.12;
         } else {
             locomotion.jump_buffer_timer = (locomotion.jump_buffer_timer - dt).max(0.0);
@@ -1228,21 +1354,27 @@ pub fn player_movement(
         let h_speed_sq = locomotion.horizontal_velocity.length_squared();
         if h_speed_sq > 0.0001 {
             let prev_pos = tf.translation;
-            let vel = Vec3::new(
+            let full_vel = Vec3::new(
                 locomotion.horizontal_velocity.x * dt,
                 0.0,
                 locomotion.horizontal_velocity.y * dt,
             );
-            let desired_pos = tf.translation + vel;
+            let move_dist = full_vel.length();
+            let sub_steps = ((move_dist / 0.06).ceil() as usize).clamp(1, 4);
+            let step_vel = full_vel / (sub_steps as f32);
             let player_radius = 0.38;
-            tf.translation = resolve_player_collision_sliding(
-                desired_pos,
-                tf.translation,
-                player_radius,
-                locomotion.is_grounded,
-                has_lake,
-                &obstacle_list,
-            );
+
+            for _ in 0..sub_steps {
+                let step_desired = tf.translation + step_vel;
+                tf.translation = resolve_player_collision_sliding(
+                    step_desired,
+                    tf.translation,
+                    player_radius,
+                    locomotion.is_grounded,
+                    has_lake,
+                    &obstacle_list,
+                );
+            }
 
             let actual_dx = tf.translation.x - prev_pos.x;
             let actual_dz = tf.translation.z - prev_pos.z;
