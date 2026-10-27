@@ -30,17 +30,6 @@ Para os avaliadores da Game Jam ou jogadores que desejam testar o jogo imediatam
 
 ---
 
-## 🌟 Pilares do Projeto
-
-- **Tema da Jam:** *Alquimia & Bichinhos* — Manipule poções com reações físico-químicas em tempo real (evaporação, congelamento de poças, choque térmico, combustão) e interaja com as criaturas da caverna (Sproutlings, Emberlings, Glacelings) que aprendem seus padrões e reagem aos elementos.
-- **Gráficos Cel-Shading + Sombras:** Estilo cartoon/anime com iluminação dinâmica, tochas interativas, shaders WGSL customizados e reflexos planares na água subterrânea.
-- **Geração Procedural de Masmorras:** Sistema de cavernas subterrâneas e labirintos gerados via Wave Function Collapse (WFC) e Dual Grid, garantindo conectividade e caminhos navegáveis com saída abissal.
-- **Síntese de Áudio Procedural DSP:** Todos os efeitos sonoros (arremesso de poção, estilhaço de vidro, splash na água, combustão, congelamento, cliques de UI) foram sintetizados matematicamente via código Rust em tempo de execução (`src/audio/synth.rs`).
-- **Cutscene Cinematográfica 3D:** Animação de introdução in-game narrando a descida do alquimista pelo poço da cachoeira subterrânea.
-- **100% Testado:** Suíte com 285 testes automatizados (unitários, integração, arquitetura e desempenho).
-
----
-
 ## 🛠️ Stack Tecnológica
 
 - **Linguagem:** Rust (edição 2021)
