@@ -1551,9 +1551,10 @@ pub fn update_game_run_stats(
 
 pub fn update_victory_stats_display(
     stats: Res<GameRunStats>,
+    nav: Res<MenuNavigation>,
     mut query: Query<&mut Text, With<VictoryStatsText>>,
 ) {
-    if stats.is_changed() {
+    if stats.is_changed() || nav.is_changed() {
         let minutes = (stats.elapsed_secs / 60.0) as u32;
         let seconds = (stats.elapsed_secs % 60.0) as u32;
         for mut text in query.iter_mut() {

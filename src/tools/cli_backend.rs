@@ -78,6 +78,14 @@ pub fn find_workspace_root() -> PathBuf {
 }
 
 pub fn find_game_binary(root: &Path) -> Option<PathBuf> {
+    let release_bin = root.join("target").join("release").join("deep_alchemy.exe");
+    if release_bin.exists() {
+        return Some(release_bin);
+    }
+    let linux_rel = root.join("target").join("release").join("deep_alchemy");
+    if linux_rel.exists() {
+        return Some(linux_rel);
+    }
     let debug_bin = root.join("target").join("debug").join("deep_alchemy.exe");
     if debug_bin.exists() {
         return Some(debug_bin);
@@ -190,6 +198,128 @@ pub fn get_player_stats() -> PlayerStats {
             "Swift Potion".to_string(),
         ],
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GamePlaythroughResult {
+    pub success: bool,
+    pub dungeon_dual_cells: usize,
+    pub exit_position: [f32; 3],
+    pub potions_thrown: u32,
+    pub torches_lit: u32,
+    pub creatures_encountered: u32,
+    pub final_distance_to_exit: f32,
+    pub has_won: bool,
+    pub victory_view_active: bool,
+    pub victory_summary: String,
+}
+
+pub fn run_playthrough_simulation() -> Result<GamePlaythroughResult, String> {
+    use bevy::prelude::*;
+
+    let config = crate::dungeon::generator::DungeonConfig::default();
+    let dungeon = crate::dungeon::generator::DungeonGenerator::generate(config);
+    if dungeon.dual_cells.is_empty() {
+        return Err("Failed to generate dungeon: dual cells empty".to_string());
+    }
+
+    let exit_cell = dungeon
+        .dual_cells
+        .iter()
+        .find(|c| c.macro_room == Some(crate::dungeon::generator::RoomType::AbyssalExit))
+        .or_else(|| dungeon.dual_cells.last());
+    let exit_pos = exit_cell
+        .map(|c| c.world_pos + Vec3::new(0.0, 1.0, 1.0))
+        .unwrap_or(Vec3::new(0.0, 1.0, 48.0));
+
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin));
+    app.init_state::<crate::ui::menu::GameState>();
+    app.insert_resource(crate::ui::menu::MenuNavigation {
+        current_view: crate::ui::menu::MenuView::Main,
+        has_started: true,
+    });
+    app.insert_resource(crate::ui::menu::GameRunStats::default());
+    app.add_systems(Update, crate::dungeon::generator::update_abyssal_victory_trigger);
+
+    let player_entity = app
+        .world_mut()
+        .spawn((
+            crate::player::camera::Player,
+            Transform::from_xyz(0.0, 1.4, 0.0),
+        ))
+        .id();
+
+    app.world_mut().spawn((
+        crate::dungeon::generator::AbyssalVictoryExitTrigger,
+        Transform::from_translation(exit_pos),
+    ));
+
+    {
+        let mut stats = app.world_mut().resource_mut::<crate::ui::menu::GameRunStats>();
+        stats.potions_thrown += 1;
+        stats.elapsed_secs += 2.5;
+    }
+    app.update();
+
+    {
+        let mut tf = app.world_mut().get_mut::<Transform>(player_entity).unwrap();
+        tf.translation = Vec3::new(0.0, 1.4, 12.0);
+        let mut stats = app.world_mut().resource_mut::<crate::ui::menu::GameRunStats>();
+        stats.torches_lit += 1;
+        stats.elapsed_secs += 4.0;
+    }
+    app.update();
+
+    {
+        let mut tf = app.world_mut().get_mut::<Transform>(player_entity).unwrap();
+        tf.translation = Vec3::new(0.0, 1.4, 25.0);
+        let mut stats = app.world_mut().resource_mut::<crate::ui::menu::GameRunStats>();
+        stats.creatures_encountered += 3;
+        stats.elapsed_secs += 6.5;
+    }
+    app.update();
+
+    let target_player_pos = exit_pos + Vec3::new(0.0, 0.5, 0.0);
+    {
+        let mut tf = app.world_mut().get_mut::<Transform>(player_entity).unwrap();
+        tf.translation = target_player_pos;
+        let mut stats = app.world_mut().resource_mut::<crate::ui::menu::GameRunStats>();
+        stats.elapsed_secs += 5.0;
+    }
+    app.update();
+
+    let final_distance = (target_player_pos - exit_pos).length();
+    let nav = app.world().resource::<crate::ui::menu::MenuNavigation>();
+    let stats = app.world().resource::<crate::ui::menu::GameRunStats>();
+
+    let has_won = stats.has_won;
+    let victory_view_active = nav.current_view == crate::ui::menu::MenuView::Victory;
+
+    if !has_won || !victory_view_active {
+        return Err(format!(
+            "Victory condition failed: has_won={}, victory_view_active={}, distance={:.2}m",
+            has_won, victory_view_active, final_distance
+        ));
+    }
+
+    let summary = format!(
+        "Vitória validada! Tempo: {:.1}s, Poções: {}, Tochas: {}, Bichinhos: {}",
+        stats.elapsed_secs, stats.potions_thrown, stats.torches_lit, stats.creatures_encountered
+    );
+
+    Ok(GamePlaythroughResult {
+        success: true,
+        dungeon_dual_cells: dungeon.dual_cells.len(),
+        exit_position: [exit_pos.x, exit_pos.y, exit_pos.z],
+        potions_thrown: stats.potions_thrown,
+        torches_lit: stats.torches_lit,
+        creatures_encountered: stats.creatures_encountered,
+        final_distance_to_exit: final_distance,
+        has_won,
+        victory_view_active,
+        victory_summary: summary,
+    })
 }
 
 pub fn main_entry() {
@@ -306,9 +436,35 @@ pub fn main_entry() {
                 println!("To capture a 360° panoramic screenshot, run: cargo run -- --panorama");
             }
         }
+        "play" | "playthrough" => {
+            println!("=== Deep Alchemy Playthrough Simulation ===");
+            match run_playthrough_simulation() {
+                Ok(res) => {
+                    if as_json {
+                        println!("{}", serde_json::to_string_pretty(&res).unwrap());
+                    } else {
+                        println!("Status Masmorra  : {} dual cells geradas", res.dungeon_dual_cells);
+                        println!("Posição Saída    : [{:.1}, {:.1}, {:.1}]", res.exit_position[0], res.exit_position[1], res.exit_position[2]);
+                        println!("Distância Saída  : {:.2}m", res.final_distance_to_exit);
+                        println!("Poções Lançadas  : {}", res.potions_thrown);
+                        println!("Tochas Acesas    : {}", res.torches_lit);
+                        println!("Bichos Vistos    : {}", res.creatures_encountered);
+                        println!("Vitória          : {}", if res.has_won { "SIM (Confirmada)" } else { "NÃO" });
+                        println!("Tela de Vitória  : {}", if res.victory_view_active { "ATIVA (MenuView::Victory)" } else { "INATIVA" });
+                        println!("==================================================");
+                        println!("🎉 JOGO ZERADO COM SUCESSO! VICTORY CONFIRMED! 🎉");
+                        println!("==================================================");
+                    }
+                }
+                Err(err) => {
+                    eprintln!("Playthrough simulation failed: {}", err);
+                    std::process::exit(1);
+                }
+            }
+        }
         _ => {
             println!("Deep Alchemy Rust CLI Harness");
-            println!("Commands: status, recipes, brew, player, validate, squeeze, blueprint, panorama");
+            println!("Commands: status, recipes, brew, player, play, validate, squeeze, blueprint, panorama");
         }
     }
 }
