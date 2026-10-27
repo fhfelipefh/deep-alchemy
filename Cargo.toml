@@ -1,6 +1,6 @@
 [package]
 name = "deep_alchemy"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 default-run = "deep_alchemy"
 
@@ -20,8 +20,8 @@ winit = { version = "0.30", default-features = false }
 [package.metadata.android]
 package = "com.ifpf.vitriol"
 label = "Vitriol"
-version_code = 1
-version_name = "0.1.0"
+version_code = 2
+version_name = "0.1.1"
 min_sdk_version = 26
 target_sdk_version = 35
 orientation = "sensorLandscape"

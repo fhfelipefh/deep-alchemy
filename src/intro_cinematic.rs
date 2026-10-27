@@ -7,7 +7,10 @@ use bevy::{prelude::*, render::view::RenderLayers};
 const CINEMATIC_ORIGIN: Vec3 = Vec3::new(64.0, 0.0, 64.0);
 const FLOWER_PLAYER_POSITION: Vec3 = Vec3::new(64.0, 1.2, 64.0);
 const RIFT_PLAYER_POSITION: Vec3 = Vec3::new(64.0, 1.2, 48.4);
-const WATERFALL_TOP_POSITION: Vec3 = Vec3::new(64.0, 8.5, 24.5);
+const WATERFALL_TOP_POSITION: Vec3 = Vec3::new(64.0, 8.5, 28.0);
+const FLOWER_VISUAL_POSITION: Vec3 = Vec3::new(64.0, 0.0, 63.25);
+const RIFT_VISUAL_POSITION: Vec3 = Vec3::new(64.0, 0.0, 48.4);
+const WATERFALL_VISUAL_POSITION: Vec3 = Vec3::new(64.0, 8.5, 28.0);
 const CONTROL_START_POSITION: Vec3 = Vec3::new(0.0, 1.2, -2.2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -34,6 +37,9 @@ struct IntroCinematicCamera;
 
 #[derive(Component)]
 struct IntroCinematicScenery;
+
+#[derive(Component)]
+struct IntroCinematicPlayerModel;
 
 pub struct IntroCinematicPlugin;
 
@@ -64,89 +70,82 @@ fn setup_intro_cinematic_environment(mut commands: Commands, asset_server: Res<A
         SceneRoot(asset_server.load("models/intro_cinematic.glb#Scene0")),
         Transform::from_translation(CINEMATIC_ORIGIN),
     ));
+    commands.spawn((
+        Name::new("Intro_Cinematic_Alchemist_Model"),
+        IntroCinematicPlayerModel,
+        SceneRoot(asset_server.load("models/player.glb#Scene0")),
+        Transform::from_translation(FLOWER_VISUAL_POSITION),
+    ));
     let cinematic_camera = commands
         .spawn((
             IntroCinematicCamera,
             Camera3d::default(),
             Camera {
                 is_active: false,
+                clear_color: ClearColorConfig::Custom(Color::srgb(0.035, 0.09, 0.13)),
                 ..default()
             },
             RenderLayers::layer(3),
             Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(0.0, 2.6, 5.8))
                 .looking_at(CINEMATIC_ORIGIN + Vec3::new(0.0, 0.9, 0.0), Vec3::Y),
-            DistanceFog {
-                color: Color::srgba(0.025, 0.05, 0.08, 1.0),
-                falloff: FogFalloff::ExponentialSquared { density: 0.007 },
-                ..default()
-            },
         ))
         .id();
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.95, 0.96, 0.90),
-            intensity: 48000.0,
-            range: 22.0,
+            color: Color::srgb(1.0, 0.97, 0.87),
+            intensity: 180000.0,
+            range: 42.0,
             shadows_enabled: false,
             ..default()
         },
         RenderLayers::layer(3),
-        Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(0.0, 5.0, 2.0)),
+        Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(0.0, 4.0, 7.0)),
     ));
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.70, 0.16, 0.95),
-            intensity: 38000.0,
-            range: 18.0,
+            color: Color::srgb(0.22, 0.72, 1.0),
+            intensity: 52000.0,
+            range: 24.0,
             shadows_enabled: false,
             ..default()
         },
         RenderLayers::layer(3),
-        Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(0.0, 4.0, -17.5)),
+        Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(0.0, 5.0, -36.0)),
     ));
-    commands
-        .spawn((
-            IntroCinematicOverlay,
-            TargetCamera(cinematic_camera),
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                position_type: PositionType::Absolute,
-                display: Display::None,
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::FlexEnd,
-                padding: UiRect::bottom(Val::Px(38.0)),
-                ..default()
-            },
-            ZIndex(300),
-        ))
-        .with_children(|overlay| {
-            overlay.spawn((
-                Text::new("Espaço ou Enter para Pular"),
-                TextFont {
-                    font: asset_server.load("fonts/DejaVuSans.ttf"),
-                    font_size: 18.0,
-                    ..default()
-                },
-                TextColor(Color::srgba(0.90, 0.98, 1.0, 0.92)),
-                Node {
-                    padding: UiRect::axes(Val::Px(18.0), Val::Px(8.0)),
-                    ..default()
-                },
-                BackgroundColor(Color::srgba(0.01, 0.03, 0.06, 0.72)),
-                BorderRadius::all(Val::Px(8.0)),
-            ));
-        });
+    commands.spawn((
+        IntroCinematicOverlay,
+        TargetCamera(cinematic_camera),
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            position_type: PositionType::Absolute,
+            display: Display::None,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::FlexEnd,
+            padding: UiRect::bottom(Val::Px(38.0)),
+            ..default()
+        },
+        ZIndex(300),
+    ));
 }
 
 fn prepare_intro_scene_layers(
     mut commands: Commands,
     scenery_query: Query<Entity, With<IntroCinematicScenery>>,
+    actor_query: Query<Entity, With<IntroCinematicPlayerModel>>,
     children_query: Query<&Children>,
 ) {
     for scenery in scenery_query.iter() {
         apply_layer_to_scene_descendants(
             scenery,
+            RenderLayers::layer(3),
+            &mut commands,
+            &children_query,
+        );
+    }
+    for actor in actor_query.iter() {
+        apply_layer_to_scene_descendants(
+            actor,
             RenderLayers::layer(3),
             &mut commands,
             &children_query,
@@ -173,7 +172,19 @@ fn begin_intro_cinematic(
     mut virtual_time: ResMut<Time<Virtual>>,
     mut player_query: Query<
         (&mut Transform, &mut LocomotionState),
-        (With<Player>, Without<IntroCinematicCamera>),
+        (
+            With<Player>,
+            Without<IntroCinematicCamera>,
+            Without<IntroCinematicPlayerModel>,
+        ),
+    >,
+    mut actor_query: Query<
+        &mut Transform,
+        (
+            With<IntroCinematicPlayerModel>,
+            Without<Player>,
+            Without<IntroCinematicCamera>,
+        ),
     >,
     mut cinematic_camera_query: Query<(&mut Transform, &mut Camera), With<IntroCinematicCamera>>,
     mut player_camera_query: Query<
@@ -205,17 +216,29 @@ fn begin_intro_cinematic(
     apply_stage_pose(
         IntroCinematicStage::Flowers,
         &mut player_query,
+        &mut actor_query,
         &mut cinematic_camera_query,
     );
 }
 
 fn advance_intro_cinematic(
     time: Res<Time>,
-    keys: Option<Res<ButtonInput<KeyCode>>>,
     mut cinematic: ResMut<IntroCinematicState>,
     mut player_query: Query<
         (&mut Transform, &mut LocomotionState),
-        (With<Player>, Without<IntroCinematicCamera>),
+        (
+            With<Player>,
+            Without<IntroCinematicCamera>,
+            Without<IntroCinematicPlayerModel>,
+        ),
+    >,
+    mut actor_query: Query<
+        &mut Transform,
+        (
+            With<IntroCinematicPlayerModel>,
+            Without<Player>,
+            Without<IntroCinematicCamera>,
+        ),
     >,
     mut cinematic_camera_query: Query<(&mut Transform, &mut Camera), With<IntroCinematicCamera>>,
     mut player_camera_query: Query<
@@ -231,23 +254,6 @@ fn advance_intro_cinematic(
         return;
     }
 
-    let skip_requested = keys
-        .as_ref()
-        .is_some_and(|keys| keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter));
-    if skip_requested {
-        finish_intro_cinematic(
-            &mut cinematic,
-            &mut player_query,
-            &mut cinematic_camera_query,
-            &mut player_camera_query,
-            &mut overlay_query,
-            &mut nav,
-            &mut loading_request,
-            &mut next_state,
-        );
-        return;
-    }
-
     cinematic.elapsed_secs += time.delta_secs();
     match cinematic.stage {
         IntroCinematicStage::Flowers if cinematic.elapsed_secs >= 4.0 => {
@@ -256,6 +262,7 @@ fn advance_intro_cinematic(
             apply_stage_pose(
                 cinematic.stage,
                 &mut player_query,
+                &mut actor_query,
                 &mut cinematic_camera_query,
             );
         }
@@ -265,6 +272,7 @@ fn advance_intro_cinematic(
             apply_stage_pose(
                 cinematic.stage,
                 &mut player_query,
+                &mut actor_query,
                 &mut cinematic_camera_query,
             );
         }
@@ -275,7 +283,20 @@ fn advance_intro_cinematic(
                     WATERFALL_TOP_POSITION.y - cinematic.elapsed_secs * 3.2;
                 locomotion.vertical_velocity = -3.2;
                 locomotion.is_grounded = false;
-                reached_water = player_transform.translation.y <= 0.25;
+                reached_water = player_transform.translation.y <= 1.0;
+            }
+            if let Ok(mut actor_transform) = actor_query.get_single_mut() {
+                actor_transform.translation.y =
+                    WATERFALL_VISUAL_POSITION.y - cinematic.elapsed_secs * 3.2;
+                if let Ok((mut camera_transform, _)) = cinematic_camera_query.get_single_mut() {
+                    *camera_transform = Transform::from_translation(
+                        actor_transform.translation + Vec3::new(0.0, 2.2, 6.5),
+                    )
+                    .looking_at(
+                        actor_transform.translation + Vec3::new(0.0, -0.1, -0.7),
+                        Vec3::Y,
+                    );
+                }
             }
             if reached_water {
                 finish_intro_cinematic(
@@ -298,7 +319,19 @@ fn apply_stage_pose(
     stage: IntroCinematicStage,
     player_query: &mut Query<
         (&mut Transform, &mut LocomotionState),
-        (With<Player>, Without<IntroCinematicCamera>),
+        (
+            With<Player>,
+            Without<IntroCinematicCamera>,
+            Without<IntroCinematicPlayerModel>,
+        ),
+    >,
+    actor_query: &mut Query<
+        &mut Transform,
+        (
+            With<IntroCinematicPlayerModel>,
+            Without<Player>,
+            Without<IntroCinematicCamera>,
+        ),
     >,
     cinematic_camera_query: &mut Query<(&mut Transform, &mut Camera), With<IntroCinematicCamera>>,
 ) {
@@ -306,6 +339,9 @@ fn apply_stage_pose(
         return;
     };
     let Ok((mut camera_transform, _)) = cinematic_camera_query.get_single_mut() else {
+        return;
+    };
+    let Ok(mut actor_transform) = actor_query.get_single_mut() else {
         return;
     };
 
@@ -317,21 +353,24 @@ fn apply_stage_pose(
     match stage {
         IntroCinematicStage::Flowers => {
             player_transform.translation = FLOWER_PLAYER_POSITION;
+            actor_transform.translation = FLOWER_VISUAL_POSITION;
             *camera_transform =
-                Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(0.0, 2.6, 5.8))
-                    .looking_at(CINEMATIC_ORIGIN + Vec3::new(0.0, 0.9, 0.0), Vec3::Y);
+                Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(0.0, 3.5, 7.0))
+                    .looking_at(CINEMATIC_ORIGIN + Vec3::new(0.0, 0.9, -0.4), Vec3::Y);
         }
         IntroCinematicStage::Rift => {
             player_transform.translation = RIFT_PLAYER_POSITION;
+            actor_transform.translation = RIFT_VISUAL_POSITION;
             *camera_transform =
-                Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(0.0, 2.8, -10.5))
-                    .looking_at(CINEMATIC_ORIGIN + Vec3::new(0.0, 0.6, -17.0), Vec3::Y);
+                Transform::from_translation(RIFT_PLAYER_POSITION + Vec3::new(0.0, 2.6, 7.4))
+                    .looking_at(CINEMATIC_ORIGIN + Vec3::new(0.0, -0.35, -17.5), Vec3::Y);
         }
         IntroCinematicStage::WaterfallFall => {
             player_transform.translation = WATERFALL_TOP_POSITION;
+            actor_transform.translation = WATERFALL_VISUAL_POSITION;
             *camera_transform =
-                Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(0.0, 4.8, -31.0))
-                    .looking_at(CINEMATIC_ORIGIN + Vec3::new(0.0, 2.0, -39.0), Vec3::Y);
+                Transform::from_translation(WATERFALL_TOP_POSITION + Vec3::new(0.0, 2.2, 6.5))
+                    .looking_at(WATERFALL_TOP_POSITION + Vec3::new(0.0, -0.1, -0.7), Vec3::Y);
         }
     }
 }
@@ -340,7 +379,11 @@ fn finish_intro_cinematic(
     cinematic: &mut IntroCinematicState,
     player_query: &mut Query<
         (&mut Transform, &mut LocomotionState),
-        (With<Player>, Without<IntroCinematicCamera>),
+        (
+            With<Player>,
+            Without<IntroCinematicCamera>,
+            Without<IntroCinematicPlayerModel>,
+        ),
     >,
     cinematic_camera_query: &mut Query<(&mut Transform, &mut Camera), With<IntroCinematicCamera>>,
     player_camera_query: &mut Query<

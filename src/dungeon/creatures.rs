@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use crate::{
     alchemy::{AlchemicalEffectKind, PotionProjectile},
     dungeon::asset_loader::SceneAssetRegistry,
+    dungeon::generator::WallTorchMount,
     player::camera::Player,
     render::particles::{ParticleEmitter, ParticleType},
 };
@@ -133,11 +134,39 @@ pub fn spawn_dungeon_creature_instance(
 
 pub fn update_creature_patrol_and_movement(
     time: Res<Time>,
-    mut creatures: Query<(&mut Transform, &mut LinearVelocity, &mut DungeonCreature)>,
+    torches: Query<&Transform, (With<WallTorchMount>, Without<DungeonCreature>)>,
+    mut creatures: Query<
+        (&mut Transform, &mut LinearVelocity, &mut DungeonCreature),
+        Without<WallTorchMount>,
+    >,
 ) {
     let dt = time.delta_secs();
 
     for (mut transform, mut velocity, mut creature) in creatures.iter_mut() {
+        let mut avoiding_torch = false;
+        for torch in &torches {
+            let offset = transform.translation - torch.translation;
+            let horizontal = Vec2::new(offset.x, offset.z);
+            if horizontal.length_squared() < 1.65 * 1.65 && transform.translation.y < 3.8 {
+                let away = if horizontal.length_squared() > 0.01 {
+                    horizontal.normalize()
+                } else {
+                    Vec2::X
+                };
+                transform.translation.x = torch.translation.x + away.x * 1.65;
+                transform.translation.z = torch.translation.z + away.y * 1.65;
+                transform.translation.y = 0.45;
+                velocity.x = 0.0;
+                velocity.y = 0.0;
+                velocity.z = 0.0;
+                avoiding_torch = true;
+                break;
+            }
+        }
+        if avoiding_torch {
+            continue;
+        }
+
         if creature.dodge_cooldown > 0.0 {
             creature.dodge_cooldown = (creature.dodge_cooldown - dt).max(0.0);
         }

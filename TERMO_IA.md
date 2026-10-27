@@ -14,6 +14,7 @@ A equipe declara que foi feito o uso de ferramentas de inteligência artificial 
 | Assistentes de Código (LLM) | Auxílio com matemática procedural | Geração de masmorra procedural (WFC e Dual Grid) |
 | Assistentes de Código (LLM) | Auxílio na sintaxe de shaders | Shaders WGSL cel-shaded e contornos Sobel |
 | Assistentes de Código (LLM) | Depuração e testes unitários | Suíte de testes automatizados (`tests/unit_tests.rs`) |
+| Codex (OpenAI) | Correção de bugs, validação da build e ajustes de iluminação/cenário no Blender | Introdução 3D, spawns de tochas e movimento de criaturas |
 
 ## 3. Declaração e Conformidade Estrita com as Regras da Jam
 
@@ -21,7 +22,7 @@ A equipe declara que foi feito o uso de ferramentas de inteligência artificial 
 2. **Assets Audiovisuais (Regra 2 - Proibição de IA Generativa):** Em estrito cumprimento à regra oficial de que *"é terminantemente proibido o uso de IA generativa para criar arte (sprites, modelos 3D, texturas, ilustrações, concept art, interfaces), música, efeitos sonoros (SFX) ou dublagens"*:
    - **Nenhum asset visual ou sonoro foi gerado por IA generativa.**
    - Os modelos 3D low-poly foram construídos no **Blender** de forma autoral ou gerados por geometria procedural.
-   - A interface do usuário (UI) e a história em quadrinhos da introdução foram construídas 100% in-game através da hierarquia de nós vetoriais e Bevy UI nativa.
+   - A introdução é uma cinemática 3D em tempo real com cenários modelados no Blender; não usa quadrinhos ou imagens geradas por IA.
    - Todos os efeitos sonoros (SFX) foram gerados via **código de síntese matemática DSP em Rust** (`src/audio/synth.rs`), sem qualquer modelo de IA de áudio ou samples protegidos por direitos autorais.
 
 Declaramos que as informações apresentadas neste documento são verdadeiras e que o uso de ferramentas de Inteligência Artificial no projeto foi informado de maneira transparente e em total conformidade com o edital da Game Jam.

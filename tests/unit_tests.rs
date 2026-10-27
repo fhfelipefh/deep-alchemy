@@ -5905,6 +5905,7 @@ fn test_unit_crystal_geode_variations_and_grounded_placement() {
 
 #[test]
 fn test_unit_dungeon_wall_torch_ignition_timer_and_ice_extinguishing() {
+    use avian3d::prelude::{Collider, RigidBody};
     use deep_alchemy::alchemy::{
         update_dungeon_wall_torches, DungeonWallTorch,
     };
@@ -5923,6 +5924,12 @@ fn test_unit_dungeon_wall_torch_ignition_timer_and_ice_extinguishing() {
     app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(50)));
 
     let sconce_pos = Vec3::new(-1.18, 2.05, 12.0);
+    let wall_support = app.world_mut().spawn((
+        deep_alchemy::dungeon::modular_kit::CavernObstacle,
+        RigidBody::Static,
+        Collider::cuboid(0.85, 5.0, 6.0),
+        Transform::from_xyz(-2.0, 2.5, 12.0),
+    )).id();
     let torch_entity = {
         let registry = SceneAssetRegistry::default();
         let asset_server = app.world().resource::<AssetServer>().clone();
@@ -5931,6 +5938,7 @@ fn test_unit_dungeon_wall_torch_ignition_timer_and_ice_extinguishing() {
             &mut commands,
             &asset_server,
             &registry,
+            wall_support,
             sconce_pos,
             Quat::IDENTITY,
             false,

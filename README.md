@@ -9,10 +9,10 @@ Jogo 3D em primeira pessoa desenvolvido para a **IFPF Game Jam** (Tema: *Alquimi
 Para os avaliadores da Game Jam ou jogadores que desejam testar o jogo imediatamente no Windows (sem precisar ter Rust ou compiladores instalados):
 
 1. **Baixe o arquivo compactado disponível na raiz deste repositório:**
-   👉 **[`Vitriol-v0.1.0-windows-x64.zip`](Vitriol-v0.1.0-windows-x64.zip)** *(ou baixe via [GitHub Releases](https://github.com/fhfelipefh/deep-alchemy/releases/tag/v0.1.0))*
+   👉 **[`Vitriol-v0.1.1-windows-x64.zip`](Vitriol-v0.1.1-windows-x64.zip)** *(ou baixe via [GitHub Releases](https://github.com/fhfelipefh/deep-alchemy/releases/tag/v0.1.1))*
 2. Extraia o arquivo `.zip` em qualquer pasta do seu computador.
 3. Dê duplo clique no executável **`deep_alchemy.exe`**.
-4. Divirta-se! O jogo iniciará com a introdução cinematográfica 3D e o menu principal.
+4. Divirta-se! O jogo iniciará com uma introdução cinematográfica 3D e o menu principal.
 
 ---
 
