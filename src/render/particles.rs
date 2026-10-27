@@ -1,5 +1,78 @@
 use bevy::prelude::*;
 
+pub const MAX_ACTIVE_PARTICLES: usize = 256;
+
+#[derive(Resource)]
+pub struct ParticleAssets {
+    steam_mesh: Handle<Mesh>,
+    splash_mesh: Handle<Mesh>,
+    spore_mesh: Handle<Mesh>,
+    flame_mesh: Handle<Mesh>,
+    steam_material: Handle<StandardMaterial>,
+    splash_material: Handle<StandardMaterial>,
+    spore_material: Handle<StandardMaterial>,
+    flame_materials: [Handle<StandardMaterial>; 3],
+}
+
+impl FromWorld for ParticleAssets {
+    fn from_world(world: &mut World) -> Self {
+        let mut meshes = world.resource_mut::<Assets<Mesh>>();
+        let steam_mesh = meshes.add(Sphere::new(0.11).mesh().uv(8, 6));
+        let splash_mesh = meshes.add(crate::alchemy::surface_fluid::create_teardrop_droplet_mesh(
+            0.045, 8, 6,
+        ));
+        let spore_mesh = meshes.add(Sphere::new(0.012).mesh().uv(8, 6));
+        let flame_mesh = meshes.add(Sphere::new(0.045).mesh().uv(8, 6));
+        drop(meshes);
+
+        let mut materials = world.resource_mut::<Assets<StandardMaterial>>();
+        let steam_material = materials.add(StandardMaterial {
+            base_color: Color::srgba(0.88, 0.95, 1.0, 0.28),
+            alpha_mode: AlphaMode::Blend,
+            unlit: true,
+            ..default()
+        });
+        let splash_material = materials.add(StandardMaterial {
+            base_color: Color::LinearRgba(LinearRgba::new(0.28, 0.55, 0.75, 0.18)),
+            alpha_mode: AlphaMode::Add,
+            unlit: true,
+            ..default()
+        });
+        let spore_material = materials.add(StandardMaterial {
+            base_color: Color::srgba(0.25, 0.88, 0.95, 0.65),
+            alpha_mode: AlphaMode::Blend,
+            unlit: true,
+            ..default()
+        });
+        let flame_materials = [
+            materials.add(flame_material(Color::srgb(1.0, 0.42, 0.05))),
+            materials.add(flame_material(Color::srgb(1.0, 0.56, 0.08))),
+            materials.add(flame_material(Color::srgb(1.0, 0.68, 0.12))),
+        ];
+
+        Self {
+            steam_mesh,
+            splash_mesh,
+            spore_mesh,
+            flame_mesh,
+            steam_material,
+            splash_material,
+            spore_material,
+            flame_materials,
+        }
+    }
+}
+
+fn flame_material(color: Color) -> StandardMaterial {
+    StandardMaterial {
+        base_color: color,
+        emissive: Color::srgb(1.0, 0.35, 0.02).to_linear() * 3.8,
+        alpha_mode: AlphaMode::Blend,
+        unlit: true,
+        ..default()
+    }
+}
+
 #[derive(Component)]
 pub struct ParticleEmitter {
     pub spawn_timer: f32,
@@ -26,15 +99,20 @@ pub struct Particle {
 pub fn spawn_particles(
     mut commands: Commands,
     time: Res<Time>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    assets: Res<ParticleAssets>,
     mut emitters: Query<(&mut ParticleEmitter, Option<&GlobalTransform>, &Transform)>,
+    particles: Query<&Particle>,
 ) {
     let dt = time.delta_secs();
+    let mut active_count = particles.iter().count();
     for (mut emitter, global_tf, tf) in emitters.iter_mut() {
         emitter.spawn_timer += dt;
         if emitter.spawn_timer >= emitter.spawn_rate {
             emitter.spawn_timer = 0.0;
+            if active_count >= MAX_ACTIVE_PARTICLES {
+                continue;
+            }
+            active_count += 1;
             let pos = global_tf.map(|g| g.translation()).unwrap_or(tf.translation);
             match emitter.particle_type {
                 ParticleType::Steam => {
@@ -44,13 +122,8 @@ pub fn spawn_particles(
                         (fastrand::f32() - 0.5) * 0.7,
                     );
                     commands.spawn((
-                        Mesh3d(meshes.add(Sphere::new(0.11).mesh().uv(8, 6))),
-                        MeshMaterial3d(materials.add(StandardMaterial {
-                            base_color: Color::srgba(0.88, 0.95, 1.0, 0.28),
-                            alpha_mode: AlphaMode::Blend,
-                            unlit: true,
-                            ..default()
-                        })),
+                        Mesh3d(assets.steam_mesh.clone()),
+                        MeshMaterial3d(assets.steam_material.clone()),
                         Transform::from_translation(pos),
                         Particle {
                             lifetime: 0.0,
@@ -67,13 +140,8 @@ pub fn spawn_particles(
                         (fastrand::f32() - 0.5) * 1.8,
                     );
                     commands.spawn((
-                        Mesh3d(meshes.add(crate::alchemy::surface_fluid::create_teardrop_droplet_mesh(0.045, 8, 6))),
-                        MeshMaterial3d(materials.add(StandardMaterial {
-                            base_color: Color::LinearRgba(LinearRgba::new(0.28, 0.55, 0.75, 0.18)),
-                            alpha_mode: AlphaMode::Add,
-                            unlit: true,
-                            ..default()
-                        })),
+                        Mesh3d(assets.splash_mesh.clone()),
+                        MeshMaterial3d(assets.splash_material.clone()),
                         Transform::from_translation(pos),
                         Particle {
                             lifetime: 0.0,
@@ -98,13 +166,8 @@ pub fn spawn_particles(
                         (fastrand::f32() - 0.5) * 0.08,
                     );
                     commands.spawn((
-                        Mesh3d(meshes.add(Sphere::new(0.012).mesh().uv(8, 6))),
-                        MeshMaterial3d(materials.add(StandardMaterial {
-                            base_color: Color::srgba(0.25, 0.88, 0.95, 0.65),
-                            alpha_mode: AlphaMode::Blend,
-                            unlit: true,
-                            ..default()
-                        })),
+                        Mesh3d(assets.spore_mesh.clone()),
+                        MeshMaterial3d(assets.spore_material.clone()),
                         Transform::from_translation(spawn_pos),
                         Particle {
                             lifetime: 0.0,
@@ -128,16 +191,13 @@ pub fn spawn_particles(
                         0.9 + fastrand::f32() * 0.75,
                         (fastrand::f32() - 0.5) * 0.35,
                     );
-                    let fire_color = Color::srgba(1.0, 0.42 + fastrand::f32() * 0.28, 0.05, 0.82);
+                    let flame_index =
+                        ((fastrand::f32() * assets.flame_materials.len() as f32) as usize)
+                            .min(assets.flame_materials.len() - 1);
+                    let fire_material = assets.flame_materials[flame_index].clone();
                     commands.spawn((
-                        Mesh3d(meshes.add(Sphere::new(0.045).mesh().uv(8, 6))),
-                        MeshMaterial3d(materials.add(StandardMaterial {
-                            base_color: fire_color,
-                            emissive: Color::srgb(1.0, 0.35, 0.02).to_linear() * 3.8,
-                            alpha_mode: AlphaMode::Blend,
-                            unlit: true,
-                            ..default()
-                        })),
+                        Mesh3d(assets.flame_mesh.clone()),
+                        MeshMaterial3d(fire_material),
                         Transform::from_translation(spawn_pos),
                         Particle {
                             lifetime: 0.0,
@@ -237,6 +297,9 @@ mod tests {
         world.insert_resource(time);
         world.insert_resource(Assets::<Mesh>::default());
         world.insert_resource(Assets::<StandardMaterial>::default());
+        world.init_resource::<ParticleAssets>();
+        let mesh_count = world.resource::<Assets<Mesh>>().len();
+        let material_count = world.resource::<Assets<StandardMaterial>>().len();
 
         world.spawn((
             ParticleEmitter {
@@ -271,6 +334,8 @@ mod tests {
 
         let count = world.query::<&Particle>().iter(&world).count();
         assert_eq!(count, 3, "All 3 emitters must have spawned a particle");
+        assert_eq!(world.resource::<Assets<Mesh>>().len(), mesh_count);
+        assert_eq!(world.resource::<Assets<StandardMaterial>>().len(), material_count);
 
         world
             .resource_mut::<Time<()>>()
@@ -281,5 +346,40 @@ mod tests {
 
         let remaining = world.query::<&Particle>().iter(&world).count();
         assert_eq!(remaining, 0, "Expired particles must be despawned");
+    }
+
+    #[test]
+    fn test_particle_count_is_capped() {
+        let mut world = World::new();
+        let mut time = Time::<()>::default();
+        time.advance_by(std::time::Duration::from_millis(50));
+        world.insert_resource(time);
+        world.insert_resource(Assets::<Mesh>::default());
+        world.insert_resource(Assets::<StandardMaterial>::default());
+        world.init_resource::<ParticleAssets>();
+
+        for _ in 0..MAX_ACTIVE_PARTICLES {
+            world.spawn(Particle {
+                lifetime: 0.0,
+                max_lifetime: 1.0,
+                velocity: Vec3::ZERO,
+                p_type: ParticleType::Steam,
+            });
+        }
+        world.spawn((
+            ParticleEmitter {
+                spawn_timer: 1.0,
+                spawn_rate: 0.1,
+                particle_type: ParticleType::Steam,
+            },
+            Transform::default(),
+        ));
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(spawn_particles);
+        schedule.run(&mut world);
+
+        let count = world.query::<&Particle>().iter(&world).count();
+        assert_eq!(count, MAX_ACTIVE_PARTICLES);
     }
 }

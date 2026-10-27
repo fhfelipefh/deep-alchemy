@@ -11,7 +11,7 @@ use bevy::prelude::*;
 use cel_moss_material::CelShadedMossMaterial;
 use heat_haze::{sync_heat_sources_system, update_heat_haze_uniforms, HeatHazePlugin};
 use outline::OutlinePostProcessPlugin;
-use particles::{spawn_particles, update_particles};
+use particles::{spawn_particles, update_particles, ParticleAssets};
 use planar_reflection::PlanarReflectionPlugin;
 use potion_fluid_material::{update_potion_sloshing, PotionFluidMaterial};
 use surface_fluid_material::SurfaceFluidMaterial;
@@ -30,6 +30,7 @@ impl Plugin for RenderPipelinePlugin {
             OutlinePostProcessPlugin,
             PlanarReflectionPlugin,
         ))
+        .init_resource::<ParticleAssets>()
         .add_systems(
             Update,
             (
