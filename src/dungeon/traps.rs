@@ -166,24 +166,7 @@ pub fn create_cracked_wall_fissure_mesh() -> Mesh {
     let mut uvs = Vec::new();
     let mut indices = Vec::new();
 
-    let hw = 0.55;
-    let hh = 1.10;
     let hd = 0.08;
-
-    positions.push([-hw, -hh, hd]);
-    positions.push([hw, -hh, hd]);
-    positions.push([hw, hh, hd]);
-    positions.push([-hw, hh, hd]);
-
-    for _ in 0..4 {
-        normals.push([0.0, 0.0, 1.0]);
-    }
-    uvs.push([0.0, 0.0]);
-    uvs.push([1.0, 0.0]);
-    uvs.push([1.0, 1.0]);
-    uvs.push([0.0, 1.0]);
-
-    indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
 
     let crack_segments = [
         ([-0.05, -0.9, hd + 0.01], [0.12, -0.4, hd + 0.01], [-0.08, 0.2, hd + 0.01]),
@@ -750,123 +733,9 @@ pub fn update_potion_traps_and_nests_interactions(
 }
 
 pub fn spawn_dungeon_puzzles_and_traps(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-    dungeon: &crate::dungeon::generator::ProceduralDungeon,
+    _commands: &mut Commands,
+    _meshes: &mut Assets<Mesh>,
+    _materials: &mut Assets<StandardMaterial>,
+    _dungeon: &crate::dungeon::generator::ProceduralDungeon,
 ) {
-    let width = dungeon.config.grid_width;
-    let depth = dungeon.config.grid_depth;
-    let cz = depth / 2;
-
-    let fissure_mesh = meshes.add(create_cracked_wall_fissure_mesh());
-    let fissure_mat_intact = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.12, 0.10, 0.09),
-        emissive: LinearRgba::new(0.35, 0.05, 0.02, 1.0),
-        perceptual_roughness: 0.95,
-        metallic: 0.1,
-        ..default()
-    });
-
-    let wood_wheel_mesh = meshes.add(create_wooden_trap_wheel_mesh());
-    let wood_wheel_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.38, 0.24, 0.14),
-        perceptual_roughness: 0.85,
-        metallic: 0.05,
-        ..default()
-    });
-
-    let metal_trap_mesh = meshes.add(create_metal_blade_trap_mesh());
-    let metal_trap_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.52, 0.56, 0.60),
-        perceptual_roughness: 0.25,
-        metallic: 0.88,
-        reflectance: 0.75,
-        ..default()
-    });
-
-    let mut corridor_cells = Vec::new();
-
-    for gz in (cz + 2)..(depth - 2) {
-        for gx in 2..(width - 2) {
-            let primary = dungeon.get_primary(gx, gz);
-            if primary == crate::dungeon::generator::PrimaryTile::Corridor {
-                corridor_cells.push((gx, gz));
-            }
-        }
-    }
-
-    let mut nest_count = 0;
-    let mut trap_count = 0;
-
-    for (i, &(gx, gz)) in corridor_cells.iter().enumerate() {
-        let world_pos = dungeon.grid_to_world(gx, gz);
-
-        if nest_count < 6 && (i % 3 == 0) {
-            let neighbors = [
-                (gx + 1, gz, Vec3::new(-1.0, 0.0, 0.0)),
-                (gx.saturating_sub(1), gz, Vec3::new(1.0, 0.0, 0.0)),
-                (gx, gz + 1, Vec3::new(0.0, 0.0, -1.0)),
-                (gx, gz.saturating_sub(1), Vec3::new(0.0, 0.0, 1.0)),
-            ];
-
-            for (nx, nz, wall_normal) in neighbors {
-                if dungeon.get_primary(nx, nz).is_solid() {
-                    let nest_pos = world_pos - wall_normal * 1.85 + Vec3::new(0.0, 1.35, 0.0);
-                    let rot = Quat::from_rotation_arc(Vec3::Z, wall_normal);
-
-                    let kind = if nest_count % 2 == 0 {
-                        WallNestKind::Snakes
-                    } else {
-                        WallNestKind::Scorpions
-                    };
-
-                    commands.spawn((
-                        Name::new("Cracked_Wall_Nest"),
-                        Mesh3d(fissure_mesh.clone()),
-                        MeshMaterial3d(fissure_mat_intact.clone()),
-                        Transform::from_translation(nest_pos).with_rotation(rot),
-                        CrackedWallNest::new(kind, wall_normal),
-                    ));
-
-                    nest_count += 1;
-                    break;
-                }
-            }
-        }
-
-        if trap_count < 4 && (i % 5 == 2) {
-            let (material, kind, mesh, mat, axis) = if trap_count % 2 == 0 {
-                (
-                    TrapMaterial::Wood,
-                    TrapKind::SpinningWheel,
-                    wood_wheel_mesh.clone(),
-                    wood_wheel_mat.clone(),
-                    Vec3::Z,
-                )
-            } else {
-                (
-                    TrapMaterial::Metal,
-                    TrapKind::CrushingMechanism,
-                    metal_trap_mesh.clone(),
-                    metal_trap_mat.clone(),
-                    Vec3::Y,
-                )
-            };
-
-            let trap_pos = world_pos + Vec3::new(0.0, 1.45, 0.0);
-
-            commands.spawn((
-                Name::new("Dungeon_Corridor_Trap"),
-                Mesh3d(mesh),
-                MeshMaterial3d(mat),
-                Transform::from_translation(trap_pos),
-                DungeonTrap::new(material, kind, trap_pos, axis),
-                RigidBody::Static,
-                Collider::cylinder(1.35, 0.25),
-            ));
-
-            trap_count += 1;
-        }
-    }
 }
