@@ -6331,7 +6331,7 @@ fn test_unit_dungeon_procedural_generation_creature_density_progression() {
         }
     }
 
-    assert!(total_creatures >= 14, "Dungeon must spawn creatures progressively along dungeon path, found {}", total_creatures);
+    assert_eq!(total_creatures, 8, "Dungeon must keep the monster count at half the previous 16-creature layout, found {}", total_creatures);
     assert!(exit_creatures >= entrance_creatures, "Creatures density must be higher towards the exit than entrance");
 }
 

@@ -70,14 +70,13 @@ fn main() {
 
     if is_screenshot_test {
         info!(">>> [GATE 4] Running in --screenshot-test mode: capturing frame 20 and dumping telemetry");
-        app.add_systems(Startup, switch_to_ingame_for_screenshot_test)
-            .add_systems(
-                Update,
-                (
-                    handle_screenshot_test_lifecycle,
-                    deep_alchemy::dungeon::dump_camera_frustum_telemetry,
-                ),
-            );
+        app.add_systems(
+            Update,
+            (
+                handle_screenshot_test_lifecycle,
+                deep_alchemy::dungeon::dump_camera_frustum_telemetry,
+            ),
+        );
     } else if is_menu_screenshot {
         info!(">>> [MENU SCREENSHOT] Capturing main menu frame to ./debug_output/menu_check.png");
         app.add_systems(Update, handle_menu_screenshot_lifecycle);
@@ -97,12 +96,10 @@ fn main() {
             .add_systems(Update, handle_test_room_screenshot_lifecycle);
     } else if is_panorama {
         info!(">>> [PANORAMA] Capturing 360 degree panoramic view of grotto cavern...");
-        app.add_systems(Startup, switch_to_ingame_for_screenshot_test)
-            .add_systems(Update, handle_panorama_lifecycle);
+        app.add_systems(Update, handle_panorama_lifecycle);
     } else if is_playthrough {
         info!(">>> [PLAYTHROUGH] Running automated playthrough simulation to beat the game...");
-        app.add_systems(Startup, switch_to_ingame_for_screenshot_test)
-            .add_systems(Update, handle_playthrough_lifecycle);
+        app.add_systems(Update, handle_playthrough_lifecycle);
     }
 
     app.run();
@@ -129,16 +126,30 @@ fn request_initial_loading(
     mut request: ResMut<deep_alchemy::loading::LoadingRequest>,
     mut next_state: ResMut<NextState<GameState>>,
 ) {
-    deep_alchemy::loading::request_loading(LoadingTarget::Menu, &mut request);
+    let target = if std::env::args().any(|arg| {
+        matches!(
+            arg.as_str(),
+            "--screenshot-test"
+                | "--validate-frame"
+                | "--screenshot-test-room"
+                | "--panorama"
+                | "--screenshot-panorama"
+                | "--playthrough"
+                | "--auto-win"
+        )
+    }) {
+        LoadingTarget::InGame
+    } else {
+        LoadingTarget::Menu
+    };
+    deep_alchemy::loading::request_loading(target, &mut request);
     next_state.set(GameState::Loading);
 }
 
 fn switch_to_ingame_for_test_room_screenshot(
-    mut next_state: ResMut<NextState<GameState>>,
     mut request: ResMut<deep_alchemy::dungeon::test_room::SecretTestRoomRequest>,
 ) {
     request.requested = true;
-    next_state.set(GameState::InGame);
 }
 
 fn handle_test_room_screenshot_lifecycle(
@@ -157,10 +168,6 @@ fn handle_test_room_screenshot_lifecycle(
         info!(">>> [TEST ROOM SCREENSHOT] Frame 60 reached, gracefully exiting.");
         app_exit.send(AppExit::Success);
     }
-}
-
-fn switch_to_ingame_for_screenshot_test(mut next_state: ResMut<NextState<GameState>>) {
-    next_state.set(GameState::InGame);
 }
 
 fn handle_screenshot_test_lifecycle(
@@ -545,6 +552,7 @@ fn handle_playthrough_lifecycle(
     mut commands: Commands,
     mut counter: Local<u32>,
     mut app_exit: EventWriter<AppExit>,
+    current_state: Res<State<GameState>>,
     mut player_query: Query<&mut Transform, With<deep_alchemy::player::camera::Player>>,
     exit_trigger_query: Query<
         &Transform,
@@ -556,6 +564,10 @@ fn handle_playthrough_lifecycle(
     mut stats: ResMut<deep_alchemy::ui::menu::GameRunStats>,
     nav: Res<deep_alchemy::ui::menu::MenuNavigation>,
 ) {
+    if *current_state.get() != GameState::InGame && !stats.has_won {
+        return;
+    }
+
     *counter += 1;
     if *counter == 2 {
         commands.spawn((
