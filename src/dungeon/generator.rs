@@ -516,17 +516,10 @@ impl DungeonGenerator {
                 let wx = ((gx as f32 + 0.5) * tile_size) - center_offset_x;
                 let wz = ((gz as f32 + 0.5) * tile_size) - center_offset_z;
 
-                let macro_room = [
-                    grid[gz * width + gx],
-                    grid[gz * width + (gx + 1)],
-                    grid[(gz + 1) * width + (gx + 1)],
-                    grid[(gz + 1) * width + gx],
-                ]
-                .iter()
-                .find_map(|t| match t {
-                    PrimaryTile::RoomCenter(rt) => Some(*rt),
+                let macro_room = match grid[gz * width + gx] {
+                    PrimaryTile::RoomCenter(room_type) => Some(room_type),
                     _ => None,
-                });
+                };
 
                 dual_cells.push(DualCell {
                     piece,
@@ -892,7 +885,9 @@ pub fn spawn_procedural_dungeon(
                             commands.spawn((
                                 Name::new("MacroRoom_CrystalGeode"),
                                 SceneRoot(primary_handle),
-                                Transform::from_translation(cell.world_pos)
+                                Transform::from_translation(
+                                    cell.world_pos - Vec3::new(half_tile, 0.0, half_tile),
+                                )
                                     .with_rotation(Quat::from_rotation_y(primary_yaw))
                                     .with_scale(Vec3::splat(primary_scale)),
                                 PointLight {
@@ -919,7 +914,10 @@ pub fn spawn_procedural_dungeon(
                                 commands.spawn((
                                     Name::new("MacroRoom_CrystalGeode_Cluster"),
                                     SceneRoot(sat_handle),
-                                    Transform::from_translation(cell.world_pos + offset)
+                                    Transform::from_translation(
+                                        cell.world_pos - Vec3::new(half_tile, 0.0, half_tile)
+                                            + offset,
+                                    )
                                         .with_rotation(Quat::from_rotation_y(
                                             primary_yaw + yaw_offset,
                                         ))
@@ -934,7 +932,9 @@ pub fn spawn_procedural_dungeon(
                                 Name::new("MacroRoom_AlchemicalShrine"),
                                 SceneRoot(shrine_handle),
                                 Transform::from_translation(
-                                    cell.world_pos + Vec3::new(0.0, 0.5, 0.0),
+                                    cell.world_pos
+                                        - Vec3::new(half_tile, 0.0, half_tile)
+                                        + Vec3::new(0.0, 0.5, 0.0),
                                 ),
                                 RigidBody::Static,
                                 Collider::cuboid(1.1, 1.2, 1.1),
@@ -951,7 +951,8 @@ pub fn spawn_procedural_dungeon(
                             commands.spawn((
                                 Name::new("MacroRoom_AncientBridge_Light"),
                                 Transform::from_translation(
-                                    cell.world_pos + Vec3::new(0.0, 2.8, 0.0),
+                                    cell.world_pos - Vec3::new(half_tile, 0.0, half_tile)
+                                        + Vec3::new(0.0, 2.8, 0.0),
                                 ),
                                 PointLight {
                                     color: Color::srgb(0.25, 0.65, 1.0),
@@ -969,7 +970,8 @@ pub fn spawn_procedural_dungeon(
                                 Name::new("MacroRoom_SporeSanctuary_Flora"),
                                 SceneRoot(mushroom_handle),
                                 Transform::from_translation(
-                                    cell.world_pos + Vec3::new(0.0, 0.2, 0.0),
+                                    cell.world_pos - Vec3::new(half_tile, 0.0, half_tile)
+                                        + Vec3::new(0.0, 0.2, 0.0),
                                 ),
                                 PointLight {
                                     color: Color::srgb(0.15, 0.95, 0.55),
@@ -984,7 +986,8 @@ pub fn spawn_procedural_dungeon(
                             commands.spawn((
                                 Name::new("MacroRoom_AbyssalExit_Light"),
                                 Transform::from_translation(
-                                    cell.world_pos + Vec3::new(0.0, 3.4, 1.0),
+                                    cell.world_pos - Vec3::new(half_tile, 0.0, half_tile)
+                                        + Vec3::new(0.0, 3.4, 1.0),
                                 ),
                                 PointLight {
                                     color: Color::srgb(0.20, 0.72, 0.94),
@@ -999,7 +1002,8 @@ pub fn spawn_procedural_dungeon(
                                 Name::new("AbyssalVictoryExitTrigger"),
                                 AbyssalVictoryExitTrigger,
                                 Transform::from_translation(
-                                    cell.world_pos + Vec3::new(0.0, 1.0, 1.0),
+                                    cell.world_pos - Vec3::new(half_tile, 0.0, half_tile)
+                                        + Vec3::new(0.0, 1.0, 1.0),
                                 ),
                                 Collider::cuboid(6.0, 4.0, 6.0),
                                 Sensor,
@@ -1610,6 +1614,34 @@ mod tests {
             "SporeSanctuary chamber must be generated!"
         );
         assert!(has_abyssal_exit, "AbyssalExit chamber must be generated!");
+    }
+
+    #[test]
+    fn test_macro_room_decoration_is_emitted_once_at_room_center() {
+        let width = 9;
+        let depth = 9;
+        let tile_size = 4.0;
+        let center_x = 4;
+        let center_z = 4;
+        let mut grid = vec![PrimaryTile::Rock; width * depth];
+        grid[center_z * width + center_x] = PrimaryTile::RoomCenter(RoomType::AlchemicalShrine);
+
+        let decorated_cells: Vec<_> = DungeonGenerator::compute_dual_grid(
+            &grid, width, depth, tile_size,
+        )
+        .into_iter()
+        .filter(|cell| cell.macro_room == Some(RoomType::AlchemicalShrine))
+        .collect();
+
+        assert_eq!(decorated_cells.len(), 1);
+        let half_tile = tile_size * 0.5;
+        let shrine_position = decorated_cells[0].world_pos - Vec3::new(half_tile, 0.0, half_tile);
+        let expected_position = Vec3::new(
+            center_x as f32 * tile_size - width as f32 * 0.5 * tile_size,
+            0.0,
+            center_z as f32 * tile_size - depth as f32 * 0.5 * tile_size,
+        );
+        assert_eq!(shrine_position, expected_position);
     }
 
     #[test]
