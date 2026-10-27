@@ -958,23 +958,24 @@ pub fn player_out_of_bounds_rescue(
         if p.z > 200.0 {
             continue;
         }
-        let in_corridor = p.z >= 6.5 && p.z <= 25.5;
-        let is_oob = if in_corridor {
-            p.y > 3.6 || p.y < -3.0 || p.x.abs() > 2.0
-        } else if p.z > 25.5 {
-            p.y < -15.0 || p.y > 35.0 || p.x.abs() > 65.0 || p.z > 75.0
-        } else {
-            p.y > 4.2 || p.y < -5.0 || p.x.abs() > 60.0 || p.z.abs() > 60.0
-        };
-        if is_oob {
+        if should_rescue_after_fall(p) {
             tf.translation = Vec3::new(0.0, 1.2, 0.0);
             if let Some(ref mut loco) = loco_opt {
                 loco.vertical_velocity = 0.0;
+                loco.last_fall_velocity = 0.0;
                 loco.horizontal_velocity = Vec2::ZERO;
                 loco.is_grounded = true;
+                loco.is_in_water = false;
+                loco.is_on_ice = false;
             }
         }
     }
+}
+
+const OUT_OF_BOUNDS_RESCUE_HEIGHT: f32 = -8.0;
+
+fn should_rescue_after_fall(position: Vec3) -> bool {
+    position.y < OUT_OF_BOUNDS_RESCUE_HEIGHT
 }
 
 fn update_player_fly_mode(
@@ -1815,6 +1816,55 @@ pub fn update_held_potion_visuals(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_oob_rescue_only_triggers_after_a_real_fall() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.init_resource::<FlyModeState>();
+        app.add_systems(Update, player_out_of_bounds_rescue);
+
+        let positions = [
+            Vec3::new(-3.2, 1.2, 14.0),
+            Vec3::new(3.2, 1.2, 14.0),
+            Vec3::new(4.0, 1.2, 22.0),
+            Vec3::new(40.0, 1.2, 40.0),
+            Vec3::new(0.0, 10.0, 14.0),
+            Vec3::new(0.0, -8.1, 14.0),
+            Vec3::new(0.0, -100.0, 512.0),
+        ];
+        let players: Vec<_> = positions
+            .iter()
+            .map(|position| {
+                app.world_mut()
+                    .spawn((
+                        Player,
+                        Transform::from_translation(*position),
+                        LocomotionState::default(),
+                    ))
+                    .id()
+            })
+            .collect();
+
+        app.update();
+
+        for index in [0, 1, 2, 3, 4, 6] {
+            let transform = app.world().get::<Transform>(players[index]).unwrap();
+            assert_eq!(
+                transform.translation, positions[index],
+                "Supported, airborne, distant, and isolated test-room positions must not teleport"
+            );
+        }
+
+        let fallen = app.world().get::<Transform>(players[5]).unwrap();
+        assert_eq!(fallen.translation, Vec3::new(0.0, 1.2, 0.0));
+        let locomotion = app
+            .world()
+            .get::<LocomotionState>(players[5])
+            .unwrap();
+        assert!(locomotion.is_grounded);
+        assert_eq!(locomotion.vertical_velocity, 0.0);
+    }
 
     #[test]
     fn test_locomotion_sprint_velocity_and_stamina_drain_gate() {

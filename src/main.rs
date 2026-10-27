@@ -721,6 +721,27 @@ fn run_collider_and_rescue_validation() {
         .map(|(tf, shape)| (tf, shape.clone()))
         .collect();
 
+    let traversal_obstacles: Vec<(
+        Transform,
+        deep_alchemy::dungeon::modular_kit::ObstacleShape,
+    )> = {
+        let mut query = dungeon_app.world_mut().query_filtered::<
+            (&Transform, &deep_alchemy::dungeon::modular_kit::ObstacleShape),
+            Without<deep_alchemy::dungeon::generator::DungeonEntranceSeal>,
+        >();
+        query
+            .iter(dungeon_app.world())
+            .map(|(tf, shape)| (*tf, shape.clone()))
+            .collect()
+    };
+    let traversal_obs_refs: Vec<(
+        &Transform,
+        deep_alchemy::dungeon::modular_kit::ObstacleShape,
+    )> = traversal_obstacles
+        .iter()
+        .map(|(tf, shape)| (tf, shape.clone()))
+        .collect();
+
     let width = dungeon.config.grid_width;
     let depth = dungeon.config.grid_depth;
     let tile_size = dungeon.config.tile_size;
@@ -771,7 +792,7 @@ fn run_collider_and_rescue_validation() {
                         0.35,
                         true,
                         false,
-                        &obs_refs,
+                        &traversal_obs_refs,
                     );
                     let actual_progress = (resolved - current_sim).length();
                     current_sim = resolved;
@@ -830,7 +851,11 @@ fn run_collider_and_rescue_validation() {
     rescue_app.update();
 
     let tf_high = *rescue_app.world().get::<Transform>(player_high).unwrap();
-    assert_eq!(tf_high.translation, Vec3::new(0.0, 1.2, 0.0), "High OOB player must be rescued to start");
+    assert_eq!(
+        tf_high.translation,
+        Vec3::new(0.0, 10.0, 0.0),
+        "High positions must not trigger a teleport"
+    );
 
     let player_void = rescue_app
         .world_mut()
@@ -858,7 +883,32 @@ fn run_collider_and_rescue_validation() {
     rescue_app.update();
 
     let tf_xz = *rescue_app.world().get::<Transform>(player_out_xz).unwrap();
-    assert_eq!(tf_xz.translation, Vec3::new(0.0, 1.2, 0.0), "Outer XZ OOB player must be rescued to start");
+    assert_eq!(
+        tf_xz.translation,
+        Vec3::new(80.0, 1.2, 0.0),
+        "Position limits must not trigger a teleport"
+    );
+
+    let player_corridor_side = rescue_app
+        .world_mut()
+        .spawn((
+            deep_alchemy::player::camera::Player,
+            Transform::from_xyz(3.2, 1.2, 14.0),
+            deep_alchemy::player::camera::LocomotionState::default(),
+        ))
+        .id();
+
+    rescue_app.update();
+
+    let tf_corridor_side = *rescue_app
+        .world()
+        .get::<Transform>(player_corridor_side)
+        .unwrap();
+    assert_eq!(
+        tf_corridor_side.translation,
+        Vec3::new(3.2, 1.2, 14.0),
+        "A player standing on the exit-side floor must not teleport"
+    );
 
     println!("[DUNGEON TRAVERSAL & COLLIDER VALIDATION PASSED] 100% of reachable dungeon walkways verified traversable! Invisible colliders: 0. Wall collisions and OOB rescue verified.");
 }
