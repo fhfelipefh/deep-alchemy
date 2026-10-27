@@ -116,14 +116,17 @@ pub fn spawn_dungeon_creature_instance(
     commands
         .spawn((
             Name::new(format!("DungeonCreature_{:?}", species)),
-            SceneRoot(scene_handle),
-            Transform::from_translation(position).with_scale(base_scale),
+            Transform::from_translation(position + Vec3::new(0.0, 0.45, 0.0)).with_scale(base_scale),
             RigidBody::Dynamic,
             Collider::sphere(0.45),
             LockedAxes::ROTATION_LOCKED,
             Friction::new(0.6),
-            Restitution::new(0.2),
+            Restitution::new(0.0),
             creature,
+        ))
+        .with_child((
+            SceneRoot(scene_handle),
+            Transform::from_xyz(0.0, -0.45, 0.0),
         ))
         .id()
 }
@@ -137,6 +140,30 @@ pub fn update_creature_patrol_and_movement(
     for (mut transform, mut velocity, mut creature) in creatures.iter_mut() {
         if creature.dodge_cooldown > 0.0 {
             creature.dodge_cooldown = (creature.dodge_cooldown - dt).max(0.0);
+        }
+
+        let min_patrol_z = creature
+            .patrol_waypoints
+            .iter()
+            .map(|w| w.z)
+            .fold(f32::INFINITY, f32::min);
+
+        if min_patrol_z >= 20.0 && transform.translation.z < 28.0 {
+            transform.translation.z = 28.0;
+            if velocity.z < 0.0 {
+                velocity.z = 0.0;
+            }
+        }
+
+        if creature.state != CreatureState::Dodging {
+            if transform.translation.y > 0.48 {
+                velocity.y = (velocity.y - 14.0 * dt).max(-6.0);
+            } else if transform.translation.y < 0.45 {
+                transform.translation.y = 0.45;
+                if velocity.y < 0.0 {
+                    velocity.y = 0.0;
+                }
+            }
         }
 
         if creature.is_incapacitated() {
@@ -181,6 +208,7 @@ pub fn update_creature_patrol_and_movement(
                 creature.state = CreatureState::Cautious;
                 transform.scale = creature.base_scale;
                 velocity.x = 0.0;
+                velocity.y = 0.0;
                 velocity.z = 0.0;
             }
             continue;
@@ -207,8 +235,14 @@ pub fn update_creature_patrol_and_movement(
             transform.scale = creature.base_scale * Vec3::new(1.0 - panic_hop * 0.3, 1.0 + panic_hop * 0.4, 1.0 - panic_hop * 0.3);
 
             let wander_angle = (time.elapsed_secs() * 7.0).sin() * 1.5;
-            let forward = transform.forward();
-            let flee_dir = Quat::from_rotation_y(wander_angle) * forward;
+            let forward = transform.forward().as_vec3();
+            let mut flee_dir = Quat::from_rotation_y(wander_angle) * forward;
+            if min_patrol_z >= 20.0 && flee_dir.z < 0.0 {
+                flee_dir.z = flee_dir.z.abs();
+            }
+            if flee_dir.length_squared() > 0.01 {
+                flee_dir = flee_dir.normalize();
+            }
 
             velocity.x = flee_dir.x * (creature.move_speed * 1.8);
             velocity.z = flee_dir.z * (creature.move_speed * 1.8);
@@ -288,7 +322,7 @@ pub fn update_creature_ai_perception_and_aim_dodge(
                         -1.0
                     };
 
-                    creature.dodge_velocity = right * (side * 7.2) + Vec3::new(0.0, 3.6, 0.0);
+                    creature.dodge_velocity = right * (side * 6.8) + Vec3::new(0.0, 0.6, 0.0);
                     creature.dodge_duration = 0.35;
                     creature.dodge_cooldown = 1.8;
                     creature.state = CreatureState::Dodging;
@@ -310,8 +344,20 @@ pub fn update_creature_ai_perception_and_aim_dodge(
 
                 if dist < 4.2 && creature.state != CreatureState::Fleeing {
                     creature.state = CreatureState::Cautious;
-                    let away_dir = (creature_pos - player_pos).normalize();
+                    let mut away_dir = (creature_pos - player_pos).normalize();
+                    let min_patrol_z = creature
+                        .patrol_waypoints
+                        .iter()
+                        .map(|w| w.z)
+                        .fold(f32::INFINITY, f32::min);
+                    if min_patrol_z >= 20.0 && creature_pos.z < 30.0 && away_dir.z < 0.0 {
+                        away_dir.z = 0.2;
+                        away_dir = away_dir.normalize();
+                    }
                     transform.translation += away_dir * (time.delta_secs() * 1.5);
+                    if min_patrol_z >= 20.0 && transform.translation.z < 28.0 {
+                        transform.translation.z = 28.0;
+                    }
                 }
             } else if dist < 5.0 && creature.state == CreatureState::Patrolling {
                 creature.state = CreatureState::Curious;

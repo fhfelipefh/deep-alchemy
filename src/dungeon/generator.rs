@@ -538,7 +538,7 @@ pub fn spawn_dungeon_wall_sconce(
     rotation: Quat,
     is_initially_lit: bool,
 ) -> Entity {
-    let light_offset = rotation * Vec3::new(0.0, 0.28, 0.22);
+    let light_offset = rotation * Vec3::new(0.0, 0.24, -0.26);
     let light_entity = commands
         .spawn((
             Name::new("PointLight_Dungeon_Wall_Torch"),
@@ -662,22 +662,6 @@ pub fn spawn_procedural_dungeon(
                 Collider::cuboid(config.tile_size, 0.4, config.tile_size),
             ));
 
-            spawn_dungeon_wall_sconce(
-                &mut commands,
-                &asset_server,
-                &registry,
-                cell.world_pos + Vec3::new(-1.18, 2.05, 0.0),
-                Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
-                false,
-            );
-            spawn_dungeon_wall_sconce(
-                &mut commands,
-                &asset_server,
-                &registry,
-                cell.world_pos + Vec3::new(1.18, 2.05, 0.0),
-                Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2),
-                false,
-            );
             commands.spawn((
                 Name::new("Light_Corridor_Vault"),
                 Transform::from_translation(cell.world_pos + Vec3::new(0.0, 3.2, 0.0)),
@@ -709,6 +693,15 @@ pub fn spawn_procedural_dungeon(
                     RigidBody::Static,
                     Collider::cuboid(0.85, 5.0, config.tile_size),
                 ));
+
+                spawn_dungeon_wall_sconce(
+                    &mut commands,
+                    &asset_server,
+                    &registry,
+                    cell.world_pos + Vec3::new(-1.18, 2.05, 0.0),
+                    Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2),
+                    false,
+                );
             }
 
             if east_solid {
@@ -723,6 +716,15 @@ pub fn spawn_procedural_dungeon(
                     RigidBody::Static,
                     Collider::cuboid(0.85, 5.0, config.tile_size),
                 ));
+
+                spawn_dungeon_wall_sconce(
+                    &mut commands,
+                    &asset_server,
+                    &registry,
+                    cell.world_pos + Vec3::new(1.18, 2.05, 0.0),
+                    Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
+                    false,
+                );
             }
             continue;
         }
@@ -752,10 +754,10 @@ pub fn spawn_procedural_dungeon(
                 },
             ));
             let corner_sconces = [
-                (Vec3::new(-1.62, 2.05, -1.2), Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
-                (Vec3::new(1.62, 2.05, -1.2), Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2)),
-                (Vec3::new(-1.62, 2.05, 1.2), Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
-                (Vec3::new(1.62, 2.05, 1.2), Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2)),
+                (Vec3::new(-1.18, 2.05, -1.2), Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2)),
+                (Vec3::new(1.18, 2.05, -1.2), Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
+                (Vec3::new(-1.18, 2.05, 1.2), Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2)),
+                (Vec3::new(1.18, 2.05, 1.2), Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
             ];
             for (offset, rot) in corner_sconces {
                 spawn_dungeon_wall_sconce(
@@ -956,8 +958,8 @@ pub fn spawn_procedural_dungeon(
                     Collider::cuboid(0.85, 5.0, config.tile_size),
                 ));
 
-                let torch_offset = rot * Vec3::new(-half_tile + 0.45, 2.05, 0.0);
-                let torch_rot = rot * Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
+                let torch_offset = rot * Vec3::new(-half_tile + 0.85, 2.05, 0.0);
+                let torch_rot = rot * Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2);
                 spawn_dungeon_wall_sconce(
                     &mut commands,
                     &asset_server,
@@ -989,8 +991,8 @@ pub fn spawn_procedural_dungeon(
                     Collider::cuboid(0.85, 5.0, 0.85),
                 ));
 
-                let torch_offset = rot * Vec3::new(-half_tile + 0.45, 2.05, half_tile - 0.45);
-                let torch_rot = rot * Quat::from_rotation_y(std::f32::consts::FRAC_PI_4);
+                let torch_offset = rot * Vec3::new(-half_tile + 0.85, 2.05, half_tile - 0.425);
+                let torch_rot = rot * Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2);
                 spawn_dungeon_wall_sconce(
                     &mut commands,
                     &asset_server,
@@ -1046,8 +1048,8 @@ pub fn spawn_procedural_dungeon(
                     Collider::cuboid(1.0, 5.0, 1.0),
                 ));
 
-                let torch_offset = rot * Vec3::new(half_tile - 0.45, 2.05, half_tile - 0.45);
-                let torch_rot = rot * Quat::from_rotation_y(-3.0 * std::f32::consts::FRAC_PI_4);
+                let torch_offset = rot * Vec3::new(half_tile - 0.85, 2.05, half_tile - 0.85);
+                let torch_rot = rot * Quat::from_rotation_y(std::f32::consts::FRAC_PI_4);
                 spawn_dungeon_wall_sconce(
                     &mut commands,
                     &asset_server,
@@ -1160,21 +1162,17 @@ pub fn spawn_dungeon_creatures_along_path(
 
     let width = dungeon.config.grid_width;
     let depth = dungeon.config.grid_depth;
-    let cz = depth / 2;
     let exit_z = depth - 2;
 
-    let mut south_cells = Vec::new();
     let mut mid_cells = Vec::new();
     let mut north_cells = Vec::new();
 
-    for gz in (cz + 2)..depth {
+    for gz in 19..depth {
         for gx in 2..(width - 2) {
             let primary = dungeon.get_primary(gx, gz);
             if primary.is_walkable() {
                 let world_pos = dungeon.grid_to_world(gx, gz);
-                if gz <= cz + 3 {
-                    south_cells.push(world_pos);
-                } else if gz <= 18 {
+                if gz <= 21 {
                     mid_cells.push(world_pos);
                 } else {
                     north_cells.push(world_pos);
@@ -1183,25 +1181,10 @@ pub fn spawn_dungeon_creatures_along_path(
         }
     }
 
-    if !south_cells.is_empty() {
-        for i in 0..2.min(south_cells.len()) {
-            let pos = south_cells[i * (south_cells.len() / 2)];
-            let waypoints = vec![pos + Vec3::new(1.5, 0.0, 0.0), pos + Vec3::new(-1.5, 0.0, 0.0)];
-            spawn_dungeon_creature_instance(
-                commands,
-                asset_server,
-                registry,
-                CreatureSpecies::Sproutling,
-                pos + Vec3::new(0.0, 0.2, 0.0),
-                waypoints,
-                (exit_z as f32 - (cz + 2) as f32) * dungeon.config.tile_size,
-            );
-        }
-    }
-
     if !mid_cells.is_empty() {
-        let step = mid_cells.len() / 4;
-        for i in 0..4.min(mid_cells.len()) {
+        let count = 6.min(mid_cells.len());
+        let step = mid_cells.len() / count.max(1);
+        for i in 0..count {
             let pos = mid_cells[i * step];
             let species = if i % 2 == 0 {
                 CreatureSpecies::Sproutling
@@ -1209,23 +1192,23 @@ pub fn spawn_dungeon_creatures_along_path(
                 CreatureSpecies::Emberling
             };
             let waypoints = vec![
-                pos + Vec3::new(2.0, 0.0, 1.0),
-                pos + Vec3::new(-2.0, 0.0, -1.0),
+                pos + Vec3::new(1.2, 0.0, 0.6),
+                pos + Vec3::new(-1.2, 0.0, -0.6),
             ];
             spawn_dungeon_creature_instance(
                 commands,
                 asset_server,
                 registry,
                 species,
-                pos + Vec3::new(0.0, 0.2, 0.0),
+                pos + Vec3::new(0.0, 0.45, 0.0),
                 waypoints,
-                (exit_z as f32 - 17.0) * dungeon.config.tile_size,
+                (exit_z as f32 - 19.0) * dungeon.config.tile_size,
             );
         }
     }
 
     if !north_cells.is_empty() {
-        let count = 8.min(north_cells.len());
+        let count = 10.min(north_cells.len());
         let step = north_cells.len() / count.max(1);
         for i in 0..count {
             let pos = north_cells[i * step];
@@ -1235,17 +1218,17 @@ pub fn spawn_dungeon_creatures_along_path(
                 _ => CreatureSpecies::Sproutling,
             };
             let waypoints = vec![
-                pos + Vec3::new(1.8, 0.0, 1.8),
-                pos + Vec3::new(-1.8, 0.0, -1.8),
+                pos + Vec3::new(1.4, 0.0, 1.4),
+                pos + Vec3::new(-1.4, 0.0, -1.4),
             ];
             spawn_dungeon_creature_instance(
                 commands,
                 asset_server,
                 registry,
                 species,
-                pos + Vec3::new(0.0, 0.2, 0.0),
+                pos + Vec3::new(0.0, 0.45, 0.0),
                 waypoints,
-                (exit_z as f32 - 21.0) * dungeon.config.tile_size,
+                (exit_z as f32 - 22.0) * dungeon.config.tile_size,
             );
         }
     }

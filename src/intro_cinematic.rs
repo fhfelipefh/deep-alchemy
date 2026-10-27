@@ -6,8 +6,8 @@ use bevy::{prelude::*, render::view::RenderLayers};
 
 const CINEMATIC_ORIGIN: Vec3 = Vec3::new(64.0, 0.0, 64.0);
 const FLOWER_PLAYER_POSITION: Vec3 = Vec3::new(64.0, 1.2, 64.0);
-const RIFT_PLAYER_POSITION: Vec3 = Vec3::new(64.0, 1.2, 82.0);
-const WATERFALL_TOP_POSITION: Vec3 = Vec3::new(64.0, 10.0, 100.0);
+const RIFT_PLAYER_POSITION: Vec3 = Vec3::new(64.0, 1.2, 48.4);
+const WATERFALL_TOP_POSITION: Vec3 = Vec3::new(64.0, 8.5, 24.5);
 const CONTROL_START_POSITION: Vec3 = Vec3::new(0.0, 1.2, -2.2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -73,8 +73,8 @@ fn setup_intro_cinematic_environment(mut commands: Commands, asset_server: Res<A
                 ..default()
             },
             RenderLayers::layer(3),
-            Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(-7.2, 4.6, 8.8))
-                .looking_at(CINEMATIC_ORIGIN, Vec3::Y),
+            Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(0.0, 2.6, 5.8))
+                .looking_at(CINEMATIC_ORIGIN + Vec3::new(0.0, 0.9, 0.0), Vec3::Y),
             DistanceFog {
                 color: Color::srgba(0.025, 0.05, 0.08, 1.0),
                 falloff: FogFalloff::ExponentialSquared { density: 0.007 },
@@ -84,25 +84,25 @@ fn setup_intro_cinematic_environment(mut commands: Commands, asset_server: Res<A
         .id();
     commands.spawn((
         PointLight {
-            color: Color::srgb(0.16, 0.92, 0.82),
-            intensity: 42000.0,
-            range: 20.0,
+            color: Color::srgb(0.95, 0.96, 0.90),
+            intensity: 48000.0,
+            range: 22.0,
             shadows_enabled: false,
             ..default()
         },
         RenderLayers::layer(3),
-        Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(-3.0, 6.0, 3.0)),
+        Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(0.0, 5.0, 2.0)),
     ));
     commands.spawn((
         PointLight {
             color: Color::srgb(0.70, 0.16, 0.95),
-            intensity: 36000.0,
-            range: 16.0,
+            intensity: 38000.0,
+            range: 18.0,
             shadows_enabled: false,
             ..default()
         },
         RenderLayers::layer(3),
-        Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(0.0, 4.0, 18.0)),
+        Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(0.0, 4.0, -17.5)),
     ));
     commands
         .spawn((
@@ -318,20 +318,20 @@ fn apply_stage_pose(
         IntroCinematicStage::Flowers => {
             player_transform.translation = FLOWER_PLAYER_POSITION;
             *camera_transform =
-                Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(-6.8, 3.0, 7.4))
-                    .looking_at(CINEMATIC_ORIGIN + Vec3::new(0.0, 0.8, 0.3), Vec3::Y);
+                Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(0.0, 2.6, 5.8))
+                    .looking_at(CINEMATIC_ORIGIN + Vec3::new(0.0, 0.9, 0.0), Vec3::Y);
         }
         IntroCinematicStage::Rift => {
             player_transform.translation = RIFT_PLAYER_POSITION;
             *camera_transform =
-                Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(2.9, 3.0, 23.2))
-                    .looking_at(CINEMATIC_ORIGIN + Vec3::new(0.0, 0.1, 18.3), Vec3::Y);
+                Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(0.0, 2.8, -10.5))
+                    .looking_at(CINEMATIC_ORIGIN + Vec3::new(0.0, 0.6, -17.0), Vec3::Y);
         }
         IntroCinematicStage::WaterfallFall => {
             player_transform.translation = WATERFALL_TOP_POSITION;
             *camera_transform =
-                Transform::from_translation(WATERFALL_TOP_POSITION + Vec3::new(0.0, 1.8, 6.5))
-                    .looking_at(WATERFALL_TOP_POSITION + Vec3::new(0.0, -2.4, -1.2), Vec3::Y);
+                Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(0.0, 4.8, -31.0))
+                    .looking_at(CINEMATIC_ORIGIN + Vec3::new(0.0, 2.0, -39.0), Vec3::Y);
         }
     }
 }
