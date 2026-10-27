@@ -5948,6 +5948,7 @@ fn test_unit_dungeon_wall_torch_ignition_timer_and_ice_extinguishing() {
 
     {
         let torch = app.world().get::<DungeonWallTorch>(torch_entity).expect("Torch component must exist");
+        assert!(app.world().get::<Collider>(torch_entity).is_none(), "A wall sconce must not provide a collider for creatures to climb");
         assert!(!torch.is_lit, "Dungeon wall torch must be initially unlit");
         assert_eq!(torch.burn_timer, 0.0, "Unlit torch must have 0 burn timer");
         assert_eq!(torch.max_burn_time, 1800.0, "Torch burn time must be 1800s (30 minutes real-world)");
@@ -6087,6 +6088,15 @@ fn test_unit_dungeon_procedural_generation_spawns_unlit_wall_sconces() {
 
     assert!(torch_count >= 10, "Procedural dungeon must spawn multiple wall sconces on dungeon walls, found {}", torch_count);
     assert_eq!(lit_torch_count, 0, "All spawned wall sconces must be initially unlit as per requirements");
+
+    let junction_center = Vec3::new(0.0, 2.05, 28.0);
+    let mut torch_query = app.world_mut().query::<(&Transform, &DungeonWallTorch)>();
+    assert!(
+        torch_query
+            .iter(app.world())
+            .all(|(transform, _)| transform.translation.distance(junction_center) >= 2.0),
+        "The open grand junction must not contain wall sconces without wall faces"
+    );
 }
 
 #[test]
@@ -6587,6 +6597,7 @@ fn test_unit_audio_sound_effect_events_dispatch_and_volume() {
         creature_chirp: handle.clone(),
         ui_click: handle.clone(),
         water_drop: handle.clone(),
+        ambient_music: handle.clone(),
     });
 
     let mut settings = GameSettings::default();

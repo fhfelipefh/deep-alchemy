@@ -38,6 +38,7 @@ const PRELOAD_ASSETS: &[&str] = &[
     "audio/creature_chirp.wav",
     "audio/ui_click.wav",
     "audio/water_drop.wav",
+    "audio/ambient_cavern.ogg",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

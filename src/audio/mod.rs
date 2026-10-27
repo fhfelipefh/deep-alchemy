@@ -1,6 +1,6 @@
 pub mod synth;
 
-use bevy::audio::{AudioPlayer, AudioSource, PlaybackSettings, Volume};
+use bevy::audio::{AudioPlayer, AudioSink, AudioSinkPlayback, AudioSource, PlaybackSettings, Volume};
 use bevy::prelude::*;
 use crate::ui::menu::GameSettings;
 
@@ -48,10 +48,14 @@ pub struct AudioAssets {
     pub creature_chirp: Handle<AudioSource>,
     pub ui_click: Handle<AudioSource>,
     pub water_drop: Handle<AudioSource>,
+    pub ambient_music: Handle<AudioSource>,
 }
 
 #[derive(Resource)]
 pub struct AmbientDripTimer(pub Timer);
+
+#[derive(Component)]
+struct AmbientMusicTrack;
 
 impl Default for AmbientDripTimer {
     fn default() -> Self {
@@ -67,12 +71,32 @@ impl Plugin for AudioPlugin {
 
         app.add_event::<SoundEffectEvent>()
             .init_resource::<AmbientDripTimer>()
-            .add_systems(Startup, setup_audio_assets)
-            .add_systems(Update, (handle_sound_effect_events, ambient_cavern_water_drip));
+            .add_systems(
+                Startup,
+                setup_audio_assets.after(crate::ui::menu::load_game_settings),
+            )
+            .add_systems(
+                Update,
+                (
+                    handle_sound_effect_events,
+                    ambient_cavern_water_drip,
+                    sync_ambient_music_volume,
+                ),
+            );
     }
 }
 
-fn setup_audio_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup_audio_assets(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    settings: Res<GameSettings>,
+) {
+    let ambient_music = asset_server.load("audio/ambient_cavern.ogg");
+    commands.spawn((
+        AmbientMusicTrack,
+        AudioPlayer(ambient_music.clone()),
+        PlaybackSettings::LOOP.with_volume(Volume::new(settings.master_volume * 0.12)),
+    ));
     commands.insert_resource(AudioAssets {
         potion_throw: asset_server.load("audio/potion_throw.wav"),
         potion_shatter: asset_server.load("audio/potion_shatter.wav"),
@@ -82,7 +106,21 @@ fn setup_audio_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
         creature_chirp: asset_server.load("audio/creature_chirp.wav"),
         ui_click: asset_server.load("audio/ui_click.wav"),
         water_drop: asset_server.load("audio/water_drop.wav"),
+        ambient_music,
     });
+}
+
+fn sync_ambient_music_volume(
+    settings: Res<GameSettings>,
+    music_sinks: Query<&AudioSink, With<AmbientMusicTrack>>,
+) {
+    if !settings.is_changed() {
+        return;
+    }
+    let volume = settings.master_volume * 0.12;
+    for sink in &music_sinks {
+        sink.set_volume(volume);
+    }
 }
 
 pub fn handle_sound_effect_events(

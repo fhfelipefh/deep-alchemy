@@ -632,8 +632,6 @@ pub fn spawn_dungeon_wall_sconce(
             SceneRoot(handle),
             Transform::from_translation(position).with_rotation(rotation),
             WallTorchMount(wall_support),
-            RigidBody::Static,
-            Collider::cuboid(0.65, 1.8, 0.55),
             crate::alchemy::DungeonWallTorch {
                 is_lit: is_initially_lit,
                 burn_timer: if is_initially_lit { 1800.0 } else { 0.0 },
@@ -832,58 +830,6 @@ pub fn spawn_procedural_dungeon(
                     ..default()
                 },
             ));
-            let corner_sconces = [
-                (
-                    Vec3::new(-1.18, 2.05, -1.2),
-                    Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2),
-                ),
-                (
-                    Vec3::new(1.18, 2.05, -1.2),
-                    Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
-                ),
-                (
-                    Vec3::new(-1.18, 2.05, 1.2),
-                    Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2),
-                ),
-                (
-                    Vec3::new(1.18, 2.05, 1.2),
-                    Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
-                ),
-            ];
-            for ((offset, torch_rot), (cx_sign, cz_sign)) in corner_sconces.into_iter().zip([
-                (-1.0f32, -1.0f32),
-                (1.0f32, -1.0f32),
-                (-1.0f32, 1.0f32),
-                (1.0f32, 1.0f32),
-            ]) {
-                let pillar_pos = cell.world_pos
-                    + Vec3::new(
-                        cx_sign * (half_tile - 0.425),
-                        2.5,
-                        cz_sign * (half_tile - 0.425),
-                    );
-                let wall_support = commands
-                    .spawn((
-                        Name::new("Collider_Dungeon_GrandJunction_Corner"),
-                        CavernObstacle,
-                        ObstacleShape::Cuboid {
-                            half_extents: Vec3::new(0.425, 2.5, 0.425),
-                        },
-                        Transform::from_translation(pillar_pos),
-                        RigidBody::Static,
-                        Collider::cuboid(0.85, 5.0, 0.85),
-                    ))
-                    .id();
-                spawn_dungeon_wall_sconce(
-                    &mut commands,
-                    &asset_server,
-                    &registry,
-                    wall_support,
-                    cell.world_pos + offset,
-                    torch_rot,
-                    false,
-                );
-            }
             continue;
         }
 
