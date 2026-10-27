@@ -45,6 +45,12 @@ fn main() {
                 title: "Vitriol".to_string(),
                 resolution: WindowResolution::new(1280.0, 720.0),
                 present_mode: PresentMode::AutoVsync,
+                canvas: if cfg!(target_arch = "wasm32") {
+                    Some("#vitriol-canvas".to_string())
+                } else {
+                    None
+                },
+                fit_canvas_to_parent: cfg!(target_arch = "wasm32"),
                 cursor_options: bevy::window::CursorOptions {
                     grab_mode: CursorGrabMode::None,
                     visible: true,
