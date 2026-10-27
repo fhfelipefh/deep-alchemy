@@ -13,11 +13,30 @@
     </style>
   </head>
   <body>
-    <canvas id="vitriol-canvas" aria-label="Vitriol — jogo 3D"></canvas>
+    <canvas id="vitriol-canvas" tabindex="0" aria-label="Vitriol — jogo 3D"></canvas>
     <script type="module">
       import startGame from './pkg/deep_alchemy.js';
 
       const audioContexts = new Set();
+      const gameCanvas = document.getElementById('vitriol-canvas');
+      const gameKeys = new Set([
+        'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyC',
+        'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+        'Space', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight',
+        'Escape', 'Enter', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'F11',
+      ]);
+
+      gameCanvas.addEventListener('pointerdown', () => gameCanvas.focus());
+      window.addEventListener('keydown', (event) => {
+        if (document.activeElement !== gameCanvas) return;
+
+        // Keep game controls from scrolling the page or invoking browser shortcuts
+        // (for example Ctrl+W/Ctrl+R while Ctrl is held for crouching).
+        if (gameKeys.has(event.code) || event.ctrlKey || event.altKey || event.metaKey) {
+          event.preventDefault();
+        }
+      }, true);
+
       const AudioContextConstructor = window.AudioContext;
 
       if (AudioContextConstructor) {
