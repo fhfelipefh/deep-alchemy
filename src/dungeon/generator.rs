@@ -97,6 +97,29 @@ pub struct DungeonEntranceSeal {
 const DUNGEON_ENTRANCE_SEAL_POSITION: Vec3 = Vec3::new(0.0, 2.0, 6.0);
 const DUNGEON_ENTRANCE_SEAL_OPEN_HEIGHT: f32 = 8.0;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DungeonCellZone {
+    GrottoBackdrop,
+    ExitConnector,
+    ExitCorridor,
+    GrandJunction,
+    Canonical,
+}
+
+fn classify_dungeon_cell(world_pos: Vec3) -> DungeonCellZone {
+    if world_pos.x.abs() < 1.0 && (world_pos.z - 4.0).abs() < 1.0 {
+        DungeonCellZone::ExitConnector
+    } else if world_pos.x.abs() < 1.0 && (7.0..=26.0).contains(&world_pos.z) {
+        DungeonCellZone::ExitCorridor
+    } else if world_pos.x.abs() < 10.0 && (-16.0..6.0).contains(&world_pos.z) {
+        DungeonCellZone::GrottoBackdrop
+    } else if world_pos.x.abs() < 1.0 && (world_pos.z - 28.0).abs() < 1.0 {
+        DungeonCellZone::GrandJunction
+    } else {
+        DungeonCellZone::Canonical
+    }
+}
+
 fn should_open_dungeon_entrance(distance: f32, is_open: bool) -> bool {
     if is_open {
         distance < 5.0
@@ -678,9 +701,8 @@ pub fn spawn_procedural_dungeon(
     let half_tile = config.tile_size * 0.5;
 
     for cell in &dungeon.dual_cells {
-        let is_exit_connector =
-            cell.world_pos.x.abs() < 1.0 && (cell.world_pos.z - 4.0).abs() < 1.0;
-        if is_exit_connector {
+        let zone = classify_dungeon_cell(cell.world_pos);
+        if zone == DungeonCellZone::ExitConnector {
             let handle = registry.load_scene(&asset_server, "tile_grotto_connector");
             commands.spawn((
                 Name::new("DungeonTile_GrottoConnector"),
@@ -727,9 +749,7 @@ pub fn spawn_procedural_dungeon(
             continue;
         }
 
-        let is_exit_corridor =
-            cell.world_pos.x.abs() < 1.0 && cell.world_pos.z >= 7.0 && cell.world_pos.z <= 26.0;
-        if is_exit_corridor {
+        if zone == DungeonCellZone::ExitCorridor {
             let handle = registry.load_scene(&asset_server, "tile_corridor_straight");
             commands.spawn((
                 Name::new("DungeonTile_ExitCorridor"),
@@ -814,19 +834,11 @@ pub fn spawn_procedural_dungeon(
             continue;
         }
 
-        if cell.world_pos.x.abs() < 10.0 && cell.world_pos.z > -16.0 && cell.world_pos.z < 6.0 {
+        if zone == DungeonCellZone::GrottoBackdrop {
             continue;
         }
 
-        if cell.world_pos.x.abs() > 1.0
-            && cell.world_pos.x.abs() < 6.0
-            && cell.world_pos.z >= 6.0
-            && cell.world_pos.z <= 26.0
-        {
-            continue;
-        }
-
-        if cell.world_pos.x.abs() < 1.0 && (cell.world_pos.z - 28.0).abs() < 1.0 {
+        if zone == DungeonCellZone::GrandJunction {
             let handle = registry.load_scene(&asset_server, "tile_corridor_open");
             commands.spawn((
                 Name::new("DungeonTile_GrandJunction"),
@@ -1523,6 +1535,42 @@ mod tests {
                 gz,
                 tile
             );
+        }
+    }
+
+    #[test]
+    fn test_exit_corridor_sides_stay_in_canonical_zone_across_seeds() {
+        let side_x = DungeonConfig::default().tile_size;
+        let side_z_samples = [8.0, 12.0, 16.0, 24.0];
+
+        for seed in 1..=100 {
+            let config = DungeonConfig { seed, ..default() };
+            let dungeon = DungeonGenerator::generate(config);
+
+            for side in [-1.0, 1.0] {
+                for z in side_z_samples {
+                    assert_eq!(
+                        classify_dungeon_cell(Vec3::new(side * side_x, 0.0, z)),
+                        DungeonCellZone::Canonical,
+                        "Exit side at x={}, z={} must use generated dungeon geometry",
+                        side * side_x,
+                        z
+                    );
+                    let cell = dungeon
+                        .dual_cells
+                        .iter()
+                        .find(|cell| {
+                            (cell.world_pos.x - side * side_x).abs() < 0.01
+                                && (cell.world_pos.z - z).abs() < 0.01
+                        })
+                        .unwrap_or_else(|| {
+                            panic!("Missing exit side tile at x={}, z={}", side * side_x, z)
+                        });
+
+                    assert_eq!(cell.world_pos.x, side * side_x);
+                    assert_eq!(cell.world_pos.z, z);
+                }
+            }
         }
     }
 
