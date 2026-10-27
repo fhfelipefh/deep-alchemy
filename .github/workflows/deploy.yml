@@ -68,6 +68,9 @@ jobs:
       - name: Install wasm-bindgen
         run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
 
+      - name: Install WebAssembly optimizer
+        run: npm install --global binaryen@132.0.0
+
       - name: Build WebAssembly game
         run: cargo build --release --bin deep_alchemy --target wasm32-unknown-unknown
 
@@ -81,6 +84,17 @@ jobs:
           mkdir -p dist/assets/models
           cp assets/models/*.glb dist/assets/models/
           wasm-bindgen --target web --out-dir dist/pkg --out-name deep_alchemy target/wasm32-unknown-unknown/release/deep_alchemy.wasm
+          wasm_path=dist/pkg/deep_alchemy_bg.wasm
+          original_bytes=$(stat -c%s "$wasm_path")
+          wasm-opt -Oz "$wasm_path" -o "$wasm_path.optimized"
+          optimized_bytes=$(stat -c%s "$wasm_path.optimized")
+          if (( optimized_bytes >= original_bytes )); then
+            echo "Web performance regression: wasm-opt did not reduce the WASM payload (${original_bytes} -> ${optimized_bytes} bytes)."
+            exit 1
+          fi
+          mv "$wasm_path.optimized" "$wasm_path"
+          reduction=$((100 * (original_bytes - optimized_bytes) / original_bytes))
+          echo "Web payload benchmark: WASM reduced from ${original_bytes} to ${optimized_bytes} bytes (${reduction}% smaller)."
           printf 'Vitriol Web %s\n' "${GITHUB_SHA}" > dist/version.txt
 
       - name: Setup GitHub Pages
