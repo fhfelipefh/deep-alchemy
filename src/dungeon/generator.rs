@@ -733,6 +733,10 @@ pub fn spawn_procedural_dungeon(
             continue;
         }
 
+        if cell.world_pos.x.abs() > 1.0 && cell.world_pos.x.abs() < 6.0 && cell.world_pos.z >= 6.0 && cell.world_pos.z <= 26.0 {
+            continue;
+        }
+
         if cell.world_pos.x.abs() < 1.0 && (cell.world_pos.z - 28.0).abs() < 1.0 {
             let handle = registry.load_scene(&asset_server, "tile_corridor_open");
             commands.spawn((

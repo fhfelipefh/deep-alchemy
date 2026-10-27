@@ -250,13 +250,16 @@ pub fn resolve_player_collision_sliding(
         resolved.x = resolved.x.clamp(min_x, max_x);
         resolved.z = resolved.z.clamp(min_z, max_z);
     } else if in_dungeon {
-        resolved.y = resolved.y.clamp(0.0, 2.45);
-        if resolved.z >= 6.5 && resolved.z <= 25.5 && prev_pos.x.abs() < 1.0 {
-            resolved.x = resolved.x.clamp(-0.76, 0.76);
+        if resolved.z >= 6.5 && resolved.z <= 25.5 {
+            resolved.y = resolved.y.clamp(0.0, 2.45);
         }
     } else if effective_grotto {
         resolved.x = resolved.x.clamp(-7.8, 7.8);
-        resolved.z = resolved.z.clamp(-13.0, 4.0);
+        if resolved.x.abs() > 2.0 {
+            resolved.z = resolved.z.clamp(-13.0, 4.0);
+        } else {
+            resolved.z = resolved.z.clamp(-13.0, 6.0);
+        }
     }
 
     resolved
@@ -610,7 +613,7 @@ fn update_airborne_and_landing(
             tf.translation.y = max_ceiling;
             locomotion.vertical_velocity = 0.0;
         }
-    } else if tf.translation.z > 4.0 {
+    } else if tf.translation.z >= 6.5 && tf.translation.z <= 25.5 {
         let max_ceiling = 2.45;
         if tf.translation.y > max_ceiling {
             tf.translation.y = max_ceiling;
@@ -955,9 +958,11 @@ pub fn player_out_of_bounds_rescue(
         if p.z > 200.0 {
             continue;
         }
-        let in_dungeon = p.z > 4.0;
-        let is_oob = if in_dungeon {
-            p.y > 2.85 || p.y < -1.0 || p.x.abs() > 55.0 || p.z.abs() > 55.0 || (p.z >= 6.5 && p.z <= 25.5 && p.x.abs() > 2.0)
+        let in_corridor = p.z >= 6.5 && p.z <= 25.5;
+        let is_oob = if in_corridor {
+            p.y > 3.6 || p.y < -3.0 || p.x.abs() > 2.0
+        } else if p.z > 25.5 {
+            p.y < -15.0 || p.y > 35.0 || p.x.abs() > 65.0 || p.z > 75.0
         } else {
             p.y > 4.2 || p.y < -5.0 || p.x.abs() > 60.0 || p.z.abs() > 60.0
         };
