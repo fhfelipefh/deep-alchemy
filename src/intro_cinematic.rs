@@ -112,21 +112,39 @@ fn setup_intro_cinematic_environment(mut commands: Commands, asset_server: Res<A
         RenderLayers::layer(3),
         Transform::from_translation(CINEMATIC_ORIGIN + Vec3::new(0.0, 5.0, -36.0)),
     ));
-    commands.spawn((
-        IntroCinematicOverlay,
-        TargetCamera(cinematic_camera),
-        Node {
-            width: Val::Percent(100.0),
-            height: Val::Percent(100.0),
-            position_type: PositionType::Absolute,
-            display: Display::None,
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::FlexEnd,
-            padding: UiRect::bottom(Val::Px(38.0)),
-            ..default()
-        },
-        ZIndex(300),
-    ));
+    commands
+        .spawn((
+            IntroCinematicOverlay,
+            TargetCamera(cinematic_camera),
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                position_type: PositionType::Absolute,
+                display: Display::None,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::FlexEnd,
+                padding: UiRect::bottom(Val::Px(38.0)),
+                ..default()
+            },
+            ZIndex(300),
+        ))
+        .with_children(|overlay| {
+            overlay.spawn((
+                Text::new("Espaço ou Enter para Pular"),
+                TextFont {
+                    font: asset_server.load("fonts/DejaVuSans.ttf"),
+                    font_size: 18.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(0.90, 0.98, 1.0, 0.96)),
+                Node {
+                    padding: UiRect::axes(Val::Px(18.0), Val::Px(8.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.01, 0.03, 0.06, 0.78)),
+                BorderRadius::all(Val::Px(8.0)),
+            ));
+        });
 }
 
 fn prepare_intro_scene_layers(
@@ -223,6 +241,7 @@ fn begin_intro_cinematic(
 
 fn advance_intro_cinematic(
     time: Res<Time>,
+    keys: Res<ButtonInput<KeyCode>>,
     mut cinematic: ResMut<IntroCinematicState>,
     mut player_query: Query<
         (&mut Transform, &mut LocomotionState),
@@ -251,6 +270,20 @@ fn advance_intro_cinematic(
     mut next_state: ResMut<NextState<GameState>>,
 ) {
     if !cinematic.active {
+        return;
+    }
+
+    if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) {
+        finish_intro_cinematic(
+            &mut cinematic,
+            &mut player_query,
+            &mut cinematic_camera_query,
+            &mut player_camera_query,
+            &mut overlay_query,
+            &mut nav,
+            &mut loading_request,
+            &mut next_state,
+        );
         return;
     }
 
