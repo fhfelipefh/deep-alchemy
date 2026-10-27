@@ -5,6 +5,9 @@ on:
     branches:
       - master
       - main
+  release:
+    types:
+      - published
   workflow_dispatch:
 
 permissions:
@@ -17,6 +20,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  remove-older-releases:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Remove previously published releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_TAG: ${{ github.event.release.tag_name }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          gh api --paginate "repos/${REPOSITORY}/releases" --jq '.[] | [.id, .tag_name] | @tsv' |
+          while IFS=$'\t' read -r release_id tag_name; do
+            if [[ -n "$release_id" && "$tag_name" != "$CURRENT_TAG" ]]; then
+              echo "Removing old release $tag_name (ID $release_id)"
+              gh api --method DELETE "repos/${REPOSITORY}/releases/${release_id}"
+            fi
+          done
+
   build-and-deploy:
     environment:
       name: github-pages
