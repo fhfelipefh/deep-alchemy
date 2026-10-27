@@ -14,7 +14,7 @@ Para os avaliadores da Game Jam ou jogadores que desejam testar o jogo imediatam
 3. Dê duplo clique no executável **`deep_alchemy.exe`**.
 4. Divirta-se! O jogo iniciará com uma introdução cinematográfica 3D e o menu principal.
 
-Também é possível jogar no navegador em [Vitriol Web](https://fhfelipefh.github.io/deep-alchemy/). Clique em **Carregar e jogar** para iniciar a versão WebAssembly; a primeira carga baixa o jogo e seus recursos.
+Também é possível jogar no navegador em [Vitriol Web](https://fhfelipefh.github.io/deep-alchemy/). Ao abrir, a versão WebAssembly carrega os mesmos menus e a mesma introdução do desktop; na primeira visita o navegador baixa o jogo e seus recursos.
 
 ---
 

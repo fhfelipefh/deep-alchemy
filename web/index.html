@@ -3,64 +3,46 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#06131e">
+    <meta name="theme-color" content="#000000">
     <base href="./">
     <link rel="icon" href="assets/icons/app_icon.ico">
     <title>Vitriol — Deep Alchemy</title>
     <style>
-      * { box-sizing: border-box; }
-      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #06131e; color: #e9f4f8; font-family: system-ui, sans-serif; }
-      body { display: grid; place-items: center; }
-      canvas { display: block; width: 100vw; height: 100vh; outline: none; touch-action: none; }
-      #start-screen { position: fixed; inset: 0; z-index: 2; display: grid; place-items: center; padding: 24px; background: radial-gradient(ellipse at center, #102a36dd, #030910f5); }
-      #panel { width: min(560px, 100%); padding: 38px; border: 1px solid #20cfe5; border-radius: 12px; background: #081722ed; text-align: center; box-shadow: 0 18px 70px #0009; }
-      h1 { margin: 0 0 10px; font-size: clamp(32px, 7vw, 54px); letter-spacing: .12em; }
-      p { line-height: 1.55; color: #b9ccd4; }
-      button { margin-top: 18px; padding: 14px 24px; width: 100%; border: 1px solid #2ae2ed; border-radius: 7px; background: #103648; color: white; font: inherit; font-weight: 700; cursor: pointer; }
-      button:hover { background: #15506a; }
-      button:disabled { cursor: wait; opacity: .75; }
-      #status { min-height: 1.5em; margin-bottom: 0; color: #7ce7ed; }
-      #error { color: #ff9c9c; overflow-wrap: anywhere; }
-      .hidden { display: none !important; }
+      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #000; }
+      canvas { display: block; width: 100vw; height: 100vh; outline: none; background: #000; touch-action: none; }
     </style>
   </head>
   <body>
     <canvas id="vitriol-canvas" aria-label="Vitriol — jogo 3D"></canvas>
-    <main id="start-screen">
-      <section id="panel" aria-live="polite">
-        <h1>VITRIOL</h1>
-        <p>Uma descida alquímica por cavernas, criaturas e ruínas esquecidas.</p>
-        <p>Use WASD para andar, o mouse para olhar, Espaço para pular e 1–5 para selecionar poções.</p>
-        <button id="start" type="button">CARREGAR E JOGAR</button>
-        <p id="status">Clique para carregar o jogo e ativar o áudio.</p>
-        <p id="error" class="hidden"></p>
-      </section>
-    </main>
     <script type="module">
-      const button = document.querySelector('#start');
-      const screen = document.querySelector('#start-screen');
-      const status = document.querySelector('#status');
-      const error = document.querySelector('#error');
+      import startGame from './pkg/deep_alchemy.js';
 
-      button.addEventListener('click', async () => {
-        button.disabled = true;
-        status.textContent = 'Carregando cenário e recursos…';
-        error.classList.add('hidden');
+      const audioContexts = new Set();
+      const AudioContextConstructor = window.AudioContext;
 
-        try {
-          const { default: startGame } = await import('./pkg/deep_alchemy.js');
-          try {
-            await startGame();
-          } catch (reason) {
-            const message = String(reason?.message ?? reason);
-            if (!message.startsWith("Using exceptions for control flow, don't mind me.")) throw reason;
+      if (AudioContextConstructor) {
+        window.AudioContext = new Proxy(AudioContextConstructor, {
+          construct(target, args, newTarget) {
+            const context = Reflect.construct(target, args, newTarget);
+            audioContexts.add(context);
+            return context;
+          },
+        });
+
+        const resumeGameAudio = () => {
+          for (const context of audioContexts) {
+            if (context.state === 'suspended') context.resume().catch(() => {});
           }
-          screen.classList.add('hidden');
-        } catch (reason) {
-          button.disabled = false;
-          status.textContent = 'Não foi possível iniciar o jogo.';
-          error.textContent = String(reason);
-          error.classList.remove('hidden');
+        };
+
+        window.addEventListener('pointerdown', resumeGameAudio, true);
+        window.addEventListener('keydown', resumeGameAudio, true);
+      }
+
+      startGame().catch((reason) => {
+        const message = String(reason?.message ?? reason);
+        if (!message.startsWith("Using exceptions for control flow, don't mind me.")) {
+          console.error('Não foi possível iniciar Vitriol Web.', reason);
         }
       });
     </script>
