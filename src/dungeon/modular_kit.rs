@@ -135,6 +135,7 @@ impl Plugin for DungeonPlugin {
                     crate::dungeon::creatures::update_creature_potion_interactions,
                 ).chain(),
                 crate::dungeon::generator::update_abyssal_victory_trigger,
+                crate::dungeon::generator::update_dungeon_entrance_seal,
             ),
         )
         .add_systems(

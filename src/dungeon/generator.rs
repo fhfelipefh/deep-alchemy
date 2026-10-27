@@ -89,6 +89,22 @@ pub struct ProceduralDungeon {
     pub exits: Vec<IVec2>,
 }
 
+#[derive(Component, Debug)]
+pub struct DungeonEntranceSeal {
+    pub is_open: bool,
+}
+
+const DUNGEON_ENTRANCE_SEAL_POSITION: Vec3 = Vec3::new(0.0, 2.0, 6.0);
+const DUNGEON_ENTRANCE_SEAL_OPEN_HEIGHT: f32 = 8.0;
+
+fn should_open_dungeon_entrance(distance: f32, is_open: bool) -> bool {
+    if is_open {
+        distance < 5.0
+    } else {
+        distance < 4.0
+    }
+}
+
 impl ProceduralDungeon {
     pub fn get_primary(&self, gx: usize, gz: usize) -> PrimaryTile {
         if gx >= self.config.grid_width || gz >= self.config.grid_depth {
@@ -1191,11 +1207,74 @@ pub fn spawn_procedural_dungeon(
         &dungeon,
     );
 
+    commands.spawn((
+        Name::new("Dungeon_Entrance_Seal"),
+        DungeonEntranceSeal { is_open: false },
+        CavernObstacle,
+        ObstacleShape::Cuboid {
+            half_extents: Vec3::new(1.9, 2.0, 0.45),
+        },
+        Transform::from_translation(DUNGEON_ENTRANCE_SEAL_POSITION),
+        RigidBody::Kinematic,
+        Collider::cuboid(3.8, 4.0, 0.9),
+    ))
+    .with_children(|seal| {
+        seal.spawn((
+            SceneRoot(registry.load_scene(&asset_server, "tile_solid_pillar")),
+            Transform::from_xyz(0.0, -2.0, 0.0),
+        ));
+    });
+
     info!(
         "Procedural Dungeon dynamically generated: {} dual cells, {} exits linked to Starting Grotto!",
         dungeon.dual_cells.len(),
         dungeon.exits.len()
     );
+}
+
+pub fn update_dungeon_entrance_seal(
+    time: Res<Time>,
+    player_query: Query<
+        &Transform,
+        (
+            With<crate::player::camera::Player>,
+            Without<DungeonEntranceSeal>,
+        ),
+    >,
+    mut seal_query: Query<
+        (&mut Transform, &mut DungeonEntranceSeal),
+        (With<DungeonEntranceSeal>, Without<crate::player::camera::Player>),
+    >,
+) {
+    let Ok(player_transform) = player_query.get_single() else {
+        return;
+    };
+    let distance = player_transform
+        .translation
+        .distance(DUNGEON_ENTRANCE_SEAL_POSITION);
+
+    for (mut transform, mut seal) in &mut seal_query {
+        seal.is_open = should_open_dungeon_entrance(distance, seal.is_open);
+        let target_y = if seal.is_open {
+            DUNGEON_ENTRANCE_SEAL_OPEN_HEIGHT
+        } else {
+            DUNGEON_ENTRANCE_SEAL_POSITION.y
+        };
+        transform.translation.y = move_towards(
+            transform.translation.y,
+            target_y,
+            time.delta_secs() * 8.0,
+        );
+    }
+}
+
+fn move_towards(current: f32, target: f32, max_delta: f32) -> f32 {
+    let delta = target - current;
+    if delta.abs() <= max_delta {
+        target
+    } else {
+        current + delta.signum() * max_delta
+    }
 }
 
 #[derive(Component)]
@@ -1310,6 +1389,14 @@ pub fn spawn_dungeon_creatures_along_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_dungeon_entrance_seal_opens_on_approach_and_closes_afterward() {
+        assert!(!should_open_dungeon_entrance(8.0, false));
+        assert!(should_open_dungeon_entrance(3.0, false));
+        assert!(should_open_dungeon_entrance(4.5, true));
+        assert!(!should_open_dungeon_entrance(5.5, true));
+    }
 
     #[test]
     fn test_starting_grotto_always_anchored_at_center() {
