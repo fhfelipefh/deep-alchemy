@@ -2510,6 +2510,28 @@ mod tests {
     }
 
     #[test]
+    fn test_player_can_step_onto_solid_shrine_platform() {
+        let platform = Transform::from_xyz(0.0, 0.3, 0.0);
+        let obstacles = [(
+            &platform,
+            ObstacleShape::Cylinder {
+                radius: 2.0,
+                height: 0.2,
+            },
+        )];
+        let resolved = resolve_player_collision_sliding(
+            Vec3::new(0.0, 1.2, 0.0),
+            Vec3::new(0.0, 1.2, 0.0),
+            0.38,
+            true,
+            false,
+            &obstacles,
+        );
+
+        assert!((resolved.y - 1.6).abs() < 1e-3);
+    }
+
+    #[test]
     fn test_sprint_jump_air_momentum_preservation() {
         let mut app = App::new();
         app.add_systems(Update, player_movement);

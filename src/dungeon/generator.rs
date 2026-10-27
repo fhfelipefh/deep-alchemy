@@ -934,10 +934,8 @@ pub fn spawn_procedural_dungeon(
                                 Transform::from_translation(
                                     cell.world_pos
                                         - Vec3::new(half_tile, 0.0, half_tile)
-                                        + Vec3::new(0.0, 0.5, 0.0),
+                                        + Vec3::new(0.0, 0.2, 0.0),
                                 ),
-                                RigidBody::Static,
-                                Collider::cuboid(1.1, 1.2, 1.1),
                                 PointLight {
                                     color: Color::srgb(1.0, 0.72, 0.28),
                                     intensity: 24000.0,
@@ -945,6 +943,21 @@ pub fn spawn_procedural_dungeon(
                                     shadows_enabled: false,
                                     ..default()
                                 },
+                            ));
+                            commands.spawn((
+                                Name::new("Collider_AlchemicalShrine_Platform"),
+                                CavernObstacle,
+                                ObstacleShape::Cylinder {
+                                    radius: config.tile_size * 0.5,
+                                    height: 0.2,
+                                },
+                                Transform::from_translation(
+                                    cell.world_pos
+                                        - Vec3::new(half_tile, 0.0, half_tile)
+                                        + Vec3::new(0.0, 0.3, 0.0),
+                                ),
+                                RigidBody::Static,
+                                Collider::cylinder(config.tile_size * 0.5, 0.2),
                             ));
                         }
                         RoomType::AncientBridge => {
@@ -1199,6 +1212,13 @@ pub fn spawn_procedural_dungeon(
                 for (sx, sz) in [(-1.0f32, -1.0f32), (1.0f32, 1.0f32)] {
                     let pillar_offset =
                         rot * Vec3::new(sx * (half_tile - 0.425), 2.5, sz * (half_tile - 0.425));
+                    commands.spawn((
+                        Name::new("DungeonTile_Saddle_LiveCorner"),
+                        SceneRoot(registry.load_scene(&asset_server, "tile_solid_pillar")),
+                        Transform::from_translation(cell.world_pos + pillar_offset)
+                            .with_rotation(rot)
+                            .with_scale(Vec3::new(0.2125, 1.2, 0.2125)),
+                    ));
                     commands.spawn((
                         Name::new("Collider_Dungeon_Pillar_Saddle"),
                         CavernObstacle,
