@@ -34,7 +34,6 @@ impl Default for SceneAssetRegistry {
         assets.insert("creature_sproutling".to_string(), "models/creature_sproutling.glb#Scene0".to_string());
         assets.insert("creature_emberling".to_string(), "models/creature_emberling.glb#Scene0".to_string());
         assets.insert("creature_glaceling".to_string(), "models/creature_glaceling.glb#Scene0".to_string());
-        assets.insert("prop_forest_tree".to_string(), "models/prop_forest_tree.glb#Scene0".to_string());
         Self { assets }
     }
 }
@@ -125,7 +124,6 @@ mod tests {
         assert!(registry.get_path("creature_sproutling").is_some());
         assert!(registry.get_path("creature_emberling").is_some());
         assert!(registry.get_path("creature_glaceling").is_some());
-        assert!(registry.get_path("prop_forest_tree").is_some());
     }
 
     #[test]

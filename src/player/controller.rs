@@ -939,8 +939,12 @@ pub fn update_fly_mode_cheat(
 
 pub fn player_out_of_bounds_rescue(
     fly_mode: Option<Res<FlyModeState>>,
+    intro_cinematic: Option<Res<crate::intro_cinematic::IntroCinematicState>>,
     mut query: Query<(&mut Transform, Option<&mut LocomotionState>), With<Player>>,
 ) {
+    if intro_cinematic.is_some_and(|cinematic| cinematic.active || cinematic.requested) {
+        return;
+    }
     if let Some(fm) = fly_mode {
         if fm.enabled {
             return;

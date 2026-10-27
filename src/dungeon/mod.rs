@@ -25,8 +25,8 @@ pub use fauna::{
     AmbientFaunaSpawner, AmbientInsect, InsectKind, InsectState, MothWing, SpiderLeg, SpiderWeb,
 };
 pub use generator::{
-    spawn_dungeon_creatures_along_path, spawn_dungeon_wall_sconce, update_forest_victory_trigger,
-    CanonicalPiece, DungeonConfig, DungeonGenerator, ForestVictoryExitTrigger, PrimaryTile,
+    spawn_dungeon_creatures_along_path, spawn_dungeon_wall_sconce, update_abyssal_victory_trigger,
+    AbyssalVictoryExitTrigger, CanonicalPiece, DungeonConfig, DungeonGenerator, PrimaryTile,
     ProceduralDungeon, RoomType,
 };
 pub use modular_kit::DungeonPlugin;

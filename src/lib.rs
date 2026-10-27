@@ -1,6 +1,8 @@
 pub mod alchemy;
 pub mod audio;
 pub mod dungeon;
+pub mod intro_cinematic;
+pub mod loading;
 pub mod player;
 pub mod render;
 pub mod tools;

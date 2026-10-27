@@ -10,6 +10,8 @@ use deep_alchemy::{
     alchemy::AlchemyPlugin,
     audio::AudioPlugin,
     dungeon::{DungeonPlugin, SecretTestRoomPlugin},
+    intro_cinematic::IntroCinematicPlugin,
+    loading::{LoadingPlugin, LoadingTarget},
     player::PlayerPlugin,
     render::RenderPipelinePlugin,
     ui::{menu::GameState, HudPlugin, MenuPlugin},
@@ -24,6 +26,7 @@ fn main() {
     let is_menu_screenshot = args.iter().any(|arg| arg == "--screenshot-menu");
     let is_settings_screenshot = args.iter().any(|arg| arg == "--screenshot-settings");
     let is_comic_screenshot = args.iter().any(|arg| arg == "--screenshot-comic");
+    let is_intro_screenshot = args.iter().any(|arg| arg == "--screenshot-intro");
     let is_test_room_screenshot = args.iter().any(|arg| arg == "--screenshot-test-room");
     let is_panorama = args.iter().any(|arg| arg == "--panorama" || arg == "--screenshot-panorama");
     let is_test_colliders = args.iter().any(|arg| arg == "--test-dungeon-colliders" || arg == "--validate-colliders");
@@ -54,11 +57,15 @@ fn main() {
         .add_plugins(RenderPipelinePlugin)
         .add_plugins(PlayerPlugin)
         .add_plugins(DungeonPlugin)
+        .add_plugins(LoadingPlugin)
+        .add_plugins(IntroCinematicPlugin)
         .add_plugins(SecretTestRoomPlugin)
         .add_plugins(AlchemyPlugin)
         .add_plugins(HudPlugin)
         .add_plugins(MenuPlugin)
         .add_plugins(AudioPlugin);
+
+    app.add_systems(Startup, request_initial_loading);
 
     if is_screenshot_test {
         info!(">>> [GATE 4] Running in --screenshot-test mode: capturing frame 20 and dumping telemetry");
@@ -79,6 +86,10 @@ fn main() {
     } else if is_comic_screenshot {
         info!(">>> [COMIC SCREENSHOT] Capturing comic subview frame to ./debug_output/comic_check.png");
         app.add_systems(Update, handle_comic_screenshot_lifecycle);
+    } else if is_intro_screenshot {
+        info!(">>> [INTRO SCREENSHOT] Capturing the in-game opening scene to ./debug_output/intro_check.png");
+        app.add_systems(Startup, request_intro_cinematic_screenshot)
+            .add_systems(Update, handle_intro_screenshot_lifecycle);
     } else if is_test_room_screenshot {
         info!(">>> [TEST ROOM SCREENSHOT] Capturing secret white test room frame to ./debug_output/test_room_check.png");
         app.add_systems(Startup, switch_to_ingame_for_test_room_screenshot)
@@ -107,6 +118,14 @@ fn main() {
             }
         }
     }
+}
+
+fn request_initial_loading(
+    mut request: ResMut<deep_alchemy::loading::LoadingRequest>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    deep_alchemy::loading::request_loading(LoadingTarget::Menu, &mut request);
+    next_state.set(GameState::Loading);
 }
 
 fn switch_to_ingame_for_test_room_screenshot(
@@ -293,19 +312,46 @@ fn handle_comic_screenshot_lifecycle(
     mut counter: Local<u32>,
     mut app_exit: EventWriter<AppExit>,
     mut nav: ResMut<deep_alchemy::ui::menu::MenuNavigation>,
+    mut cinematic: ResMut<deep_alchemy::intro_cinematic::IntroCinematicState>,
 ) {
     *counter += 1;
     if *counter == 5 {
-        nav.current_view = deep_alchemy::ui::menu::MenuView::IntroComic;
+        nav.current_view = deep_alchemy::ui::menu::MenuView::CinematicIntro;
+        cinematic.requested = true;
     }
     if *counter == 25 {
         std::fs::create_dir_all("debug_output").ok();
         commands
             .spawn(Screenshot::primary_window())
             .observe(save_to_disk("debug_output/comic_check.png"));
-        info!(">>> [COMIC SCREENSHOT] Triggered primary_window screenshot at frame 25 -> debug_output/comic_check.png");
+        info!(">>> [INTRO SCREENSHOT] Triggered primary_window screenshot at frame 25 -> debug_output/comic_check.png");
     } else if *counter >= 50 {
         info!(">>> [COMIC SCREENSHOT] Frame 50 reached, gracefully exiting.");
+        app_exit.send(AppExit::Success);
+    }
+}
+
+fn request_intro_cinematic_screenshot(
+    mut nav: ResMut<deep_alchemy::ui::menu::MenuNavigation>,
+    mut cinematic: ResMut<deep_alchemy::intro_cinematic::IntroCinematicState>,
+) {
+    nav.current_view = deep_alchemy::ui::menu::MenuView::CinematicIntro;
+    cinematic.requested = true;
+}
+
+fn handle_intro_screenshot_lifecycle(
+    mut commands: Commands,
+    mut counter: Local<u32>,
+    mut app_exit: EventWriter<AppExit>,
+) {
+    *counter += 1;
+    if *counter == 55 {
+        std::fs::create_dir_all("debug_output").ok();
+        commands
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk("debug_output/intro_check.png"));
+        info!(">>> [INTRO SCREENSHOT] Captured first in-game scene.");
+    } else if *counter >= 85 {
         app_exit.send(AppExit::Success);
     }
 }

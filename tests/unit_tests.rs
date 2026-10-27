@@ -6328,8 +6328,8 @@ fn test_unit_dungeon_procedural_generation_creature_density_progression() {
 }
 
 #[test]
-fn test_unit_forest_exit_trigger_and_victory_menu_transition() {
-    use deep_alchemy::dungeon::generator::{update_forest_victory_trigger, ForestVictoryExitTrigger};
+fn test_unit_abyssal_exit_trigger_and_victory_menu_transition() {
+    use deep_alchemy::dungeon::generator::{update_abyssal_victory_trigger, AbyssalVictoryExitTrigger};
     use deep_alchemy::player::camera::Player;
     use deep_alchemy::ui::menu::{GameRunStats, GameState, MenuNavigation, MenuView};
 
@@ -6341,7 +6341,7 @@ fn test_unit_forest_exit_trigger_and_victory_menu_transition() {
         has_started: true,
     });
     app.insert_resource(GameRunStats::default());
-    app.add_systems(Update, update_forest_victory_trigger);
+    app.add_systems(Update, update_abyssal_victory_trigger);
 
     let player_ent = app
         .world_mut()
@@ -6354,7 +6354,7 @@ fn test_unit_forest_exit_trigger_and_victory_menu_transition() {
     let _trigger_ent = app
         .world_mut()
         .spawn((
-            ForestVictoryExitTrigger,
+            AbyssalVictoryExitTrigger,
             Transform::from_xyz(0.0, 0.0, 0.0),
         ))
         .id();

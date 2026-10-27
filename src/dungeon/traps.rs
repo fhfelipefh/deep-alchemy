@@ -499,7 +499,7 @@ pub fn update_cracked_wall_nests(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut nests: Query<(Entity, &Transform, &mut CrackedWallNest)>,
+    mut nests: Query<(Entity, &Transform, &mut CrackedWallNest), Without<Player>>,
     mut player_query: Query<(&Transform, &mut Health), With<Player>>,
     mut shake_opt: Option<ResMut<CameraShake>>,
     mut sound_events: Option<ResMut<Events<crate::audio::SoundEffectEvent>>>,
@@ -585,7 +585,10 @@ pub fn update_emergent_creatures(
 
 pub fn update_dungeon_traps(
     time: Res<Time>,
-    mut traps: Query<(&mut Transform, &mut DungeonTrap, Option<&mut MeshMaterial3d<StandardMaterial>>)>,
+    mut traps: Query<
+        (&mut Transform, &mut DungeonTrap, Option<&mut MeshMaterial3d<StandardMaterial>>),
+        Without<Player>,
+    >,
     mut player_query: Query<(&Transform, &mut Health), With<Player>>,
     mut shake_opt: Option<ResMut<CameraShake>>,
     mut sound_events: Option<ResMut<Events<crate::audio::SoundEffectEvent>>>,

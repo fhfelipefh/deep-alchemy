@@ -644,7 +644,7 @@ fn update_hud_visibility(
     for mut vis in hud_query.iter_mut() {
         match game_state.get() {
             GameState::InGame => *vis = Visibility::Visible,
-            GameState::MainMenu => *vis = Visibility::Hidden,
+            GameState::MainMenu | GameState::Loading => *vis = Visibility::Hidden,
         }
     }
 }

@@ -37,7 +37,7 @@ pub enum RoomType {
     CrystalGeode,
     AncientBridge,
     SporeSanctuary,
-    SunlitForestExit,
+    AbyssalExit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,11 +159,11 @@ impl DungeonGenerator {
         }
         Self::carve_macro_chamber(&mut grid, width, depth, cx, north_room_z, RoomType::AncientBridge);
 
-        let forest_exit_z = depth - 2;
-        for gz in (north_room_z + 1)..=forest_exit_z {
+        let exit_chamber_z = depth - 2;
+        for gz in (north_room_z + 1)..=exit_chamber_z {
             grid[gz * width + cx] = PrimaryTile::Corridor;
         }
-        Self::carve_macro_chamber(&mut grid, width, depth, cx, forest_exit_z, RoomType::SunlitForestExit);
+        Self::carve_macro_chamber(&mut grid, width, depth, cx, exit_chamber_z, RoomType::AbyssalExit);
 
         let east_room_x = (width - 4).min(cx + 6);
         for gx in (cx + 1)..=east_room_x {
@@ -189,7 +189,7 @@ impl DungeonGenerator {
             IVec2::new(west_room_x as i32, junction_z as i32),
             IVec2::new(east_room_x as i32, junction_z as i32),
             IVec2::new(cx as i32, north_room_z as i32),
-            IVec2::new(cx as i32, forest_exit_z as i32),
+            IVec2::new(cx as i32, exit_chamber_z as i32),
             IVec2::new(shrine_x as i32, shrine_z as i32),
         ];
 
@@ -898,40 +898,22 @@ pub fn spawn_procedural_dungeon(
                                 },
                             ));
                         }
-                        RoomType::SunlitForestExit => {
-                            let tree_handle = registry.load_scene(&asset_server, "prop_forest_tree");
-                            let offsets = [
-                                Vec3::new(-4.2, 0.0, -3.2),
-                                Vec3::new(4.2, 0.0, -3.2),
-                                Vec3::new(-4.8, 0.0, 3.8),
-                                Vec3::new(4.8, 0.0, 3.8),
-                                Vec3::new(0.0, 0.0, 5.2),
-                            ];
-                            for (i, offset) in offsets.iter().enumerate() {
-                                commands.spawn((
-                                    Name::new(format!("ForestTree_{}", i)),
-                                    SceneRoot(tree_handle.clone()),
-                                    Transform::from_translation(cell.world_pos + *offset),
-                                    RigidBody::Static,
-                                    Collider::cylinder(0.28, 2.8),
-                                ));
-                            }
-
+                        RoomType::AbyssalExit => {
                             commands.spawn((
-                                Name::new("MacroRoom_SunlitForestExit_SunLight"),
-                                Transform::from_translation(cell.world_pos + Vec3::new(0.0, 6.0, 1.0)),
+                                Name::new("MacroRoom_AbyssalExit_Light"),
+                                Transform::from_translation(cell.world_pos + Vec3::new(0.0, 3.4, 1.0)),
                                 PointLight {
-                                    color: Color::srgb(1.0, 0.95, 0.78),
-                                    intensity: 65000.0,
-                                    range: 36.0,
+                                    color: Color::srgb(0.20, 0.72, 0.94),
+                                    intensity: 26000.0,
+                                    range: 18.0,
                                     shadows_enabled: false,
                                     ..default()
                                 },
                             ));
 
                             commands.spawn((
-                                Name::new("ForestVictoryExitTrigger"),
-                                ForestVictoryExitTrigger,
+                                Name::new("AbyssalVictoryExitTrigger"),
+                                AbyssalVictoryExitTrigger,
                                 Transform::from_translation(cell.world_pos + Vec3::new(0.0, 1.0, 1.0)),
                                 Collider::cuboid(6.0, 4.0, 6.0),
                                 Sensor,
@@ -1142,11 +1124,11 @@ pub fn spawn_procedural_dungeon(
 }
 
 #[derive(Component)]
-pub struct ForestVictoryExitTrigger;
+pub struct AbyssalVictoryExitTrigger;
 
-pub fn update_forest_victory_trigger(
+pub fn update_abyssal_victory_trigger(
     player_query: Query<&Transform, With<crate::player::camera::Player>>,
-    trigger_query: Query<&Transform, With<ForestVictoryExitTrigger>>,
+    trigger_query: Query<&Transform, With<AbyssalVictoryExitTrigger>>,
     mut stats: ResMut<crate::ui::menu::GameRunStats>,
     mut nav: ResMut<crate::ui::menu::MenuNavigation>,
     mut next_state: ResMut<NextState<crate::ui::menu::GameState>>,
@@ -1414,7 +1396,7 @@ mod tests {
         let mut has_alchemical_shrine = false;
         let mut has_ancient_bridge = false;
         let mut has_spore_sanctuary = false;
-        let mut has_sunlit_forest_exit = false;
+        let mut has_abyssal_exit = false;
 
         for &tile in &dungeon.primary_grid {
             match tile {
@@ -1422,7 +1404,7 @@ mod tests {
                 PrimaryTile::RoomCenter(RoomType::AlchemicalShrine) => has_alchemical_shrine = true,
                 PrimaryTile::RoomCenter(RoomType::AncientBridge) => has_ancient_bridge = true,
                 PrimaryTile::RoomCenter(RoomType::SporeSanctuary) => has_spore_sanctuary = true,
-                PrimaryTile::RoomCenter(RoomType::SunlitForestExit) => has_sunlit_forest_exit = true,
+                PrimaryTile::RoomCenter(RoomType::AbyssalExit) => has_abyssal_exit = true,
                 _ => {}
             }
         }
@@ -1431,7 +1413,7 @@ mod tests {
         assert!(has_alchemical_shrine, "AlchemicalShrine chamber must be generated!");
         assert!(has_ancient_bridge, "AncientBridge chamber must be generated!");
         assert!(has_spore_sanctuary, "SporeSanctuary chamber must be generated!");
-        assert!(has_sunlit_forest_exit, "SunlitForestExit chamber must be generated!");
+        assert!(has_abyssal_exit, "AbyssalExit chamber must be generated!");
     }
 
     #[test]

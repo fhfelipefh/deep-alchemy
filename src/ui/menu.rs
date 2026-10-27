@@ -15,6 +15,7 @@ pub const MAX_FOV_DEGREES: f32 = 100.0;
 pub enum GameState {
     #[default]
     MainMenu,
+    Loading,
     InGame,
 }
 
@@ -26,6 +27,7 @@ pub enum MenuView {
     Controls,
     Victory,
     IntroComic,
+    CinematicIntro,
 }
 
 #[derive(Resource, Debug, Clone, Default)]
@@ -588,14 +590,6 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                     spawn_menu_button(
                         main_view,
                         font_handle.clone(),
-                        MenuButtonAction::OpenIntroComic,
-                        "VER HISTÓRIA (HQ)",
-                        None::<StartResumeButtonText>,
-                    );
-
-                    spawn_menu_button(
-                        main_view,
-                        font_handle.clone(),
                         MenuButtonAction::OpenSettings,
                         "CONFIGURAÇÕES",
                         None::<StartResumeButtonText>,
@@ -855,7 +849,7 @@ pub fn setup_menu_ui(mut commands: Commands, asset_server: Option<Res<AssetServe
                     ));
 
                     victory.spawn((
-                        Text::new("Você alcançou a radiante Floresta ao Ar Livre!\nA brisa e a luz do sol acolhem seus passos após a escuridão."),
+                        Text::new("Você alcançou a saída da masmorra!\nA luz azul do abismo marca o fim desta jornada subterrânea."),
                         TextFont {
                             font: font_handle.clone(),
                             font_size: 13.0,
@@ -1192,12 +1186,14 @@ pub fn handle_global_shortcuts(
                 MenuView::Settings | MenuView::Controls | MenuView::Victory | MenuView::IntroComic => {
                     nav.current_view = MenuView::Main;
                 }
+                MenuView::CinematicIntro => {}
                 MenuView::Main => {
                     if nav.has_started {
                         next_state.set(GameState::InGame);
                     }
                 }
             },
+            GameState::Loading => {}
         }
     }
 }
@@ -1223,6 +1219,7 @@ pub fn handle_menu_button_interactions(
     rtx_support: Option<Res<RtxHardwareSupport>>,
     mut stats_opt: Option<ResMut<GameRunStats>>,
     mut comic_state_opt: Option<ResMut<ComicCutsceneState>>,
+    mut cinematic_opt: Option<ResMut<crate::intro_cinematic::IntroCinematicState>>,
     mut sound_events: Option<ResMut<Events<crate::audio::SoundEffectEvent>>>,
     mut exit_events: EventWriter<AppExit>,
 ) {
@@ -1246,18 +1243,21 @@ pub fn handle_menu_button_interactions(
                 match action {
                     MenuButtonAction::StartOrResume => {
                         if !nav.has_started {
-                            nav.current_view = MenuView::IntroComic;
-                            if let Some(ref mut comic) = comic_state_opt {
-                                comic.active_panel = 0;
+                            if let Some(ref mut cinematic) = cinematic_opt {
+                                cinematic.requested = true;
+                                nav.current_view = MenuView::CinematicIntro;
+                            } else {
+                                nav.has_started = true;
+                                next_state.set(GameState::InGame);
                             }
                         } else {
                             next_state.set(GameState::InGame);
                         }
                     }
                     MenuButtonAction::OpenIntroComic => {
-                        nav.current_view = MenuView::IntroComic;
-                        if let Some(ref mut comic) = comic_state_opt {
-                            comic.active_panel = 0;
+                        if let Some(ref mut cinematic) = cinematic_opt {
+                            cinematic.requested = true;
+                            nav.current_view = MenuView::CinematicIntro;
                         }
                     }
                     MenuButtonAction::NextComicPanel => {
@@ -1291,7 +1291,7 @@ pub fn handle_menu_button_interactions(
                         }
                     }
                     MenuButtonAction::RestartGame => {
-                        nav.current_view = MenuView::Main;
+                        nav.current_view = MenuView::CinematicIntro;
                         nav.has_started = false;
                         if let Some(ref mut stats) = stats_opt {
                             stats.has_won = false;
@@ -1300,7 +1300,13 @@ pub fn handle_menu_button_interactions(
                             stats.torches_lit = 0;
                             stats.creatures_encountered = 0;
                         }
-                        next_state.set(GameState::InGame);
+                        if let Some(ref mut cinematic) = cinematic_opt {
+                            cinematic.requested = true;
+                        } else {
+                            nav.has_started = true;
+                            nav.current_view = MenuView::Main;
+                            next_state.set(GameState::InGame);
+                        }
                     }
                     MenuButtonAction::OpenSettings => {
                         nav.current_view = MenuView::Settings;
@@ -1472,9 +1478,10 @@ pub fn update_menu_subview_visibility(
     }
 
     let is_comic = nav.current_view == MenuView::IntroComic;
+    let is_cinematic = nav.current_view == MenuView::CinematicIntro;
 
     for mut node in card_views.iter_mut() {
-        node.display = if is_comic {
+        node.display = if is_comic || is_cinematic {
             Display::None
         } else {
             Display::Flex
@@ -2881,7 +2888,7 @@ mod tests {
     fn test_game_settings_defaults_and_clamping() {
         let mut settings = GameSettings::default();
         assert_eq!(settings.fullscreen, false);
-        assert_eq!(settings.fov_degrees, 75.0);
+        assert_eq!(settings.fov_degrees, 80.0);
         assert_eq!(settings.mouse_sensitivity, 0.0022);
         assert_eq!(settings.master_volume, 0.8);
         assert_eq!(settings.show_fps, false);
@@ -3168,7 +3175,7 @@ mod tests {
         assert_eq!(settings.rtx_enabled, true);
         assert_eq!(settings.show_fps, true);
         assert!((settings.mouse_sensitivity - 0.0032).abs() < 1e-5);
-        assert_eq!(settings.fov_degrees, 85.0);
+        assert_eq!(settings.fov_degrees, 90.0);
         assert!((settings.master_volume - 0.9).abs() < 1e-5);
     }
 

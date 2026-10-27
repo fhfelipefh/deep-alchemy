@@ -93,12 +93,17 @@ impl Plugin for DungeonPlugin {
         app.insert_resource(anim_config)
             .init_resource::<SceneAssetRegistry>()
             .init_resource::<crate::dungeon::fauna::AmbientFaunaSpawner>()
+            .init_resource::<crate::loading::WorldBootstrap>()
             .add_systems(
-                Startup,
+                Update,
                 (
                     setup_cavern_world,
                     crate::dungeon::generator::spawn_procedural_dungeon,
-                ),
+                    crate::loading::finish_world_bootstrap,
+                )
+                    .chain()
+                    .after(crate::loading::update_loading_progress)
+                    .run_if(crate::loading::world_bootstrap_requested),
             )
         .add_systems(
             Update,
@@ -129,7 +134,7 @@ impl Plugin for DungeonPlugin {
                     crate::dungeon::creatures::update_creature_ai_perception_and_aim_dodge,
                     crate::dungeon::creatures::update_creature_potion_interactions,
                 ).chain(),
-                crate::dungeon::generator::update_forest_victory_trigger,
+                crate::dungeon::generator::update_abyssal_victory_trigger,
             ),
         )
         .add_systems(

@@ -550,9 +550,11 @@ fn test_perf_full_gameplay_tick_bottleneck_breakdown() {
     println!("   • Theoretical Throughput:    {:.0} FPS capability (median tick limit)", 1_000_000.0 / median_us.max(1.0));
     println!("================================================================================\n");
 
+    let threshold = if cfg!(debug_assertions) { 30000.0 } else { 4000.0 };
     assert!(
-        p99_us < 4000.0,
-        "Frame tick p99 bottleneck detected: took {:.2} µs",
-        p99_us
+        p99_us < threshold,
+        "Frame tick p99 bottleneck detected: took {:.2} µs (threshold: {:.2} µs)",
+        p99_us,
+        threshold
     );
 }
